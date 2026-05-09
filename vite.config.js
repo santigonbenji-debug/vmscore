@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'icons/*.png'],
+      includeAssets: ['favicon.png', 'icons/*.png'],
       workbox: {
         navigateFallback: '/index.html',
         cleanupOutdatedCaches: true,
