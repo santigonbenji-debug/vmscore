@@ -45,11 +45,12 @@ function useAllScorers() {
 function StandingsTable({ rows }) {
   return (
     <div className="bg-surface-900 rounded-xl border border-surface-800 overflow-hidden">
-      <table className="w-full text-sm">
+      <div className="overflow-x-auto" dir="ltr">
+      <table className="w-full min-w-[26rem] text-sm">
         <thead className="bg-surface-800 text-zinc-400 text-[10px] uppercase tracking-wide">
           <tr>
-            <th className="px-2 py-2 text-left">#</th>
-            <th className="px-2 py-2 text-left">Equipo</th>
+            <th className="sticky left-0 z-10 bg-surface-800 px-2 py-2 text-left">#</th>
+            <th className="sticky left-8 z-10 bg-surface-800 px-2 py-2 text-left">Equipo</th>
             <th className="px-1.5 py-2">PJ</th>
             <th className="px-1.5 py-2">G</th>
             <th className="px-1.5 py-2">E</th>
@@ -66,8 +67,8 @@ function StandingsTable({ rows }) {
                            : pos === 3 ? 'text-amber-700' : 'text-zinc-500'
             return (
               <tr key={row.team_id ?? i} className="border-t border-surface-800 hover:bg-surface-800/50">
-                <td className={`px-2 py-2 font-bold ${posColor}`}>{pos}</td>
-                <td className="px-2 py-2">
+                <td className={`sticky left-0 z-10 bg-surface-900 px-2 py-2 font-bold ${posColor}`}>{pos}</td>
+                <td className="sticky left-8 z-10 bg-surface-900 px-2 py-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <TeamLogo logoUrl={row.team_logo_url} name={row.team_name} color={row.primary_color} />
                     <span className="text-zinc-100 text-xs truncate">{row.team_short_name ?? row.team_name}</span>
@@ -84,6 +85,7 @@ function StandingsTable({ rows }) {
           })}
         </tbody>
       </table>
+      </div>
     </div>
   )
 }

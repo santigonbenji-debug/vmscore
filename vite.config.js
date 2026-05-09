@@ -8,6 +8,36 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'icons/*.png'],
+      workbox: {
+        navigateFallback: '/index.html',
+        cleanupOutdatedCaches: true,
+        runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.destination === 'image',
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'vmscore-images',
+              expiration: {
+                maxEntries: 120,
+                maxAgeSeconds: 60 * 60 * 24 * 30,
+              },
+            },
+          },
+          {
+            urlPattern: ({ url, request }) =>
+              url.hostname.endsWith('.supabase.co') && request.method === 'GET',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'vmscore-supabase-read',
+              networkTimeoutSeconds: 4,
+              expiration: {
+                maxEntries: 80,
+                maxAgeSeconds: 60 * 60,
+              },
+            },
+          },
+        ],
+      },
       manifest: {
         name: 'VMScore',
         short_name: 'VMScore',
