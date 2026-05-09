@@ -1,0 +1,38 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-surface-950 text-zinc-100 antialiased;
+    overflow-x: hidden;
+  }
+  html {
+    scroll-behavior: smooth;
+    color-scheme: dark;
+  }
+  /* Inputs / selects en dark */
+  input, select, textarea {
+    @apply bg-surface-900 border-surface-700 text-zinc-100 placeholder-zinc-500;
+  }
+  input:focus, select:focus, textarea:focus {
+    @apply ring-primary/40 border-primary/40;
+  }
+  input[type="color"] {
+    @apply bg-transparent border-0 p-0;
+  }
+}
+
+@layer components {
+  .vm-card {
+    @apply bg-surface-900 border border-surface-800 rounded-xl shadow-sm;
+  }
+  .vm-card-soft {
+    @apply bg-surface-800/60 border border-surface-800 rounded-xl;
+  }
+  .vm-divider {
+    @apply border-surface-800;
+  }
+}
