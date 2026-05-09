@@ -46,6 +46,15 @@ export function useAuth() {
     return supabase.auth.signInWithPassword({ email, password })
   }
 
+  async function resetPassword(email) {
+    const redirectTo = `${window.location.origin}/admin/reset-password`
+    return supabase.auth.resetPasswordForEmail(email, { redirectTo })
+  }
+
+  async function updatePassword(password) {
+    return supabase.auth.updateUser({ password })
+  }
+
   async function signOut() {
     await supabase.auth.signOut()
   }
@@ -61,6 +70,8 @@ export function useAuth() {
     isClubAdmin:  role === 'club_admin',
     loading,
     signIn,
+    resetPassword,
+    updatePassword,
     signOut,
   }
 }

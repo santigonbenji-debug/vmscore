@@ -9,6 +9,7 @@ import TeamProfile from './pages/TeamProfile'
 import Favorites   from './pages/Favorites'
 import Contacto    from './pages/Contacto'
 import AdminLogin      from './pages/admin/AdminLogin'
+import AdminResetPassword from './pages/admin/AdminResetPassword'
 import AdminDashboard  from './pages/admin/AdminDashboard'
 import ManageLeagues   from './pages/admin/ManageLeagues'
 import ManageTeams     from './pages/admin/ManageTeams'
@@ -44,6 +45,7 @@ export default function App() {
       </Route>
 
       <Route path="/admin/login" element={<AdminLogin />} />
+      <Route path="/admin/reset-password" element={<AdminResetPassword />} />
 
       <Route path="/admin" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route index                     element={<AdminDashboard />} />
