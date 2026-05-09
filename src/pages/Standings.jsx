@@ -51,12 +51,12 @@ function StandingsTable({ rows }) {
           <tr>
             <th className="sticky left-0 z-10 bg-surface-800 px-2 py-2 text-left">#</th>
             <th className="sticky left-8 z-10 bg-surface-800 px-2 py-2 text-left">Equipo</th>
+            <th className="px-2 py-2 text-center font-bold text-zinc-200">Pts</th>
             <th className="px-1.5 py-2">PJ</th>
             <th className="px-1.5 py-2">G</th>
             <th className="px-1.5 py-2">E</th>
             <th className="px-1.5 py-2">P</th>
             <th className="px-1.5 py-2">DG</th>
-            <th className="px-1.5 py-2 font-bold">Pts</th>
           </tr>
         </thead>
         <tbody>
@@ -74,12 +74,12 @@ function StandingsTable({ rows }) {
                     <span className="text-zinc-100 text-xs truncate">{row.team_short_name ?? row.team_name}</span>
                   </div>
                 </td>
+                <td className="px-2 py-2 text-center font-extrabold text-zinc-100 tabular-nums">{row.points}</td>
                 <td className="px-1.5 py-2 text-center text-zinc-400">{row.played}</td>
                 <td className="px-1.5 py-2 text-center text-zinc-400">{row.won}</td>
                 <td className="px-1.5 py-2 text-center text-zinc-400">{row.drawn}</td>
                 <td className="px-1.5 py-2 text-center text-zinc-400">{row.lost}</td>
                 <td className="px-1.5 py-2 text-center text-zinc-400">{row.goal_diff}</td>
-                <td className="px-1.5 py-2 text-center font-bold text-zinc-100">{row.points}</td>
               </tr>
             )
           })}
