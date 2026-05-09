@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import BrandLogo from '../brand/BrandLogo'
 
 function isIosDevice() {
   if (typeof window === 'undefined') return false
@@ -57,9 +58,7 @@ export default function PwaInstallButton() {
     <div className="fixed bottom-20 left-0 right-0 z-40 mx-auto w-full max-w-lg px-3 pointer-events-none">
       <div className="pointer-events-auto rounded-xl border border-primary/40 bg-surface-900/95 p-3 shadow-2xl shadow-black/30 backdrop-blur">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-xl text-white">
-            {'\u26BD'}
-          </div>
+          <BrandLogo className="h-10 w-10" />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-bold text-zinc-100">Instalar VMScore</p>
             <p className="text-xs text-zinc-500">Acceso rapido y modo offline desde el celular.</p>
