@@ -6,6 +6,12 @@ function isIosDevice() {
   return /iphone|ipad|ipod/i.test(window.navigator.userAgent)
 }
 
+function isSafariBrowser() {
+  if (typeof window === 'undefined') return false
+  const ua = window.navigator.userAgent.toLowerCase()
+  return ua.includes('safari') && !ua.includes('crios') && !ua.includes('fxios')
+}
+
 function isStandalone() {
   if (typeof window === 'undefined') return false
   return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true
@@ -16,6 +22,7 @@ export default function PwaInstallButton() {
   const [showHelp, setShowHelp] = useState(false)
   const [installed, setInstalled] = useState(() => isStandalone())
   const isIos = useMemo(() => isIosDevice(), [])
+  const isSafari = useMemo(() => isSafariBrowser(), [])
 
   useEffect(() => {
     function handleBeforeInstallPrompt(event) {
@@ -68,15 +75,36 @@ export default function PwaInstallButton() {
             onClick={install}
             className="shrink-0 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-primary-600"
           >
-            Instalar
+            {installPrompt ? 'Instalar' : 'Ver pasos'}
           </button>
         </div>
         {showHelp && (
-          <p className="mt-2 border-t border-surface-800 pt-2 text-xs leading-relaxed text-zinc-400">
-            {isIos
-              ? 'En iPhone: toca Compartir y despues Agregar a pantalla de inicio.'
-              : 'En Android/Chrome: toca el menu del navegador y elegi Instalar app o Agregar a pantalla principal.'}
-          </p>
+          <div className="mt-3 border-t border-surface-800 pt-3 text-xs text-zinc-300">
+            {isIos ? (
+              <div className="space-y-2">
+                <p className="font-bold text-zinc-100">Instalar en iPhone</p>
+                {!isSafari && (
+                  <p className="rounded-lg bg-amber-500/10 px-2 py-1.5 text-amber-200">
+                    Abri esta pagina en Safari. iOS solo permite agregar PWAs desde Safari.
+                  </p>
+                )}
+                <ol className="space-y-1.5 leading-relaxed">
+                  <li><span className="font-bold text-primary">1.</span> Toca el boton Compartir de Safari.</li>
+                  <li><span className="font-bold text-primary">2.</span> Baja en el menu y elegi Agregar a pantalla de inicio.</li>
+                  <li><span className="font-bold text-primary">3.</span> Toca Agregar. VMScore aparecera como app.</li>
+                </ol>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="font-bold text-zinc-100">Instalar en Android/Chrome</p>
+                <ol className="space-y-1.5 leading-relaxed">
+                  <li><span className="font-bold text-primary">1.</span> Toca el menu del navegador.</li>
+                  <li><span className="font-bold text-primary">2.</span> Elegi Instalar app o Agregar a pantalla principal.</li>
+                  <li><span className="font-bold text-primary">3.</span> Confirma la instalacion.</li>
+                </ol>
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>
