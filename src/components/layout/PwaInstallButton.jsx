@@ -12,7 +12,7 @@ function isStandalone() {
 
 export default function PwaInstallButton() {
   const [installPrompt, setInstallPrompt] = useState(null)
-  const [showIosHelp, setShowIosHelp] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
   const [installed, setInstalled] = useState(() => isStandalone())
   const isIos = useMemo(() => isIosDevice(), [])
 
@@ -25,7 +25,7 @@ export default function PwaInstallButton() {
     function handleInstalled() {
       setInstalled(true)
       setInstallPrompt(null)
-      setShowIosHelp(false)
+      setShowHelp(false)
     }
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
@@ -38,15 +38,13 @@ export default function PwaInstallButton() {
   }, [])
 
   if (installed) return null
-  if (!installPrompt && !isIos) return null
 
   async function install() {
-    if (isIos && !installPrompt) {
-      setShowIosHelp((value) => !value)
+    if (!installPrompt) {
+      setShowHelp((value) => !value)
       return
     }
 
-    if (!installPrompt) return
     await installPrompt.prompt()
     const choice = await installPrompt.userChoice
     if (choice.outcome === 'accepted') {
@@ -60,7 +58,7 @@ export default function PwaInstallButton() {
       <div className="pointer-events-auto rounded-xl border border-primary/40 bg-surface-900/95 p-3 shadow-2xl shadow-black/30 backdrop-blur">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-xl text-white">
-            ⚽
+            {'\u26BD'}
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-bold text-zinc-100">Instalar VMScore</p>
@@ -74,9 +72,11 @@ export default function PwaInstallButton() {
             Instalar
           </button>
         </div>
-        {showIosHelp && (
+        {showHelp && (
           <p className="mt-2 border-t border-surface-800 pt-2 text-xs leading-relaxed text-zinc-400">
-            En iPhone: toca Compartir y despues Agregar a pantalla de inicio.
+            {isIos
+              ? 'En iPhone: toca Compartir y despues Agregar a pantalla de inicio.'
+              : 'En Android/Chrome: toca el menu del navegador y elegi Instalar app o Agregar a pantalla principal.'}
           </p>
         )}
       </div>
