@@ -139,7 +139,7 @@ export default function Home() {
   // Agrupar próximos por fecha → por liga
   const grupos = useMemo(() => {
     const futuros = partidos.filter((p) =>
-      p.status !== 'finished' && p.status !== 'cancelled' && new Date(p.scheduled_at).getTime() >= ahora - 6 * 3600 * 1000
+      p.status !== 'cancelled' && new Date(p.scheduled_at).getTime() >= ahora - 7 * 24 * 3600 * 1000
     )
     const byDate = {}
     for (const p of futuros) {
@@ -154,7 +154,7 @@ export default function Home() {
   }, [partidos, ahora])
 
   const fechas = Object.keys(grupos).sort()
-  const finalizados = partidos.filter((p) => p.status === 'finished').slice(0, 6)
+  const finalizados = []
 
   return (
     <div className="px-3 py-3 space-y-4 pb-28">

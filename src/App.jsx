@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './hooks/useAuth'
+import { useRealtimeInvalidation } from './hooks/useRealtimeInvalidation'
 import Layout from './components/layout/Layout'
 import Home        from './pages/Home'
 import Fixture     from './pages/Fixture'
@@ -32,6 +33,8 @@ function ProtectedRoute({ children }) {
 }
 
 export default function App() {
+  useRealtimeInvalidation()
+
   return (
     <Routes>
       <Route path="/" element={<Layout />}>
