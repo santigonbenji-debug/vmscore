@@ -11,6 +11,7 @@ export default defineConfig({
       workbox: {
         navigateFallback: '/index.html',
         cleanupOutdatedCaches: true,
+        importScripts: ['/push-handler.js'],
         runtimeCaching: [
           {
             urlPattern: ({ request }) => request.destination === 'image',

@@ -2,6 +2,7 @@ import { Outlet } from 'react-router-dom'
 import Navbar from './Navbar'
 import BottomNav from './BottomNav'
 import PwaInstallButton from './PwaInstallButton'
+import PushNotificationsButton from './PushNotificationsButton'
 
 export default function Layout() {
   return (
@@ -18,6 +19,7 @@ export default function Layout() {
           ☕ Invitanos un cafecito para mantener VMScore
         </a>
       </div>
+      <PushNotificationsButton />
       <PwaInstallButton />
       <BottomNav />
     </div>

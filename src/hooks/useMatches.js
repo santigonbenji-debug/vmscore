@@ -212,6 +212,12 @@ export function useSaveResult() {
       })))
     if (evErr) throw evErr
   }
+
+  supabase.functions.invoke('send-push', {
+    body: { type: 'match_finished', matchId },
+  }).catch((error) => {
+    console.warn('No se pudo enviar notificacion push', error)
+  })
 },
     onSuccess: (_, { matchId }) => {
       qc.invalidateQueries({ queryKey: ['match', matchId] })
