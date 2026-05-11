@@ -4,9 +4,9 @@ import { usePushNotifications } from '../../hooks/usePushNotifications'
 
 export default function PushNotificationsButton() {
   const [open, setOpen] = useState(false)
-  const { supported, loading, message, error, enableNotifications } = usePushNotifications()
+  const { supported, enabled, loading, message, error, enableNotifications } = usePushNotifications()
 
-  if (!supported) return null
+  if (!supported || enabled) return null
 
   return (
     <div className="fixed bottom-36 left-0 right-0 z-40 mx-auto w-full max-w-lg px-3 pointer-events-none">

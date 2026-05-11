@@ -3,6 +3,12 @@ import { supabase } from '../lib/supabase'
 import { useFavorites } from './useFavorites'
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY
+const PUSH_ENABLED_KEY = 'vmscore_push_enabled'
+
+function getStoredPushEnabled() {
+  if (typeof window === 'undefined') return false
+  return window.localStorage.getItem(PUSH_ENABLED_KEY) === 'true'
+}
 
 function urlBase64ToUint8Array(base64String) {
   const normalized = String(base64String ?? '')
@@ -31,6 +37,7 @@ function serializeSubscription(subscription) {
 
 export function usePushNotifications() {
   const { favorites } = useFavorites()
+  const [enabled, setEnabled] = useState(getStoredPushEnabled)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -87,6 +94,8 @@ export function usePushNotifications() {
       })
 
       if (error) throw error
+      window.localStorage.setItem(PUSH_ENABLED_KEY, 'true')
+      setEnabled(true)
       setMessage('Alertas activadas para tus equipos favoritos.')
     } catch (err) {
       setError(err?.message ?? 'No se pudieron activar las alertas.')
@@ -97,6 +106,7 @@ export function usePushNotifications() {
 
   return {
     supported,
+    enabled,
     loading,
     message,
     error,
