@@ -11,7 +11,6 @@ import {
   useUpsertExternalSource,
 } from '../../hooks/useExternalSources'
 import { fetchCopaFacilMatches, parseCopaFacilUrl, summarizeExternalTeams } from '../../lib/copaFacil'
-import { formatFechaHora } from '../../lib/helpers'
 
 const INPUT = 'w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none bg-surface-800 text-zinc-100 border border-surface-700'
 
@@ -324,7 +323,7 @@ export default function ManageExternalSources() {
                   return (
                     <div key={match.external_match_id} className="rounded-lg border border-surface-800 bg-surface-950 p-3">
                       <div className="mb-2 flex items-center justify-between gap-2">
-                        <span className="text-xs text-zinc-500">{formatFechaHora(match.scheduled_at)} · Fecha {match.round}</span>
+                        <span className="text-xs text-zinc-500">Fecha {match.round} · horario a definir</span>
                         <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${ready ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300'}`}>
                           {ready ? 'Listo' : 'Falta mapeo'}
                         </span>

@@ -74,12 +74,18 @@ export function useSaveExternalTeamMappings() {
   })
 }
 
-async function findDuplicateMatch({ phaseId, homeTeamId, awayTeamId, scheduledAt }) {
-  const { data, error } = await supabase
+async function findDuplicateMatch({ phaseId, homeTeamId, awayTeamId, scheduledAt, round }) {
+  let query = supabase
     .from('matches')
-    .select('id, home_team_id, away_team_id')
+    .select('id, home_team_id, away_team_id, round')
     .eq('phase_id', phaseId)
-    .eq('scheduled_at', scheduledAt)
+  if (scheduledAt) query = query.eq('scheduled_at', scheduledAt)
+  else {
+    query = query.is('scheduled_at', null)
+    if (round) query = query.eq('round', round)
+  }
+
+  const { data, error } = await query
 
   if (error) throw error
 
@@ -115,6 +121,7 @@ export function useImportCopaFacilMatches() {
           home_team_id: match.home_team_id,
           away_team_id: match.away_team_id,
           scheduled_at: match.scheduled_at,
+          date_tbd: match.date_tbd,
           round: match.round,
           status: match.status,
           external_provider: 'copafacil',
@@ -139,6 +146,7 @@ export function useImportCopaFacilMatches() {
             homeTeamId: match.home_team_id,
             awayTeamId: match.away_team_id,
             scheduledAt: match.scheduled_at,
+            round: match.round,
           })
 
         if (existingByExternal || duplicate) {

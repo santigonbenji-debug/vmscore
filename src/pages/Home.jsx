@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
@@ -32,7 +32,9 @@ function useHomeMatches() {
 function MatchRow({ match, onClick }) {
   const finalizado = match.status === 'finished'
   const enVivo = match.status === 'in_progress'
-  const hora = format(toZonedTime(new Date(match.scheduled_at), TZ), 'HH:mm')
+  const hora = match.scheduled_at
+    ? format(toZonedTime(new Date(match.scheduled_at), TZ), 'HH:mm')
+    : 'A def.'
   const homeWon = finalizado && match.home_score > match.away_score
   const awayWon = finalizado && match.away_score > match.home_score
 
@@ -166,7 +168,7 @@ function buildLeagueRounds(partidos) {
         }))
         .sort((a, b) => {
           if (a.round == null && b.round == null) {
-            return new Date(a.partidos[0]?.scheduled_at ?? 0) - new Date(b.partidos[0]?.scheduled_at ?? 0)
+          return String(a.partidos[0]?.external_match_id ?? '').localeCompare(String(b.partidos[0]?.external_match_id ?? ''))
           }
           if (a.round == null) return 1
           if (b.round == null) return -1
@@ -189,7 +191,6 @@ export default function Home() {
   const { data: partidos = [], isLoading } = useHomeMatches()
   const { data: news = [] } = useNews({ limit: 10 })
 
-  useState(() => Date.now())
   const enVivo = partidos.filter((p) => p.status === 'in_progress')
   const grupos = useMemo(() => buildLeagueRounds(partidos), [partidos])
 
@@ -239,20 +240,22 @@ export default function Home() {
 
       {grupos.map((datos) => {
         const firstMatch = datos.partidos[0]
-        const fechaDate = firstMatch ? toZonedTime(new Date(firstMatch.scheduled_at), TZ) : new Date()
+        const fechaDate = firstMatch?.scheduled_at ? toZonedTime(new Date(firstMatch.scheduled_at), TZ) : null
         return (
           <section key={datos.liga.id}>
             <div className="flex items-center justify-between gap-2 mb-1.5">
               <div className="flex items-center gap-2 min-w-0">
                 <div className="bg-primary text-white rounded-lg px-2.5 py-1 shrink-0 text-center min-w-[2.5rem]">
                   <p className="text-[10px] font-bold uppercase leading-none opacity-90">
-                    {format(fechaDate, 'MMM', { locale: es })}
+                    {fechaDate ? format(fechaDate, 'MMM', { locale: es }) : 'FECHA'}
                   </p>
-                  <p className="text-lg font-extrabold leading-tight">{format(fechaDate, 'd')}</p>
+                  <p className="text-lg font-extrabold leading-tight">{datos.round ?? '-'}</p>
                 </div>
                 <div className="min-w-0">
                   <p className="font-bold text-sm truncate text-zinc-100">{datos.liga.name}</p>
-                  <p className="text-xs text-zinc-500 capitalize">{format(fechaDate, 'EEEE', { locale: es })}</p>
+                  <p className="text-xs text-zinc-500 capitalize">
+                    {fechaDate ? format(fechaDate, 'EEEE', { locale: es }) : 'Dia y horario a definir'}
+                  </p>
                 </div>
               </div>
               <div className="shrink-0 rounded-full bg-surface-800 px-2.5 py-1 text-xs font-bold text-primary">

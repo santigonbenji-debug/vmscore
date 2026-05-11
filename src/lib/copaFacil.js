@@ -35,7 +35,9 @@ export async function fetchCopaFacilMatches({ eventCode, divisionCode }) {
       external_match_id: id,
       external_home_team_id: match.team1,
       external_away_team_id: match.team2,
-      scheduled_at: new Date(Number(match.d_i)).toISOString(),
+      scheduled_at: null,
+      date_tbd: true,
+      copa_facil_raw_date: Number.isFinite(Number(match.d_i)) ? new Date(Number(match.d_i)).toISOString() : null,
       home_score: numberOrNull(match.dt?.qt_g1),
       away_score: numberOrNull(match.dt?.qt_g2),
       status: numberOrNull(match.dt?.qt_g1) !== null && numberOrNull(match.dt?.qt_g2) !== null
@@ -45,7 +47,7 @@ export async function fetchCopaFacilMatches({ eventCode, divisionCode }) {
       stage_id: match.fs ?? null,
       raw: match,
     }))
-    .sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at))
+    .sort((a, b) => String(a.match_set ?? '').localeCompare(String(b.match_set ?? '')))
 
   const rounds = new Map()
   rawMatches.forEach((match) => {

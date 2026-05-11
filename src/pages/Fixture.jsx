@@ -31,7 +31,9 @@ function useAllMatches() {
 function MatchRow({ p, onClick }) {
   const finalizado = p.status === 'finished'
   const enVivo     = p.status === 'in_progress'
-  const hora       = format(toZonedTime(new Date(p.scheduled_at), TZ), 'HH:mm')
+  const hora = p.scheduled_at
+    ? format(toZonedTime(new Date(p.scheduled_at), TZ), 'HH:mm')
+    : 'A def.'
   const homeWon = finalizado && p.home_score > p.away_score
   const awayWon = finalizado && p.away_score > p.home_score
 
@@ -187,6 +189,7 @@ export default function Fixture() {
     else if (tab === 'finished')  arr = arr.filter((p) => p.status === 'finished')
     if (selDays.length > 0) {
       arr = arr.filter((p) => {
+        if (!p.scheduled_at) return false
         const f = format(toZonedTime(new Date(p.scheduled_at), TZ), 'yyyy-MM-dd')
         return selDays.includes(f)
       })
@@ -198,8 +201,9 @@ export default function Fixture() {
   const porFecha = useMemo(() => {
     const out = {}
     for (const p of filtrados) {
-      const dz = toZonedTime(new Date(p.scheduled_at), TZ)
-      const fkey = format(dz, 'yyyy-MM-dd')
+      const fkey = p.scheduled_at
+        ? format(toZonedTime(new Date(p.scheduled_at), TZ), 'yyyy-MM-dd')
+        : `fecha-${p.league_id ?? 'sin-liga'}-${p.round ?? 'sin-fecha'}`
       if (!out[fkey]) out[fkey] = {}
       const lkey = p.league_id ?? 'sin-liga'
       if (!out[fkey][lkey]) out[fkey][lkey] = {
@@ -289,18 +293,21 @@ export default function Fixture() {
 
         {/* Partidos agrupados por fecha → por liga */}
         {fechas.map((f) => {
-          const fechaDate = new Date(f + 'T12:00:00')
+          const isRoundOnly = f.startsWith('fecha-')
+          const fechaDate = isRoundOnly ? null : new Date(f + 'T12:00:00')
           return (
             <section key={f}>
               <div className="flex items-center gap-2 mb-1.5">
                 <div className="bg-primary text-white rounded-lg px-2.5 py-1 shrink-0 text-center min-w-[2.5rem]">
                   <p className="text-[10px] font-bold uppercase leading-none opacity-90">
-                    {format(fechaDate, 'MMM', { locale: es })}
+                    {fechaDate ? format(fechaDate, 'MMM', { locale: es }) : 'FECHA'}
                   </p>
-                  <p className="text-lg font-extrabold leading-tight">{format(fechaDate, 'd')}</p>
+                  <p className="text-lg font-extrabold leading-tight">
+                    {fechaDate ? format(fechaDate, 'd') : Object.values(porFecha[f])[0]?.partidos?.[0]?.round ?? '-'}
+                  </p>
                 </div>
                 <p className="font-bold text-sm capitalize text-zinc-100">
-                  {format(fechaDate, "EEEE d 'de' MMMM", { locale: es })}
+                  {fechaDate ? format(fechaDate, "EEEE d 'de' MMMM", { locale: es }) : 'Dia y horario a definir'}
                 </p>
               </div>
               {Object.entries(porFecha[f]).map(([lid, liga]) => (
