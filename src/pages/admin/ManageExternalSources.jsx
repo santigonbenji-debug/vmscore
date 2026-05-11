@@ -1,17 +1,23 @@
 import { useEffect, useMemo, useState } from 'react'
+import { format } from 'date-fns'
+import { fromZonedTime, toZonedTime } from 'date-fns-tz'
 import Button from '../../components/ui/Button'
+import Modal from '../../components/ui/Modal'
 import Spinner from '../../components/ui/Spinner'
 import { useLeagues, usePhases } from '../../hooks/useLeagues'
 import { useTeams } from '../../hooks/useTeams'
 import {
+  useExternalMatchArchive,
   useExternalSources,
   useExternalTeamMappings,
   useImportCopaFacilMatches,
   useSaveExternalTeamMappings,
+  useUpdateExternalArchiveMatch,
   useUpsertExternalSource,
 } from '../../hooks/useExternalSources'
 import { fetchCopaFacilMatches, parseCopaFacilUrl, summarizeExternalTeams } from '../../lib/copaFacil'
 
+const TZ = 'America/Argentina/San_Luis'
 const INPUT = 'w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none bg-surface-800 text-zinc-100 border border-surface-700'
 
 const EMPTY_FORM = {
@@ -30,6 +36,17 @@ export default function ManageExternalSources() {
   const [previewLoading, setPreviewLoading] = useState(false)
   const [localMappings, setLocalMappings] = useState({})
   const [result, setResult] = useState(null)
+  const [archiveTab, setArchiveTab] = useState('pending')
+  const [archiveDate, setArchiveDate] = useState('')
+  const [editingArchive, setEditingArchive] = useState(null)
+  const [archiveForm, setArchiveForm] = useState({
+    scheduledAtLocal: '',
+    homeScore: '',
+    awayScore: '',
+    status: 'scheduled',
+    reviewStatus: 'pending',
+    notes: '',
+  })
 
   const { data: leagues = [] } = useLeagues()
   const { data: phases = [] } = usePhases(form.league_id)
@@ -38,10 +55,12 @@ export default function ManageExternalSources() {
   const selectedLeague = leagues.find((league) => league.id === (selectedSource?.league_id ?? form.league_id))
   const { data: teams = [] } = useTeams({ sportId: selectedLeague?.sport_id })
   const { data: savedMappings = [] } = useExternalTeamMappings(selectedSourceId)
+  const { data: archive = [], isLoading: loadingArchive } = useExternalMatchArchive(selectedSourceId)
 
   const upsertSource = useUpsertExternalSource()
   const saveMappings = useSaveExternalTeamMappings()
   const importMatches = useImportCopaFacilMatches()
+  const updateArchiveMatch = useUpdateExternalArchiveMatch()
 
   useEffect(() => {
     if (phases.length > 0 && !form.phase_id) {
@@ -58,10 +77,29 @@ export default function ManageExternalSources() {
   }, [savedMappings])
 
   const externalTeams = useMemo(() => summarizeExternalTeams(preview), [preview])
+  const teamMap = useMemo(() => new Map(teams.map((team) => [team.id, team])), [teams])
   const mappedCount = externalTeams.filter((team) => localMappings[team.external_team_id]).length
   const importableCount = preview.filter((match) =>
     localMappings[match.external_home_team_id] && localMappings[match.external_away_team_id]
   ).length
+  const archiveCounts = useMemo(() => ({
+    all: archive.length,
+    pending: archive.filter((match) => match.review_status !== 'confirmed').length,
+    confirmed: archive.filter((match) => match.review_status === 'confirmed').length,
+  }), [archive])
+  const filteredArchive = useMemo(() => {
+    return archive
+      .filter((match) => {
+        if (archiveTab === 'pending') return match.review_status !== 'confirmed'
+        if (archiveTab === 'confirmed') return match.review_status === 'confirmed'
+        return true
+      })
+      .filter((match) => {
+        if (!archiveDate) return true
+        if (!match.scheduled_at) return false
+        return format(toZonedTime(new Date(match.scheduled_at), TZ), 'yyyy-MM-dd') === archiveDate
+      })
+  }, [archive, archiveDate, archiveTab])
 
   function fillFromSource(source) {
     setSelectedSourceId(source.id)
@@ -142,6 +180,53 @@ export default function ManageExternalSources() {
     setResult(summary)
   }
 
+  function toLocalInput(value) {
+    if (!value) return ''
+    return format(toZonedTime(new Date(value), TZ), "yyyy-MM-dd'T'HH:mm")
+  }
+
+  function openArchiveEditor(match) {
+    setEditingArchive(match)
+    setArchiveForm({
+      scheduledAtLocal: toLocalInput(match.scheduled_at),
+      homeScore: match.home_score ?? '',
+      awayScore: match.away_score ?? '',
+      status: match.status ?? 'scheduled',
+      reviewStatus: match.review_status ?? 'pending',
+      notes: match.admin_notes ?? '',
+    })
+  }
+
+  async function saveArchiveEditor(markConfirmed = false) {
+    if (!editingArchive) return
+    const homeScore = archiveForm.homeScore === '' ? null : Number(archiveForm.homeScore)
+    const awayScore = archiveForm.awayScore === '' ? null : Number(archiveForm.awayScore)
+    const hasScore = homeScore !== null && awayScore !== null
+    const scheduledAt = archiveForm.scheduledAtLocal
+      ? fromZonedTime(new Date(archiveForm.scheduledAtLocal), TZ).toISOString()
+      : null
+    const reviewStatus = markConfirmed ? 'confirmed' : archiveForm.reviewStatus
+
+    await updateArchiveMatch.mutateAsync({
+      id: editingArchive.id,
+      sourceId: selectedSourceId,
+      values: {
+        scheduled_at: scheduledAt,
+        date_tbd: !scheduledAt,
+        home_score: homeScore,
+        away_score: awayScore,
+        status: hasScore ? 'finished' : archiveForm.status,
+        review_status: reviewStatus,
+        admin_notes: archiveForm.notes || null,
+      },
+    })
+    setEditingArchive(null)
+  }
+
+  function teamName(teamId, externalId) {
+    return teamMap.get(teamId)?.short_name || teamMap.get(teamId)?.name || externalId || 'Equipo'
+  }
+
   return (
     <div className="px-4 py-6 pb-28">
       <div className="mb-5">
@@ -183,6 +268,103 @@ export default function ManageExternalSources() {
             </div>
           )}
         </section>
+
+        {selectedSourceId && (
+          <section className="rounded-xl border border-surface-800 bg-surface-900 p-4">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-bold text-zinc-100">Historico externo</h2>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Copa Facil queda aca como registro. Confirmar no modifica la tabla de posiciones.
+                </p>
+              </div>
+              {loadingArchive && <Spinner />}
+            </div>
+
+            <div className="mb-3 grid grid-cols-3 gap-1.5">
+              {[
+                ['pending', `Pendientes ${archiveCounts.pending}`],
+                ['confirmed', `Confirmados ${archiveCounts.confirmed}`],
+                ['all', `Todos ${archiveCounts.all}`],
+              ].map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setArchiveTab(key)}
+                  className={`rounded-lg px-2 py-2 text-xs font-bold transition-colors ${
+                    archiveTab === key
+                      ? 'bg-primary text-white'
+                      : 'bg-surface-800 text-zinc-400 hover:bg-surface-700'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <div className="mb-3">
+              <label className="mb-1 block text-xs font-semibold text-zinc-400">Filtrar por dia</label>
+              <div className="grid grid-cols-[1fr,auto] gap-2">
+                <input
+                  type="date"
+                  value={archiveDate}
+                  onChange={(event) => setArchiveDate(event.target.value)}
+                  className={INPUT}
+                />
+                <Button variant="secondary" onClick={() => setArchiveDate('')} disabled={!archiveDate}>
+                  Limpiar
+                </Button>
+              </div>
+            </div>
+
+            {filteredArchive.length === 0 ? (
+              <p className="rounded-lg border border-surface-800 bg-surface-950 p-3 text-xs text-zinc-500">
+                No hay registros para este filtro.
+              </p>
+            ) : (
+              <div className="max-h-[32rem] space-y-2 overflow-y-auto pr-1">
+                {filteredArchive.map((match) => {
+                  const complete = match.scheduled_at && match.home_score !== null && match.away_score !== null
+                  const matchDate = match.scheduled_at
+                    ? format(toZonedTime(new Date(match.scheduled_at), TZ), "dd/MM/yyyy HH:mm")
+                    : 'Fecha pendiente'
+                  return (
+                    <button
+                      key={match.id}
+                      type="button"
+                      onClick={() => openArchiveEditor(match)}
+                      className="w-full rounded-lg border border-surface-800 bg-surface-950 p-3 text-left hover:border-primary/50"
+                    >
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <span className="text-xs text-zinc-500">Fecha {match.round ?? '-'} · {matchDate}</span>
+                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                          match.review_status === 'confirmed'
+                            ? 'bg-emerald-500/15 text-emerald-300'
+                            : complete
+                              ? 'bg-sky-500/15 text-sky-300'
+                              : 'bg-amber-500/15 text-amber-300'
+                        }`}>
+                          {match.review_status === 'confirmed' ? 'Confirmado' : complete ? 'Completo' : 'Pendiente'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-[1fr,auto,1fr] items-center gap-2 text-sm">
+                        <span className="truncate font-semibold text-zinc-100">
+                          {teamName(match.mapped_home_team_id, match.external_home_team_id)}
+                        </span>
+                        <span className="font-bold text-zinc-100">
+                          {match.home_score !== null && match.away_score !== null ? `${match.home_score} - ${match.away_score}` : 'vs'}
+                        </span>
+                        <span className="truncate text-right font-semibold text-zinc-100">
+                          {teamName(match.mapped_away_team_id, match.external_away_team_id)}
+                        </span>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </section>
+        )}
 
         <section className="rounded-xl border border-surface-800 bg-surface-900 p-4">
           <h2 className="mb-3 text-sm font-bold text-zinc-100">Conexion</h2>
@@ -361,6 +543,103 @@ export default function ManageExternalSources() {
           </>
         )}
       </div>
+
+      <Modal
+        open={!!editingArchive}
+        onClose={() => setEditingArchive(null)}
+        title="Editar historico"
+      >
+        <div className="space-y-3">
+          <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+            <p className="text-xs text-zinc-500">Partido</p>
+            <p className="mt-1 text-sm font-bold text-zinc-100">
+              {editingArchive
+                ? `${teamName(editingArchive.mapped_home_team_id, editingArchive.external_home_team_id)} vs ${teamName(editingArchive.mapped_away_team_id, editingArchive.external_away_team_id)}`
+                : ''}
+            </p>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-zinc-400">Dia y hora</label>
+            <input
+              type="datetime-local"
+              value={archiveForm.scheduledAtLocal}
+              onChange={(event) => setArchiveForm({ ...archiveForm, scheduledAtLocal: event.target.value })}
+              className={INPUT}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-zinc-400">Goles local</label>
+              <input
+                type="number"
+                min="0"
+                value={archiveForm.homeScore}
+                onChange={(event) => setArchiveForm({ ...archiveForm, homeScore: event.target.value })}
+                className={INPUT}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-zinc-400">Goles visitante</label>
+              <input
+                type="number"
+                min="0"
+                value={archiveForm.awayScore}
+                onChange={(event) => setArchiveForm({ ...archiveForm, awayScore: event.target.value })}
+                className={INPUT}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-zinc-400">Estado partido</label>
+              <select
+                value={archiveForm.status}
+                onChange={(event) => setArchiveForm({ ...archiveForm, status: event.target.value })}
+                className={INPUT}
+              >
+                <option value="scheduled">Programado</option>
+                <option value="in_progress">En vivo</option>
+                <option value="finished">Finalizado</option>
+                <option value="postponed">Postergado</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-zinc-400">Revision</label>
+              <select
+                value={archiveForm.reviewStatus}
+                onChange={(event) => setArchiveForm({ ...archiveForm, reviewStatus: event.target.value })}
+                className={INPUT}
+              >
+                <option value="pending">Pendiente</option>
+                <option value="confirmed">Confirmado</option>
+                <option value="ignored">Ignorado</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-zinc-400">Notas internas</label>
+            <textarea
+              value={archiveForm.notes}
+              onChange={(event) => setArchiveForm({ ...archiveForm, notes: event.target.value })}
+              className={`${INPUT} min-h-20 resize-none`}
+              placeholder="Dato pendiente, fuente, aclaracion..."
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 pt-2">
+            <Button variant="secondary" onClick={() => saveArchiveEditor(false)} disabled={updateArchiveMatch.isPending}>
+              Guardar
+            </Button>
+            <Button onClick={() => saveArchiveEditor(true)} disabled={updateArchiveMatch.isPending}>
+              Confirmar historico
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

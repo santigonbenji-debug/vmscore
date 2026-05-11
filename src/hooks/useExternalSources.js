@@ -130,3 +130,48 @@ export function useImportCopaFacilMatches() {
     },
   })
 }
+
+export function useExternalMatchArchive(sourceId) {
+  return useQuery({
+    queryKey: ['external-match-archive', sourceId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('external_match_archive')
+        .select('*')
+        .eq('source_id', sourceId)
+        .order('round', { ascending: true })
+        .order('scheduled_at', { ascending: true, nullsFirst: false })
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!sourceId,
+  })
+}
+
+export function useUpdateExternalArchiveMatch() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, sourceId, values }) => {
+      const payload = {
+        ...values,
+        updated_at: new Date().toISOString(),
+      }
+
+      if (values.review_status === 'confirmed') {
+        payload.confirmed_at = new Date().toISOString()
+        const { data: authData } = await supabase.auth.getUser()
+        payload.confirmed_by = authData?.user?.id ?? null
+      }
+
+      const { error } = await supabase
+        .from('external_match_archive')
+        .update(payload)
+        .eq('id', id)
+      if (error) throw error
+      return { sourceId }
+    },
+    onSuccess: (_, { sourceId }) => {
+      qc.invalidateQueries({ queryKey: ['external-match-archive', sourceId] })
+    },
+  })
+}
