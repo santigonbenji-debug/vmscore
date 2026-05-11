@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import BrandLogo from '../brand/BrandLogo'
 import { usePushNotifications } from '../../hooks/usePushNotifications'
 
 export default function PushNotificationsButton() {
@@ -11,8 +12,8 @@ export default function PushNotificationsButton() {
     <div className="fixed bottom-36 left-0 right-0 z-40 mx-auto w-full max-w-lg px-3 pointer-events-none">
       <div className="pointer-events-auto rounded-xl border border-surface-700 bg-surface-900/95 p-3 shadow-2xl shadow-black/30 backdrop-blur">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500 text-lg text-white">
-            !
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-black ring-1 ring-primary/40">
+            <BrandLogo className="h-9 w-9" />
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-bold text-zinc-100">Alertas de partidos</p>
