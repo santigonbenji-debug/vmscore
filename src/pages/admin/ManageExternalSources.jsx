@@ -115,11 +115,9 @@ export default function ManageExternalSources() {
         eventCode: sourceLike.event_code,
         divisionCode: sourceLike.division_code,
       })
-      const minRound = Number(selectedSource?.min_round ?? form.min_round) || 1
-      const filteredMatches = matches.filter((match) => (match.round ?? 0) >= minRound)
-      setPreview(filteredMatches)
-      if (filteredMatches.length === 0) {
-        setPreviewError(`No se encontraron partidos desde la Fecha ${minRound}.`)
+      setPreview(matches)
+      if (matches.length === 0) {
+        setPreviewError('No se encontraron partidos para esa division.')
       }
     } catch (error) {
       setPreviewError(error?.message ?? 'No se pudo leer Copa Facil.')
@@ -178,7 +176,7 @@ export default function ManageExternalSources() {
                     {source.label || source.leagues?.name || 'Copa Facil'}
                   </p>
                   <p className="mt-1 text-xs text-zinc-500">
-                    {source.leagues?.name} · {source.phases?.name} · desde Fecha {source.min_round ?? 1}
+                    {source.leagues?.name} · {source.phases?.name} · visible desde Fecha {source.min_round ?? 1}
                   </p>
                 </button>
               ))}
@@ -241,7 +239,7 @@ export default function ManageExternalSources() {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-semibold text-zinc-400">Importar desde fecha</label>
+              <label className="mb-1 block text-xs font-semibold text-zinc-400">Mostrar en Home desde fecha</label>
               <input
                 type="number"
                 min="1"
@@ -251,7 +249,7 @@ export default function ManageExternalSources() {
                 placeholder="8"
               />
               <p className="mt-1 text-[11px] text-zinc-500">
-                Usamos 8 para empezar desde la Fecha 8 y no traer jornadas anteriores.
+                Se importa todo, pero Home arranca desde esta jornada para no mezclar el historial.
               </p>
             </div>
 
@@ -279,7 +277,7 @@ export default function ManageExternalSources() {
                 <div>
                   <h2 className="text-sm font-bold text-zinc-100">Mapeo de equipos</h2>
                   <p className="mt-1 text-xs text-zinc-500">
-                    {mappedCount}/{externalTeams.length} equipos vinculados.
+                    {mappedCount}/{externalTeams.length} equipos vinculados. Se guardan todas las fechas.
                   </p>
                 </div>
                 <Button size="sm" variant="secondary" onClick={saveMappingChanges} disabled={!selectedSourceId || saveMappings.isPending}>

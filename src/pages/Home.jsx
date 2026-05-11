@@ -20,7 +20,7 @@ function useHomeMatches() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('v_matches')
-        .select('*')
+        .select('*, external_sources(min_round)')
         .order('scheduled_at', { ascending: true })
         .limit(500)
       if (error) throw error
@@ -138,7 +138,11 @@ function NewsCarousel({ items, isAdmin, onCreateClick }) {
 
 function buildLeagueRounds(partidos) {
   const porLiga = {}
-  const visibles = partidos.filter((match) => match.status !== 'cancelled' && match.status !== 'postponed')
+  const visibles = partidos.filter((match) => {
+    if (match.status === 'cancelled' || match.status === 'postponed') return false
+    const minRound = Number(match.external_sources?.min_round) || 1
+    return !match.round || match.round >= minRound
+  })
 
   for (const match of visibles) {
     const leagueKey = match.league_id ?? 'sin-liga'

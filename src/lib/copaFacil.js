@@ -31,22 +31,27 @@ export async function fetchCopaFacilMatches({ eventCode, divisionCode }) {
   const eventKey = `${eventCode}@${divisionCode}`
   const rawMatches = Object.entries(payload ?? {})
     .filter(([, match]) => match?.evt === eventKey)
-    .map(([id, match]) => ({
-      external_match_id: id,
-      external_home_team_id: match.team1,
-      external_away_team_id: match.team2,
-      scheduled_at: null,
-      date_tbd: true,
-      copa_facil_raw_date: Number.isFinite(Number(match.d_i)) ? new Date(Number(match.d_i)).toISOString() : null,
-      home_score: numberOrNull(match.dt?.qt_g1),
-      away_score: numberOrNull(match.dt?.qt_g2),
-      status: numberOrNull(match.dt?.qt_g1) !== null && numberOrNull(match.dt?.qt_g2) !== null
-        ? 'finished'
-        : 'scheduled',
-      match_set: match.m_set ?? null,
-      stage_id: match.fs ?? null,
-      raw: match,
-    }))
+    .map(([id, match]) => {
+      const homeScore = numberOrNull(match.dt?.qt_g1)
+      const awayScore = numberOrNull(match.dt?.qt_g2)
+      const isFinished = homeScore !== null && awayScore !== null
+      const rawDate = Number.isFinite(Number(match.d_i)) ? new Date(Number(match.d_i)).toISOString() : null
+
+      return {
+        external_match_id: id,
+        external_home_team_id: match.team1,
+        external_away_team_id: match.team2,
+        scheduled_at: isFinished ? rawDate : null,
+        date_tbd: !isFinished,
+        copa_facil_raw_date: rawDate,
+        home_score: homeScore,
+        away_score: awayScore,
+        status: isFinished ? 'finished' : 'scheduled',
+        match_set: match.m_set ?? null,
+        stage_id: match.fs ?? null,
+        raw: match,
+      }
+    })
     .sort((a, b) => String(a.match_set ?? '').localeCompare(String(b.match_set ?? '')))
 
   const rounds = new Map()
