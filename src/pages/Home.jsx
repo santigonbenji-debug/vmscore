@@ -1,14 +1,14 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { differenceInCalendarDays, format } from 'date-fns'
+import { es } from 'date-fns/locale'
+import { toZonedTime } from 'date-fns-tz'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { useNews } from '../hooks/useNews'
 import FavoriteButton from '../components/teams/FavoriteButton'
 import TeamLogo from '../components/teams/TeamLogo'
-import { toZonedTime } from 'date-fns-tz'
-import { format } from 'date-fns'
-import { es } from 'date-fns/locale'
 import Spinner from '../components/ui/Spinner'
 import Badge from '../components/ui/Badge'
 
@@ -20,13 +20,77 @@ function useHomeMatches() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('v_matches')
-        .select('*, external_sources(min_round)')
+        .select('*')
         .order('scheduled_at', { ascending: true })
         .limit(500)
       if (error) throw error
       return data ?? []
     },
   })
+}
+
+function getDateLabel(date) {
+  const today = toZonedTime(new Date(), TZ)
+  const diff = differenceInCalendarDays(date, today)
+  if (diff === -1) return 'Ayer'
+  if (diff === 0) return 'Hoy'
+  if (diff === 1) return 'Mañana'
+  return format(date, "EEE d 'de' MMM", { locale: es })
+}
+
+function buildDateGroups(partidos) {
+  const groups = {}
+  const visibles = partidos.filter((match) => match.status !== 'cancelled' && match.status !== 'postponed')
+
+  for (const match of visibles) {
+    const fecha = match.scheduled_at ? toZonedTime(new Date(match.scheduled_at), TZ) : null
+    const dayKey = fecha
+      ? format(fecha, 'yyyy-MM-dd')
+      : `sin-fecha-${match.league_id ?? 'sin-liga'}-${match.round ?? 'x'}`
+
+    if (!groups[dayKey]) {
+      groups[dayKey] = {
+        key: dayKey,
+        fecha,
+        round: match.round,
+        leagues: {},
+      }
+    }
+
+    const leagueKey = match.league_id ?? 'sin-liga'
+    if (!groups[dayKey].leagues[leagueKey]) {
+      groups[dayKey].leagues[leagueKey] = {
+        id: leagueKey,
+        name: match.league_name ?? 'Sin liga',
+        icon: match.sport_icon ?? '⚽',
+        partidos: [],
+      }
+    }
+
+    groups[dayKey].leagues[leagueKey].partidos.push(match)
+  }
+
+  return Object.values(groups)
+    .map((day) => ({
+      ...day,
+      leagues: Object.values(day.leagues)
+        .map((league) => ({
+          ...league,
+          partidos: league.partidos.sort((a, b) => {
+            if (!a.scheduled_at && !b.scheduled_at) return String(a.id).localeCompare(String(b.id))
+            if (!a.scheduled_at) return 1
+            if (!b.scheduled_at) return -1
+            return new Date(a.scheduled_at) - new Date(b.scheduled_at)
+          }),
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    }))
+    .sort((a, b) => {
+      if (!a.fecha && !b.fecha) return Number(a.round ?? 999) - Number(b.round ?? 999)
+      if (!a.fecha) return 1
+      if (!b.fecha) return -1
+      return a.fecha - b.fecha
+    })
 }
 
 function MatchRow({ match, onClick }) {
@@ -57,6 +121,7 @@ function MatchRow({ match, onClick }) {
           hora
         )}
       </div>
+
       <div className="flex-1 min-w-0 space-y-1">
         <div className="flex items-center gap-2 min-w-0">
           <FavoriteButton teamId={match.home_team_id} className="-ml-1 p-1" />
@@ -70,6 +135,7 @@ function MatchRow({ match, onClick }) {
             </span>
           )}
         </div>
+
         <div className="flex items-center gap-2 min-w-0">
           <FavoriteButton teamId={match.away_team_id} className="-ml-1 p-1" />
           <TeamLogo logoUrl={match.away_team_logo_url} name={match.away_team_name} color={match.away_primary_color} />
@@ -136,67 +202,12 @@ function NewsCarousel({ items, isAdmin, onCreateClick }) {
   )
 }
 
-function buildLeagueRounds(partidos) {
-  const porLiga = {}
-  const visibles = partidos.filter((match) => {
-    if (match.status === 'cancelled' || match.status === 'postponed') return false
-    const minRound = Number(match.external_sources?.min_round) || 1
-    return !match.round || match.round >= minRound
-  })
-
-  for (const match of visibles) {
-    const leagueKey = match.league_id ?? 'sin-liga'
-    const roundKey = match.round ?? 'sin-fecha'
-    if (!porLiga[leagueKey]) {
-      porLiga[leagueKey] = {
-        liga: {
-          id: leagueKey,
-          name: match.league_name ?? 'Sin liga',
-          icon: match.sport_icon ?? '⚽',
-        },
-        rounds: {},
-      }
-    }
-    if (!porLiga[leagueKey].rounds[roundKey]) {
-      porLiga[leagueKey].rounds[roundKey] = { round: match.round, partidos: [] }
-    }
-    porLiga[leagueKey].rounds[roundKey].partidos.push(match)
-  }
-
-  return Object.values(porLiga)
-    .map((group) => {
-      const rounds = Object.values(group.rounds)
-        .map((round) => ({
-          ...round,
-          partidos: round.partidos.sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at)),
-        }))
-        .sort((a, b) => {
-          if (a.round == null && b.round == null) {
-          return String(a.partidos[0]?.external_match_id ?? '').localeCompare(String(b.partidos[0]?.external_match_id ?? ''))
-          }
-          if (a.round == null) return 1
-          if (b.round == null) return -1
-          return a.round - b.round
-        })
-
-      const activeRound = rounds.find((round) =>
-        round.partidos.some((match) => match.status !== 'finished')
-      ) ?? rounds.at(-1)
-
-      return { liga: group.liga, ...(activeRound ?? { round: null, partidos: [] }) }
-    })
-    .filter((group) => group.partidos.length > 0)
-    .sort((a, b) => a.liga.name.localeCompare(b.liga.name))
-}
-
 export default function Home() {
   const navigate = useNavigate()
   const { isSuperAdmin } = useAuth()
   const { data: partidos = [], isLoading } = useHomeMatches()
   const { data: news = [] } = useNews({ limit: 10 })
-
-  const enVivo = partidos.filter((p) => p.status === 'in_progress')
-  const grupos = useMemo(() => buildLeagueRounds(partidos), [partidos])
+  const grupos = useMemo(() => buildDateGroups(partidos), [partidos])
 
   return (
     <div className="px-3 py-3 space-y-4 pb-28">
@@ -219,20 +230,6 @@ export default function Home() {
 
       <NewsCarousel items={news} isAdmin={isSuperAdmin} onCreateClick={() => navigate('/admin/noticias')} />
 
-      {enVivo.length > 0 && (
-        <section>
-          <div className="flex items-center gap-2 mb-2">
-            <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-            <h2 className="font-bold text-sm text-emerald-400">En Vivo</h2>
-          </div>
-          <div className="bg-surface-900 rounded-xl border border-emerald-500/30 shadow-sm overflow-hidden">
-            {enVivo.map((p) => (
-              <MatchRow key={p.id} match={p} onClick={() => navigate(`/partido/${p.id}`)} />
-            ))}
-          </div>
-        </section>
-      )}
-
       {isLoading && <Spinner className="py-12" />}
 
       {!isLoading && partidos.length === 0 && (
@@ -242,47 +239,49 @@ export default function Home() {
         </div>
       )}
 
-      {grupos.map((datos) => {
-        const firstMatch = datos.partidos[0]
-        const fechaDate = firstMatch?.scheduled_at ? toZonedTime(new Date(firstMatch.scheduled_at), TZ) : null
-        return (
-          <section key={datos.liga.id}>
-            <div className="flex items-center justify-between gap-2 mb-1.5">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="bg-primary text-white rounded-lg px-2.5 py-1 shrink-0 text-center min-w-[2.5rem]">
-                  <p className="text-[10px] font-bold uppercase leading-none opacity-90">
-                    {fechaDate ? format(fechaDate, 'MMM', { locale: es }) : 'FECHA'}
-                  </p>
-                  <p className="text-lg font-extrabold leading-tight">{datos.round ?? '-'}</p>
-                </div>
-                <div className="min-w-0">
-                  <p className="font-bold text-sm truncate text-zinc-100">{datos.liga.name}</p>
-                  <p className="text-xs text-zinc-500 capitalize">
-                    {fechaDate ? format(fechaDate, 'EEEE', { locale: es }) : 'Dia y horario a definir'}
-                  </p>
-                </div>
-              </div>
-              <div className="shrink-0 rounded-full bg-surface-800 px-2.5 py-1 text-xs font-bold text-primary">
-                Fecha {datos.round ?? '-'}
-              </div>
-            </div>
-
-            <div className="mb-3">
-              <div className="flex items-center gap-2 px-1 py-1.5">
-                <span className="text-base">{datos.liga.icon}</span>
-                <p className="text-xs font-semibold text-zinc-300">
-                  {datos.partidos.length} partido{datos.partidos.length === 1 ? '' : 's'}
+      {grupos.map((day) => (
+        <section key={day.key}>
+          <div className="flex items-center justify-between gap-2 mb-1.5">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="bg-primary text-white rounded-lg px-2.5 py-1 shrink-0 text-center min-w-[2.5rem]">
+                <p className="text-[10px] font-bold uppercase leading-none opacity-90">
+                  {day.fecha ? format(day.fecha, 'MMM', { locale: es }) : 'FECHA'}
+                </p>
+                <p className="text-lg font-extrabold leading-tight">
+                  {day.fecha ? format(day.fecha, 'd') : day.round ?? '-'}
                 </p>
               </div>
+              <div className="min-w-0">
+                <p className="font-bold text-sm truncate text-zinc-100">
+                  {day.fecha ? getDateLabel(day.fecha) : `Fecha ${day.round ?? '-'}`}
+                </p>
+                <p className="text-xs text-zinc-500 capitalize">
+                  {day.fecha ? format(day.fecha, 'EEEE', { locale: es }) : 'Dia y horario a definir'}
+                </p>
+              </div>
+            </div>
+            {day.round && (
+              <div className="shrink-0 rounded-full bg-surface-800 px-2.5 py-1 text-xs font-bold text-primary">
+                Fecha {day.round}
+              </div>
+            )}
+          </div>
+
+          {day.leagues.map((league) => (
+            <div key={league.id} className="mb-3">
+              <div className="flex items-center gap-2 px-1 py-1.5">
+                <span className="text-base">{league.icon}</span>
+                <p className="text-xs font-semibold text-zinc-300 truncate">{league.name}</p>
+              </div>
               <div className="bg-surface-900 rounded-xl border border-surface-800 shadow-sm overflow-hidden">
-                {datos.partidos.map((p) => (
+                {league.partidos.map((p) => (
                   <MatchRow key={p.id} match={p} onClick={() => navigate(`/partido/${p.id}`)} />
                 ))}
               </div>
             </div>
-          </section>
-        )
-      })}
+          ))}
+        </section>
+      ))}
     </div>
   )
 }

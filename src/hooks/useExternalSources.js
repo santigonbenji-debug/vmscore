@@ -74,27 +74,6 @@ export function useSaveExternalTeamMappings() {
   })
 }
 
-async function findDuplicateMatch({ phaseId, homeTeamId, awayTeamId, scheduledAt, round }) {
-  let query = supabase
-    .from('matches')
-    .select('id, home_team_id, away_team_id, round')
-    .eq('phase_id', phaseId)
-  if (scheduledAt) query = query.eq('scheduled_at', scheduledAt)
-  else {
-    query = query.is('scheduled_at', null)
-    if (round) query = query.eq('round', round)
-  }
-
-  const { data, error } = await query
-
-  if (error) throw error
-
-  const wanted = [homeTeamId, awayTeamId].sort().join('|')
-  return (data ?? []).find((match) =>
-    [match.home_team_id, match.away_team_id].sort().join('|') === wanted
-  ) ?? null
-}
-
 export function useImportCopaFacilMatches() {
   const qc = useQueryClient()
   return useMutation({
@@ -107,68 +86,32 @@ export function useImportCopaFacilMatches() {
         }))
         .filter((match) => match.home_team_id && match.away_team_id)
 
-      let created = 0
-      let updated = 0
+      let stored = 0
       let skipped = matches.length - importable.length
 
-      for (const match of importable) {
-        const scores = match.status === 'finished'
-          ? { home_score: match.home_score, away_score: match.away_score }
-          : { home_score: null, away_score: null }
-
-        const basePayload = {
-          phase_id: source.phase_id,
-          home_team_id: match.home_team_id,
-          away_team_id: match.away_team_id,
-          scheduled_at: match.scheduled_at,
-          date_tbd: match.date_tbd,
+      if (importable.length > 0) {
+        const rows = importable.map((match) => ({
+          source_id: source.id,
+          external_match_id: match.external_match_id,
+          external_home_team_id: match.external_home_team_id,
+          external_away_team_id: match.external_away_team_id,
+          mapped_home_team_id: match.home_team_id,
+          mapped_away_team_id: match.away_team_id,
           round: match.round,
           status: match.status,
-          external_provider: 'copafacil',
-          external_source_id: source.id,
-          external_match_id: match.external_match_id,
+          home_score: match.status === 'finished' ? match.home_score : null,
+          away_score: match.status === 'finished' ? match.away_score : null,
+          scheduled_at: match.scheduled_at,
+          date_tbd: match.date_tbd,
+          raw: match.raw ?? null,
           updated_at: new Date().toISOString(),
-          ...scores,
-        }
+        }))
 
-        const { data: existingByExternal, error: externalError } = await supabase
-          .from('matches')
-          .select('id')
-          .eq('external_provider', 'copafacil')
-          .eq('external_match_id', match.external_match_id)
-          .maybeSingle()
-        if (externalError) throw externalError
-
-        const duplicate = existingByExternal
-          ? null
-          : await findDuplicateMatch({
-            phaseId: source.phase_id,
-            homeTeamId: match.home_team_id,
-            awayTeamId: match.away_team_id,
-            scheduledAt: match.scheduled_at,
-            round: match.round,
-          })
-
-        if (existingByExternal || duplicate) {
-          const targetId = existingByExternal?.id ?? duplicate.id
-          const { error } = await supabase
-            .from('matches')
-            .update(basePayload)
-            .eq('id', targetId)
-          if (error) throw error
-          updated += 1
-        } else {
-          await supabase.from('team_phases').upsert([
-            { team_id: match.home_team_id, phase_id: source.phase_id },
-            { team_id: match.away_team_id, phase_id: source.phase_id },
-          ], { onConflict: 'team_id,phase_id', ignoreDuplicates: true })
-
-          const { error } = await supabase
-            .from('matches')
-            .insert(basePayload)
-          if (error) throw error
-          created += 1
-        }
+        const { error } = await supabase
+          .from('external_match_archive')
+          .upsert(rows, { onConflict: 'source_id,external_match_id' })
+        if (error) throw error
+        stored = rows.length
       }
 
       const { error } = await supabase
@@ -177,11 +120,12 @@ export function useImportCopaFacilMatches() {
         .eq('id', source.id)
       if (error) throw error
 
-      return { created, updated, skipped, total: matches.length }
+      return { created: 0, updated: stored, skipped, total: matches.length }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['matches'] })
       qc.invalidateQueries({ queryKey: ['matches-home'] })
+      qc.invalidateQueries({ queryKey: ['home-matches'] })
       qc.invalidateQueries({ queryKey: ['external-sources'] })
     },
   })

@@ -145,9 +145,9 @@ export default function ManageExternalSources() {
   return (
     <div className="px-4 py-6 pb-28">
       <div className="mb-5">
-        <h1 className="text-xl font-bold text-zinc-100">Importar Copa Facil</h1>
+        <h1 className="text-xl font-bold text-zinc-100">Archivo Copa Facil</h1>
         <p className="mt-1 text-xs text-zinc-500">
-          Conecta una liga de VMScore con fixture y resultados publicados en Copa Facil.
+          Guarda datos externos sin modificar fixture, Home ni tabla de posiciones.
         </p>
       </div>
 
@@ -176,7 +176,7 @@ export default function ManageExternalSources() {
                     {source.label || source.leagues?.name || 'Copa Facil'}
                   </p>
                   <p className="mt-1 text-xs text-zinc-500">
-                    {source.leagues?.name} · {source.phases?.name} · visible desde Fecha {source.min_round ?? 1}
+                    {source.leagues?.name} · {source.phases?.name} · archivo desde Fecha {source.min_round ?? 1}
                   </p>
                 </button>
               ))}
@@ -239,7 +239,7 @@ export default function ManageExternalSources() {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-semibold text-zinc-400">Mostrar en Home desde fecha</label>
+              <label className="mb-1 block text-xs font-semibold text-zinc-400">Fecha vigente en VMScore</label>
               <input
                 type="number"
                 min="1"
@@ -249,7 +249,7 @@ export default function ManageExternalSources() {
                 placeholder="8"
               />
               <p className="mt-1 text-[11px] text-zinc-500">
-                Se importa todo, pero Home arranca desde esta jornada para no mezclar el historial.
+                Se guarda todo como archivo externo. El fixture oficial no cambia hasta publicarlo manualmente.
               </p>
             </div>
 
@@ -317,7 +317,7 @@ export default function ManageExternalSources() {
                 <div>
                   <h2 className="text-sm font-bold text-zinc-100">Partidos detectados</h2>
                   <p className="mt-1 text-xs text-zinc-500">
-                    {importableCount}/{preview.length} listos para importar.
+                    {importableCount}/{preview.length} listos para archivar.
                   </p>
                 </div>
                 <Button
@@ -325,13 +325,13 @@ export default function ManageExternalSources() {
                   onClick={runImport}
                   disabled={!selectedSource || importableCount === 0 || importMatches.isPending}
                 >
-                  {importMatches.isPending ? 'Importando...' : 'Importar'}
+                  {importMatches.isPending ? 'Guardando...' : 'Archivar datos'}
                 </Button>
               </div>
 
               {result && (
                 <p className="mb-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-300">
-                  Creados: {result.created} · Actualizados: {result.updated} · Omitidos por mapeo: {result.skipped}
+                  Archivados: {result.updated} · Omitidos por mapeo: {result.skipped}
                 </p>
               )}
 
