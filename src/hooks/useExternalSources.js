@@ -175,3 +175,19 @@ export function useUpdateExternalArchiveMatch() {
     },
   })
 }
+
+export function useOfficialMatchesForLeague(leagueId) {
+  return useQuery({
+    queryKey: ['official-matches-for-league', leagueId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('v_matches')
+        .select('id, league_id, round, scheduled_at, status, home_score, away_score, home_team_id, away_team_id, home_team_name, away_team_name')
+        .eq('league_id', leagueId)
+        .order('scheduled_at', { ascending: true })
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!leagueId,
+  })
+}

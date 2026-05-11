@@ -56,15 +56,62 @@ function useAllMatches() {
         source_kind: 'external',
       }))
 
-      return [...officialRows, ...externalRows]
+      return removeDuplicateMatches([...officialRows, ...externalRows])
     },
   })
+}
+
+function pairKey(match) {
+  return [match.home_team_id, match.away_team_id].filter(Boolean).sort().join('|')
+}
+
+function duplicateKey(match) {
+  const teams = pairKey(match)
+  if (!teams) return null
+  if (match.scheduled_at) {
+    const date = dayKey(toZonedTime(new Date(match.scheduled_at), TZ))
+    return `${match.league_id ?? 'sin-liga'}|${teams}|${date}`
+  }
+  if (match.round) {
+    return `${match.league_id ?? 'sin-liga'}|${teams}|round-${match.round}`
+  }
+  return null
+}
+
+function removeDuplicateMatches(matches) {
+  const byKey = new Map()
+
+  for (const match of matches) {
+    const key = duplicateKey(match)
+    if (!key) {
+      byKey.set(match.app_id, match)
+      continue
+    }
+
+    const current = byKey.get(key)
+    if (!current) {
+      byKey.set(key, match)
+      continue
+    }
+
+    const currentPreferred = current.source_kind === 'external' && current.preferred_display
+    const nextPreferred = match.source_kind === 'external' && match.preferred_display
+    const currentIsOfficial = current.source_kind === 'official'
+    const nextIsOfficial = match.source_kind === 'official'
+
+    if (!currentPreferred && nextPreferred) {
+      byKey.set(key, match)
+    } else if (!currentPreferred && !nextPreferred && !currentIsOfficial && nextIsOfficial) {
+      byKey.set(key, match)
+    }
+  }
+
+  return [...byKey.values()]
 }
 
 function MatchRow({ p, onClick }) {
   const finalizado = p.status === 'finished'
   const enVivo = p.status === 'in_progress'
-  const externalPending = p.source_kind === 'external' && p.review_status !== 'confirmed'
   const hora = p.scheduled_at
     ? format(toZonedTime(new Date(p.scheduled_at), TZ), 'HH:mm')
     : 'A def.'
@@ -122,15 +169,7 @@ function MatchRow({ p, onClick }) {
         </div>
       </div>
 
-      {externalPending ? (
-        <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-300">
-          Pendiente
-        </span>
-      ) : p.source_kind === 'external' ? (
-        <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] font-bold text-sky-300">
-          Histórico
-        </span>
-      ) : clickable ? (
+      {clickable ? (
         <svg className="w-4 h-4 text-zinc-600 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
         </svg>

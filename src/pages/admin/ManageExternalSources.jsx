@@ -11,6 +11,7 @@ import {
   useExternalSources,
   useExternalTeamMappings,
   useImportCopaFacilMatches,
+  useOfficialMatchesForLeague,
   useSaveExternalTeamMappings,
   useUpdateExternalArchiveMatch,
   useUpsertExternalSource,
@@ -26,6 +27,32 @@ const EMPTY_FORM = {
   label: '',
   source_url: '',
   min_round: 8,
+}
+
+function pairKey(match, homeKey = 'home_team_id', awayKey = 'away_team_id') {
+  return [match[homeKey], match[awayKey]].filter(Boolean).sort().join('|')
+}
+
+function sameDay(left, right) {
+  if (!left || !right) return false
+  return format(toZonedTime(new Date(left), TZ), 'yyyy-MM-dd') === format(toZonedTime(new Date(right), TZ), 'yyyy-MM-dd')
+}
+
+function findArchiveConflicts(archiveRows, officialRows) {
+  return archiveRows
+    .filter((row) => row.review_status !== 'ignored')
+    .map((row) => {
+      const archivePair = pairKey(row, 'mapped_home_team_id', 'mapped_away_team_id')
+      const official = officialRows.find((match) => (
+        pairKey(match) === archivePair &&
+        (
+          sameDay(match.scheduled_at, row.scheduled_at) ||
+          (match.round && row.round && Number(match.round) === Number(row.round))
+        )
+      ))
+      return official ? { archive: row, official } : null
+    })
+    .filter(Boolean)
 }
 
 export default function ManageExternalSources() {
@@ -56,6 +83,7 @@ export default function ManageExternalSources() {
   const { data: teams = [] } = useTeams({ sportId: selectedLeague?.sport_id })
   const { data: savedMappings = [] } = useExternalTeamMappings(selectedSourceId)
   const { data: archive = [], isLoading: loadingArchive } = useExternalMatchArchive(selectedSourceId)
+  const { data: officialMatches = [] } = useOfficialMatchesForLeague(selectedSource?.league_id)
 
   const upsertSource = useUpsertExternalSource()
   const saveMappings = useSaveExternalTeamMappings()
@@ -100,6 +128,7 @@ export default function ManageExternalSources() {
         return format(toZonedTime(new Date(match.scheduled_at), TZ), 'yyyy-MM-dd') === archiveDate
       })
   }, [archive, archiveDate, archiveTab])
+  const conflicts = useMemo(() => findArchiveConflicts(archive, officialMatches), [archive, officialMatches])
 
   function fillFromSource(source) {
     setSelectedSourceId(source.id)
@@ -227,6 +256,30 @@ export default function ManageExternalSources() {
     return teamMap.get(teamId)?.short_name || teamMap.get(teamId)?.name || externalId || 'Equipo'
   }
 
+  async function keepOfficial(conflict) {
+    await updateArchiveMatch.mutateAsync({
+      id: conflict.archive.id,
+      sourceId: selectedSourceId,
+      values: {
+        review_status: 'ignored',
+        preferred_display: false,
+        admin_notes: 'Conflicto resuelto: se mantiene el partido oficial en VMScore.',
+      },
+    })
+  }
+
+  async function keepExternal(conflict) {
+    await updateArchiveMatch.mutateAsync({
+      id: conflict.archive.id,
+      sourceId: selectedSourceId,
+      values: {
+        review_status: 'confirmed',
+        preferred_display: true,
+        admin_notes: 'Conflicto resuelto: se muestra el partido importado desde Copa Facil.',
+      },
+    })
+  }
+
   return (
     <div className="px-4 py-6 pb-28">
       <div className="mb-5">
@@ -280,6 +333,37 @@ export default function ManageExternalSources() {
               </div>
               {loadingArchive && <Spinner />}
             </div>
+
+            {conflicts.length > 0 && (
+              <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+                <div className="mb-2">
+                  <h3 className="text-sm font-bold text-amber-200">Partidos duplicados</h3>
+                  <p className="mt-1 text-xs text-amber-100/70">
+                    Hay {conflicts.length} cruce{conflicts.length === 1 ? '' : 's'} que existe{conflicts.length === 1 ? '' : 'n'} en VMScore y Copa Facil.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  {conflicts.slice(0, 8).map((conflict) => (
+                    <div key={conflict.archive.id} className="rounded-lg border border-amber-500/20 bg-surface-950 p-2">
+                      <p className="text-xs font-semibold text-zinc-100">
+                        {teamName(conflict.archive.mapped_home_team_id, conflict.archive.external_home_team_id)} vs {teamName(conflict.archive.mapped_away_team_id, conflict.archive.external_away_team_id)}
+                      </p>
+                      <p className="mt-1 text-[11px] text-zinc-500">
+                        VMScore: {conflict.official.home_score ?? '-'}-{conflict.official.away_score ?? '-'} · Copa Facil: {conflict.archive.home_score ?? '-'}-{conflict.archive.away_score ?? '-'}
+                      </p>
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <Button size="sm" variant="secondary" onClick={() => keepOfficial(conflict)} disabled={updateArchiveMatch.isPending}>
+                          Usar VMScore
+                        </Button>
+                        <Button size="sm" onClick={() => keepExternal(conflict)} disabled={updateArchiveMatch.isPending}>
+                          Usar Copa Facil
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="mb-3 grid grid-cols-3 gap-1.5">
               {[

@@ -17,6 +17,23 @@ function numberOrNull(value) {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+function parseScore(match) {
+  const dt = match?.dt
+  const hasHomeScore = Object.prototype.hasOwnProperty.call(dt ?? {}, 'qt_g1')
+  const hasAwayScore = Object.prototype.hasOwnProperty.call(dt ?? {}, 'qt_g2')
+  const hasAnyScore = hasHomeScore || hasAwayScore
+
+  if (!hasAnyScore) {
+    return { homeScore: null, awayScore: null, isFinished: false }
+  }
+
+  return {
+    homeScore: numberOrNull(dt.qt_g1) ?? 0,
+    awayScore: numberOrNull(dt.qt_g2) ?? 0,
+    isFinished: true,
+  }
+}
+
 export async function fetchCopaFacilMatches({ eventCode, divisionCode }) {
   if (!eventCode || !divisionCode) {
     throw new Error('Falta el codigo de Copa Facil.')
@@ -32,9 +49,7 @@ export async function fetchCopaFacilMatches({ eventCode, divisionCode }) {
   const rawMatches = Object.entries(payload ?? {})
     .filter(([, match]) => match?.evt === eventKey)
     .map(([id, match]) => {
-      const homeScore = numberOrNull(match.dt?.qt_g1)
-      const awayScore = numberOrNull(match.dt?.qt_g2)
-      const isFinished = homeScore !== null && awayScore !== null
+      const { homeScore, awayScore, isFinished } = parseScore(match)
       const rawDate = Number.isFinite(Number(match.d_i)) ? new Date(Number(match.d_i)).toISOString() : null
 
       return {
