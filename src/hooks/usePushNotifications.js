@@ -78,14 +78,13 @@ export function usePushNotifications() {
         throw new Error('No se pudo leer la suscripcion push.')
       }
 
-      const { error } = await supabase
-        .from('push_subscriptions')
-        .upsert({
-          ...payload,
-          favorite_team_ids: favorites,
-          user_agent: navigator.userAgent,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'endpoint' })
+      const { error } = await supabase.rpc('register_push_subscription', {
+        p_endpoint: payload.endpoint,
+        p_p256dh: payload.p256dh,
+        p_auth: payload.auth,
+        p_favorite_team_ids: favorites,
+        p_user_agent: navigator.userAgent,
+      })
 
       if (error) throw error
       setMessage('Alertas activadas para tus equipos favoritos.')
