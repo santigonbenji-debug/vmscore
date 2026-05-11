@@ -2,24 +2,26 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 
 const ACCESOS_SUPER = [
-  { to: '/admin/ligas',     label: 'Ligas',      icon: '🏆', desc: 'Crear y editar torneos' },
-  { to: '/admin/equipos',   label: 'Equipos',    icon: '👕', desc: 'Administrar clubes' },
-  { to: '/admin/planteles', label: 'Planteles',  icon: '👥', desc: 'Jugadores y cuerpo técnico' },
-  { to: '/admin/partidos',  label: 'Partidos',   icon: '📅', desc: 'Cargar fixture' },
-  { to: '/admin/noticias',  label: 'Noticias',   icon: '📰', desc: 'Publicar novedades en Home' },
-  { to: '/admin/arbitros',  label: 'Árbitros',   icon: '🟨', desc: 'Listado de árbitros' },
-  { to: '/admin/canchas',   label: 'Canchas',    icon: '🏟️', desc: 'Sedes y estadios' },
-  { to: '/admin/deportes',  label: 'Deportes',   icon: '🏅', desc: 'Agregar disciplinas' },
+  { to: '/admin/ligas', label: 'Ligas', icon: '🏆', desc: 'Crear y editar torneos' },
+  { to: '/admin/equipos', label: 'Equipos', icon: '👕', desc: 'Administrar clubes' },
+  { to: '/admin/planteles', label: 'Planteles', icon: '👥', desc: 'Jugadores y cuerpo tecnico' },
+  { to: '/admin/partidos', label: 'Partidos', icon: '📅', desc: 'Cargar fixture' },
+  { to: '/admin/importar', label: 'Importar', icon: '↓', desc: 'Copa Facil y fuentes externas' },
+  { to: '/admin/noticias', label: 'Noticias', icon: '📰', desc: 'Publicar novedades en Home' },
+  { to: '/admin/arbitros', label: 'Arbitros', icon: '🟨', desc: 'Listado de arbitros' },
+  { to: '/admin/canchas', label: 'Canchas', icon: '🏟️', desc: 'Sedes y estadios' },
+  { to: '/admin/deportes', label: 'Deportes', icon: '🏅', desc: 'Agregar disciplinas' },
 ]
 
 const ACCESOS_LIGA = [
   { to: '/admin/planteles', label: 'Planteles', icon: '👥', desc: 'Equipos y jugadores de la liga' },
-  { to: '/admin/partidos',  label: 'Partidos',  icon: '📅', desc: 'Ver y gestionar fixture' },
-  { to: '/admin/noticias',  label: 'Noticias',  icon: '📰', desc: 'Publicar novedades' },
+  { to: '/admin/partidos', label: 'Partidos', icon: '📅', desc: 'Ver y gestionar fixture' },
+  { to: '/admin/importar', label: 'Importar', icon: '↓', desc: 'Sincronizar Copa Facil' },
+  { to: '/admin/noticias', label: 'Noticias', icon: '📰', desc: 'Publicar novedades' },
 ]
 
 const ACCESOS_CLUB = [
-  { to: '/admin/planteles',    label: 'Plantel',      icon: '👥', desc: 'Administrar jugadores del equipo' },
+  { to: '/admin/planteles', label: 'Plantel', icon: '👥', desc: 'Administrar jugadores del equipo' },
   { to: '/admin/mis-partidos', label: 'Mis Partidos', icon: '⚽', desc: 'Cargar eventos de mi equipo' },
 ]
 
@@ -65,7 +67,7 @@ export default function AdminDashboard() {
       {!isSuperAdmin && (
         <div className="mt-8 bg-surface-800/50 border border-surface-800 rounded-xl p-4 text-center">
           <p className="text-xs text-zinc-400">
-            ¿Necesitás más permisos? Contactá al administrador.
+            Necesitas mas permisos? Contacta al administrador.
           </p>
         </div>
       )}
