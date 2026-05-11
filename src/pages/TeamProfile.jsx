@@ -85,7 +85,7 @@ function MatchHistory({ teamId, matches, isLoading, onOpenMatch }) {
                     {isHome ? 'vs' : '@'} {rivalName}
                   </p>
                   <p className="truncate text-xs text-zinc-500">
-                    {match.league_name} · {formatFechaLarga(match.scheduled_at)} · {formatHora(match.scheduled_at)}
+                    {match.league_name} · {match.scheduled_at ? `${formatFechaLarga(match.scheduled_at)} · ${formatHora(match.scheduled_at)}` : `Fecha ${match.round ?? '-'} · horario a definir`}
                   </p>
                 </div>
                 {finished ? (

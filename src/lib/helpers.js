@@ -9,14 +9,17 @@ export function toSanLuis(date) {
 }
 
 export function formatHora(date) {
+  if (!date) return 'A def.'
   return format(toSanLuis(date), 'HH:mm')
 }
 
 export function formatFecha(date) {
+  if (!date) return 'A definir'
   return format(toSanLuis(date), 'eee. d MMM.', { locale: es })
 }
 
 export function formatDiaRelativo(date) {
+  if (!date) return 'A definir'
   const d = toSanLuis(date)
   if (isToday(d))     return 'Hoy'
   if (isYesterday(d)) return 'Ayer'
@@ -29,6 +32,7 @@ export function formatFechaHora(date) {
 }
 
 export function formatFechaLarga(date) {
+  if (!date) return 'Dia y horario a definir'
   return format(toSanLuis(date), "EEEE d 'de' MMMM 'de' yyyy", { locale: es })
 }
 

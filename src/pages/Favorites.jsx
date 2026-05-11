@@ -33,7 +33,9 @@ function useAllMatchesByTeams(teamIds) {
 function MatchRow({ p, onClick, favoriteIds }) {
   const finalizado = p.status === 'finished'
   const enVivo     = p.status === 'in_progress'
-  const hora       = format(toZonedTime(new Date(p.scheduled_at), TZ), 'HH:mm')
+  const hora = p.scheduled_at
+    ? format(toZonedTime(new Date(p.scheduled_at), TZ), 'HH:mm')
+    : 'A def.'
   const homeWon = finalizado && p.home_score > p.away_score
   const awayWon = finalizado && p.away_score > p.home_score
   const localFav = favoriteIds.includes(p.home_team_id)
@@ -82,8 +84,9 @@ function MatchRow({ p, onClick, favoriteIds }) {
 function groupByDate(partidos) {
   const out = {}
   for (const p of partidos) {
-    const dz = toZonedTime(new Date(p.scheduled_at), TZ)
-    const key = format(dz, 'yyyy-MM-dd')
+    const key = p.scheduled_at
+      ? format(toZonedTime(new Date(p.scheduled_at), TZ), 'yyyy-MM-dd')
+      : `fecha-${p.league_id ?? 'sin-liga'}-${p.round ?? 'sin-fecha'}`
     if (!out[key]) out[key] = []
     out[key].push(p)
   }
@@ -91,11 +94,12 @@ function groupByDate(partidos) {
 }
 
 function FechaCard({ fecha, partidos, favoriteIds, onMatchClick }) {
-  const fechaDate = new Date(fecha + 'T12:00:00')
+  const isRoundOnly = fecha.startsWith('fecha-')
+  const fechaDate = isRoundOnly ? null : new Date(fecha + 'T12:00:00')
   return (
     <div className="mb-3">
       <p className="text-[11px] font-semibold text-zinc-500 mb-1.5 px-1 capitalize">
-        {format(fechaDate, "EEEE d 'de' MMMM", { locale: es })}
+        {fechaDate ? format(fechaDate, "EEEE d 'de' MMMM", { locale: es }) : `Fecha ${partidos[0]?.round ?? '-'} · horario a definir`}
       </p>
       <div className="bg-surface-900 rounded-xl border border-surface-800 overflow-hidden">
         {partidos.map((p) => (
@@ -135,11 +139,11 @@ export default function Favorites() {
     const live = []
     for (const p of partidos) {
       if (p.status === 'in_progress') live.push(p)
-      else if (p.status === 'finished' || new Date(p.scheduled_at).getTime() < ahora - 6 * 3600 * 1000) past.push(p)
+      else if (p.status === 'finished' || (p.scheduled_at && new Date(p.scheduled_at).getTime() < ahora - 6 * 3600 * 1000)) past.push(p)
       else next.push(p)
     }
-    next.sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at))
-    past.sort((a, b) => new Date(b.scheduled_at) - new Date(a.scheduled_at))
+    next.sort((a, b) => (new Date(a.scheduled_at ?? 0)) - (new Date(b.scheduled_at ?? 0)))
+    past.sort((a, b) => (new Date(b.scheduled_at ?? 0)) - (new Date(a.scheduled_at ?? 0)))
     return { proximos: next, finalizados: past, enVivo: live }
   }, [partidos, ahora])
 

@@ -203,6 +203,7 @@ export default function MatchDetail() {
               {match.scheduled_at && (
                 <p>{formatFechaLarga(match.scheduled_at)} · {formatHora(match.scheduled_at)}</p>
               )}
+              {!match.scheduled_at && <p>Dia y horario a definir</p>}
               {match.venue_name && <p>{match.venue_name}{match.venue_address ? ` · ${match.venue_address}` : ''}</p>}
               {match.referee_name && <p>Arbitro: {match.referee_name}</p>}
               <p>{match.league_name}{match.season ? ` · ${match.season}` : ''}</p>
