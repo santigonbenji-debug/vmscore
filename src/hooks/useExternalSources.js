@@ -99,7 +99,9 @@ export function useImportCopaFacilMatches() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async ({ source, matches, mappings }) => {
-      const importable = matches
+      const minRound = Number(source.min_round) || 1
+      const scopedMatches = matches.filter((match) => (match.round ?? 0) >= minRound)
+      const importable = scopedMatches
         .map((match) => ({
           ...match,
           home_team_id: mappings[match.external_home_team_id],
@@ -109,7 +111,7 @@ export function useImportCopaFacilMatches() {
 
       let created = 0
       let updated = 0
-      let skipped = matches.length - importable.length
+      let skipped = scopedMatches.length - importable.length
 
       for (const match of importable) {
         const scores = match.status === 'finished'
@@ -177,7 +179,7 @@ export function useImportCopaFacilMatches() {
         .eq('id', source.id)
       if (error) throw error
 
-      return { created, updated, skipped, total: matches.length }
+      return { created, updated, skipped, total: scopedMatches.length }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['matches'] })

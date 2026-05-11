@@ -19,6 +19,7 @@ const EMPTY_FORM = {
   phase_id: '',
   label: '',
   source_url: '',
+  min_round: 8,
 }
 
 export default function ManageExternalSources() {
@@ -69,6 +70,7 @@ export default function ManageExternalSources() {
       phase_id: source.phase_id,
       label: source.label ?? '',
       source_url: source.source_url,
+      min_round: source.min_round ?? 1,
     })
     setPreview([])
     setResult(null)
@@ -90,6 +92,7 @@ export default function ManageExternalSources() {
       source_url: form.source_url.trim(),
       event_code: parsed.eventCode,
       division_code: parsed.divisionCode,
+      min_round: Number(form.min_round) || 1,
       sync_enabled: true,
       updated_at: new Date().toISOString(),
     })
@@ -112,9 +115,11 @@ export default function ManageExternalSources() {
         eventCode: sourceLike.event_code,
         divisionCode: sourceLike.division_code,
       })
-      setPreview(matches)
-      if (matches.length === 0) {
-        setPreviewError('No se encontraron partidos para esa division.')
+      const minRound = Number(selectedSource?.min_round ?? form.min_round) || 1
+      const filteredMatches = matches.filter((match) => (match.round ?? 0) >= minRound)
+      setPreview(filteredMatches)
+      if (filteredMatches.length === 0) {
+        setPreviewError(`No se encontraron partidos desde la Fecha ${minRound}.`)
       }
     } catch (error) {
       setPreviewError(error?.message ?? 'No se pudo leer Copa Facil.')
@@ -173,7 +178,7 @@ export default function ManageExternalSources() {
                     {source.label || source.leagues?.name || 'Copa Facil'}
                   </p>
                   <p className="mt-1 text-xs text-zinc-500">
-                    {source.leagues?.name} · {source.phases?.name} · {source.event_code}@{source.division_code}
+                    {source.leagues?.name} · {source.phases?.name} · desde Fecha {source.min_round ?? 1}
                   </p>
                 </button>
               ))}
@@ -233,6 +238,21 @@ export default function ManageExternalSources() {
                 className={INPUT}
                 placeholder="https://copafacil.com/-2c62x@rzjg"
               />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-zinc-400">Importar desde fecha</label>
+              <input
+                type="number"
+                min="1"
+                value={form.min_round}
+                onChange={(event) => setForm({ ...form, min_round: event.target.value })}
+                className={INPUT}
+                placeholder="8"
+              />
+              <p className="mt-1 text-[11px] text-zinc-500">
+                Usamos 8 para empezar desde la Fecha 8 y no traer jornadas anteriores.
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-2">
