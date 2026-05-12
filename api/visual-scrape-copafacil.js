@@ -2,7 +2,7 @@ import chromium from '@sparticuz/chromium'
 import { chromium as playwrightChromium } from 'playwright-core'
 
 export const config = {
-  maxDuration: 60,
+  maxDuration: 45,
 }
 
 function normalizeSourceUrl(value) {
@@ -58,7 +58,7 @@ async function readPageInfo(page) {
 async function captureShot(page, label, index) {
   const screenshot = await page.screenshot({
     type: 'jpeg',
-    quality: 36,
+    quality: 28,
     fullPage: false,
   })
 
@@ -109,10 +109,10 @@ async function captureScrolledView(page, route) {
 
   captures.push(await captureShot(page, 'arriba', 0))
 
-  for (let index = 1; index <= 3; index += 1) {
-    await page.mouse.move(900, 520)
-    await page.mouse.wheel(0, 780)
-    await page.waitForTimeout(1200)
+  for (let index = 1; index <= 1; index += 1) {
+    await page.mouse.move(840, 500)
+    await page.mouse.wheel(0, 980)
+    await page.waitForTimeout(800)
     lastInfo = await readPageInfo(page)
     ;(lastInfo.image_sources ?? []).forEach((src) => imageSources.add(src))
     captures.push(await captureShot(page, `scroll ${index}`, index))
@@ -138,8 +138,7 @@ async function clickFlutterNav(page, target) {
   if (!point) return
 
   await page.mouse.click(point.x, point.y)
-  await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => null)
-  await page.waitForTimeout(2500)
+  await page.waitForTimeout(1800)
 }
 
 export default async function handler(request, response) {
@@ -155,7 +154,7 @@ export default async function handler(request, response) {
 
     browser = await launchBrowser()
     const page = await browser.newPage({
-      viewport: { width: 1366, height: 900 },
+      viewport: { width: 1180, height: 760 },
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122 Safari/537.36 VMScoreBot/1.0',
     })
 
@@ -178,7 +177,6 @@ export default async function handler(request, response) {
 
     const routes = []
     await page.goto(sourceUrl, { waitUntil: 'domcontentloaded', timeout: 45000 })
-    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => null)
     await page.waitForTimeout(4500)
 
     const captureSteps = [

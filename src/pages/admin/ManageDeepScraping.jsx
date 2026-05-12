@@ -5,6 +5,23 @@ import { useCreateDeepScrapeRun, useDeepScrapeRuns, useUpdateDeepScrapeRun } fro
 
 const INPUT = 'w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none bg-surface-800 text-zinc-100 border border-surface-700'
 
+async function readJsonResponse(response, fallbackMessage) {
+  const text = await response.text()
+  let payload
+  try {
+    payload = text ? JSON.parse(text) : null
+  } catch {
+    const clean = text.replace(/\s+/g, ' ').trim()
+    throw new Error(clean ? `${fallbackMessage}: ${clean.slice(0, 160)}` : fallbackMessage)
+  }
+
+  if (!response.ok) {
+    throw new Error(payload?.error ?? fallbackMessage)
+  }
+
+  return payload
+}
+
 function Stat({ label, value }) {
   return (
     <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
@@ -109,8 +126,7 @@ export default function ManageDeepScraping() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sourceUrl }),
       })
-      const payload = await response.json()
-      if (!response.ok) throw new Error(payload?.error ?? 'No se pudo analizar el link.')
+      const payload = await readJsonResponse(response, 'No se pudo analizar el link.')
       const run = await createRun.mutateAsync(payload)
       setSelectedRun(run)
     } catch (err) {
@@ -143,8 +159,7 @@ export default function ManageDeepScraping() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sourceUrl: activeRun.source_url }),
       })
-      const payload = await response.json()
-      if (!response.ok) throw new Error(payload?.error ?? 'No se pudo ejecutar el worker visual.')
+      const payload = await readJsonResponse(response, 'No se pudo ejecutar el worker visual.')
 
       const visual = payload.visual
       const nextExtracted = {
