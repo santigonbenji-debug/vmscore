@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useFavorites } from './useFavorites'
 
@@ -48,6 +48,36 @@ export function usePushNotifications() {
     'PushManager' in window &&
     'Notification' in window
 
+  const registerCurrentSubscription = useCallback(async () => {
+    const registration = await navigator.serviceWorker.ready
+    const subscription = await registration.pushManager.getSubscription()
+    if (!subscription) return false
+
+    const payload = serializeSubscription(subscription)
+    if (!payload.endpoint || !payload.p256dh || !payload.auth) {
+      throw new Error('No se pudo leer la suscripcion push.')
+    }
+
+    const { error } = await supabase.rpc('register_push_subscription', {
+      p_endpoint: payload.endpoint,
+      p_p256dh: payload.p256dh,
+      p_auth: payload.auth,
+      p_favorite_team_ids: favorites,
+      p_user_agent: navigator.userAgent,
+    })
+
+    if (error) throw error
+    return true
+  }, [favorites])
+
+  useEffect(() => {
+    if (!supported || !enabled) return
+
+    registerCurrentSubscription().catch((err) => {
+      console.warn('No se pudieron sincronizar favoritos push', err)
+    })
+  }, [enabled, registerCurrentSubscription, supported])
+
   async function enableNotifications() {
     setMessage('')
     setError('')
@@ -80,20 +110,7 @@ export function usePushNotifications() {
         })
       }
 
-      const payload = serializeSubscription(subscription)
-      if (!payload.endpoint || !payload.p256dh || !payload.auth) {
-        throw new Error('No se pudo leer la suscripcion push.')
-      }
-
-      const { error } = await supabase.rpc('register_push_subscription', {
-        p_endpoint: payload.endpoint,
-        p_p256dh: payload.p256dh,
-        p_auth: payload.auth,
-        p_favorite_team_ids: favorites,
-        p_user_agent: navigator.userAgent,
-      })
-
-      if (error) throw error
+      await registerCurrentSubscription()
       window.localStorage.setItem(PUSH_ENABLED_KEY, 'true')
       setEnabled(true)
       setMessage('Alertas activadas para tus equipos favoritos.')
