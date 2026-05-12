@@ -77,7 +77,9 @@ export default function ManageDeepScraping() {
   const [sourceUrl, setSourceUrl] = useState('https://copafacil.com/-npwhxv1bzzrlfw5szpj@jw5t')
   const [selectedRun, setSelectedRun] = useState(null)
   const [error, setError] = useState('')
+  const [visualError, setVisualError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [visualLoading, setVisualLoading] = useState(false)
 
   const { data: runs = [], isLoading } = useDeepScrapeRuns()
   const createRun = useCreateDeepScrapeRun()
@@ -91,6 +93,8 @@ export default function ManageDeepScraping() {
   const teams = extracted.teams ?? []
   const standings = extracted.standings ?? []
   const matches = extracted.matches ?? []
+  const visualSummary = extracted.visual ?? null
+  const rawVisual = activeRun?.raw?.visual ?? null
   const roundPreview = rounds.slice(0, 8)
   const teamPreview = teams.slice(0, 14)
   const standingsPreview = standings.slice(0, 10)
@@ -129,6 +133,64 @@ export default function ManageDeepScraping() {
     }
   }
 
+  async function runVisualScrape() {
+    if (!activeRun) return
+    setVisualError('')
+    setVisualLoading(true)
+    try {
+      const response = await fetch('/api/visual-scrape-copafacil', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceUrl: activeRun.source_url }),
+      })
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload?.error ?? 'No se pudo ejecutar el worker visual.')
+
+      const visual = payload.visual
+      const nextExtracted = {
+        ...extracted,
+        capabilities: {
+          ...(extracted.capabilities ?? {}),
+          visual_worker_executed: true,
+          visual_screenshots: visual.capabilities?.screenshots ?? false,
+          visual_network_discovery: visual.capabilities?.network_discovery ?? false,
+        },
+        visual: {
+          ran_at: visual.ran_at,
+          route_count: visual.routes?.length ?? 0,
+          network_total: visual.network?.total ?? 0,
+          firebase_urls: visual.network?.firebase_urls?.length ?? 0,
+          api_urls: visual.network?.api_urls?.length ?? 0,
+          storage_images: visual.network?.storage_images?.length ?? 0,
+          findings: visual.findings ?? [],
+          capabilities: visual.capabilities ?? {},
+        },
+      }
+      const nextRaw = {
+        ...(activeRun.raw ?? {}),
+        visual,
+      }
+
+      await updateRun.mutateAsync({
+        id: activeRun.id,
+        values: {
+          extracted: nextExtracted,
+          raw: nextRaw,
+        },
+      })
+
+      setSelectedRun({
+        ...activeRun,
+        extracted: nextExtracted,
+        raw: nextRaw,
+      })
+    } catch (err) {
+      setVisualError(err?.message ?? 'No se pudo ejecutar el worker visual.')
+    } finally {
+      setVisualLoading(false)
+    }
+  }
+
   return (
     <div className="px-4 py-6 pb-28">
       <div className="mb-5">
@@ -161,7 +223,7 @@ export default function ManageDeepScraping() {
         )}
       </section>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,22rem),minmax(0,1fr)]">
+      <div className="mt-4 grid gap-4 2xl:grid-cols-[minmax(0,28rem),minmax(0,1fr)]">
         <section className="rounded-xl border border-surface-800 bg-surface-900 p-4">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-bold text-zinc-100">Capturas</h2>
@@ -211,7 +273,7 @@ export default function ManageDeepScraping() {
                   </div>
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
                   <Stat label="Partidos" value={counts.matches ?? 0} />
                   <Stat label="Equipos" value={counts.teams ?? 0} />
                   <Stat label="Fechas" value={counts.rounds ?? 0} />
@@ -227,8 +289,97 @@ export default function ManageDeepScraping() {
                   <Capability enabled={capabilities.team_logos} label="escudos" />
                   <Capability enabled={capabilities.player_rankings} label="goleadores" />
                   <Capability enabled={capabilities.match_events} label="eventos" />
+                  <Capability enabled={capabilities.visual_worker_executed} label="worker visual" />
+                </div>
+
+                <div className="mt-4 rounded-xl border border-surface-800 bg-surface-950 p-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-zinc-100">Worker visual</h3>
+                      <p className="mt-1 text-xs text-zinc-500">
+                        Abre Copa Facil como navegador real, captura pantallas y descubre endpoints.
+                      </p>
+                    </div>
+                    <Button onClick={runVisualScrape} disabled={visualLoading || updateRun.isPending}>
+                      {visualLoading ? 'Ejecutando...' : 'Ejecutar worker visual'}
+                    </Button>
+                  </div>
+
+                  {visualError && (
+                    <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
+                      {visualError}
+                    </p>
+                  )}
+
+                  {visualSummary && (
+                    <div className="mt-3 grid gap-2 text-xs sm:grid-cols-4">
+                      <span className="rounded-lg bg-surface-900 px-3 py-2 text-zinc-300">
+                        Rutas: <strong className="text-zinc-100">{visualSummary.route_count}</strong>
+                      </span>
+                      <span className="rounded-lg bg-surface-900 px-3 py-2 text-zinc-300">
+                        Red: <strong className="text-zinc-100">{visualSummary.network_total}</strong>
+                      </span>
+                      <span className="rounded-lg bg-surface-900 px-3 py-2 text-zinc-300">
+                        API: <strong className="text-zinc-100">{visualSummary.api_urls}</strong>
+                      </span>
+                      <span className="rounded-lg bg-surface-900 px-3 py-2 text-zinc-300">
+                        Imagenes: <strong className="text-zinc-100">{visualSummary.storage_images}</strong>
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
+
+              {rawVisual && (
+                <div className="rounded-xl border border-surface-800 bg-surface-900 p-4">
+                  <h3 className="mb-3 text-sm font-bold text-zinc-100">Captura visual</h3>
+
+                  {rawVisual.findings?.length > 0 && (
+                    <div className="mb-3 space-y-2">
+                      {rawVisual.findings.map((finding) => (
+                        <p key={finding} className="rounded-lg border border-surface-800 bg-surface-950 p-3 text-xs text-zinc-400">
+                          {finding}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="grid gap-3 xl:grid-cols-3">
+                    {(rawVisual.routes ?? []).map((route) => (
+                      <div key={route.key} className="overflow-hidden rounded-xl border border-surface-800 bg-surface-950">
+                        <div className="border-b border-surface-800 px-3 py-2">
+                          <p className="text-xs font-bold text-zinc-100">{route.label}</p>
+                          <p className="truncate text-[11px] text-zinc-500">{route.url}</p>
+                        </div>
+                        {route.screenshot_data_url ? (
+                          <img
+                            src={route.screenshot_data_url}
+                            alt=""
+                            className="aspect-video w-full object-cover object-top"
+                          />
+                        ) : (
+                          <p className="p-3 text-xs text-red-300">{route.error ?? 'Sin captura.'}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-3 rounded-lg border border-surface-800 bg-surface-950 p-3">
+                    <p className="text-xs font-bold text-zinc-100">Endpoints descubiertos</p>
+                    <div className="mt-2 max-h-44 space-y-1 overflow-y-auto pr-1">
+                      {[
+                        ...(rawVisual.network?.api_urls ?? []),
+                        ...(rawVisual.network?.firebase_urls ?? []),
+                      ].slice(0, 25).map((url) => (
+                        <p key={url} className="truncate font-mono text-[11px] text-zinc-500">{url}</p>
+                      ))}
+                      {(rawVisual.network?.api_urls?.length ?? 0) + (rawVisual.network?.firebase_urls?.length ?? 0) === 0 && (
+                        <p className="text-xs text-zinc-500">No se detectaron endpoints adicionales.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="grid gap-4 xl:grid-cols-2">
                 <div className="rounded-xl border border-surface-800 bg-surface-900 p-4">
