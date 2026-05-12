@@ -158,6 +158,7 @@ export default function ManageDeepScraping() {
         visual: {
           ran_at: visual.ran_at,
           route_count: visual.routes?.length ?? 0,
+          screenshot_count: (visual.routes ?? []).reduce((total, route) => total + (route.captures?.length || (route.screenshot_data_url ? 1 : 0)), 0),
           network_total: visual.network?.total ?? 0,
           firebase_urls: visual.network?.firebase_urls?.length ?? 0,
           api_urls: visual.network?.api_urls?.length ?? 0,
@@ -317,6 +318,9 @@ export default function ManageDeepScraping() {
                         Rutas: <strong className="text-zinc-100">{visualSummary.route_count}</strong>
                       </span>
                       <span className="rounded-lg bg-surface-900 px-3 py-2 text-zinc-300">
+                        Capturas: <strong className="text-zinc-100">{visualSummary.screenshot_count ?? 0}</strong>
+                      </span>
+                      <span className="rounded-lg bg-surface-900 px-3 py-2 text-zinc-300">
                         Red: <strong className="text-zinc-100">{visualSummary.network_total}</strong>
                       </span>
                       <span className="rounded-lg bg-surface-900 px-3 py-2 text-zinc-300">
@@ -344,24 +348,44 @@ export default function ManageDeepScraping() {
                     </div>
                   )}
 
-                  <div className="grid gap-3 xl:grid-cols-3">
+                  <div className="space-y-3">
                     {(rawVisual.routes ?? []).map((route) => (
                       <div key={route.key} className="overflow-hidden rounded-xl border border-surface-800 bg-surface-950">
                         <div className="border-b border-surface-800 px-3 py-2">
                           <p className="text-xs font-bold text-zinc-100">{route.label}</p>
                           <p className="truncate text-[11px] text-zinc-500">{route.url}</p>
                         </div>
-                        {route.screenshot_data_url ? (
-                          <img
-                            src={route.screenshot_data_url}
-                            alt=""
-                            className="aspect-video w-full object-cover object-top"
-                          />
+                        {(route.captures?.length ?? 0) > 0 ? (
+                          <div className="grid gap-2 p-2 md:grid-cols-2 xl:grid-cols-4">
+                            {route.captures.map((capture) => (
+                              <div key={`${route.key}-${capture.index}`} className="overflow-hidden rounded-lg border border-surface-800 bg-surface-900">
+                                <div className="px-2 py-1 text-[11px] font-bold text-zinc-500">{capture.label}</div>
+                                <img
+                                  src={capture.screenshot_data_url}
+                                  alt=""
+                                  className="aspect-video w-full object-cover object-top"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        ) : route.screenshot_data_url ? (
+                          <img src={route.screenshot_data_url} alt="" className="aspect-video w-full object-cover object-top" />
                         ) : (
                           <p className="p-3 text-xs text-red-300">{route.error ?? 'Sin captura.'}</p>
                         )}
                       </div>
                     ))}
+                  </div>
+
+                  <div className="mt-3 rounded-lg border border-surface-800 bg-surface-950 p-3">
+                    <p className="text-xs font-bold text-zinc-100">Imagenes descubiertas</p>
+                    <div className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8 xl:grid-cols-10">
+                      {(rawVisual.network?.storage_images ?? []).slice(0, 40).map((url) => (
+                        <div key={url} className="aspect-square overflow-hidden rounded-lg border border-surface-800 bg-surface-900">
+                          <img src={url} alt="" className="h-full w-full object-contain p-1" />
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
                   <div className="mt-3 rounded-lg border border-surface-800 bg-surface-950 p-3">

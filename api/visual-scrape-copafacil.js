@@ -36,6 +36,39 @@ async function launchBrowser() {
   })
 }
 
+async function readPageInfo(page) {
+  return page.evaluate(() => {
+    const meta = (name) =>
+      document.querySelector(`meta[property="${name}"]`)?.getAttribute('content') ||
+      document.querySelector(`meta[name="${name}"]`)?.getAttribute('content') ||
+      null
+
+    return {
+      title: document.title,
+      body_text: document.body?.innerText?.replace(/\s+/g, ' ').trim().slice(0, 1200) ?? '',
+      canvas_count: document.querySelectorAll('canvas').length,
+      image_sources: [...document.images].map((image) => image.currentSrc || image.src).filter(Boolean).slice(0, 120),
+      og_title: meta('og:title'),
+      og_image: meta('og:image'),
+      og_description: meta('og:description'),
+    }
+  })
+}
+
+async function captureShot(page, label, index) {
+  const screenshot = await page.screenshot({
+    type: 'jpeg',
+    quality: 36,
+    fullPage: false,
+  })
+
+  return {
+    label,
+    index,
+    screenshot_data_url: `data:image/jpeg;base64,${screenshot.toString('base64')}`,
+  }
+}
+
 async function captureCurrentView(page, route) {
   const pageInfo = await page.evaluate(() => {
     const meta = (name) =>
@@ -65,6 +98,33 @@ async function captureCurrentView(page, route) {
     url: page.url(),
     ...pageInfo,
     screenshot_data_url: `data:image/jpeg;base64,${screenshot.toString('base64')}`,
+  }
+}
+
+async function captureScrolledView(page, route) {
+  const captures = []
+  const imageSources = new Set()
+  let lastInfo = await readPageInfo(page)
+  ;(lastInfo.image_sources ?? []).forEach((src) => imageSources.add(src))
+
+  captures.push(await captureShot(page, 'arriba', 0))
+
+  for (let index = 1; index <= 3; index += 1) {
+    await page.mouse.move(900, 520)
+    await page.mouse.wheel(0, 780)
+    await page.waitForTimeout(1200)
+    lastInfo = await readPageInfo(page)
+    ;(lastInfo.image_sources ?? []).forEach((src) => imageSources.add(src))
+    captures.push(await captureShot(page, `scroll ${index}`, index))
+  }
+
+  return {
+    ...route,
+    url: page.url(),
+    ...lastInfo,
+    image_sources: [...imageSources].slice(0, 160),
+    captures,
+    screenshot_data_url: captures[0]?.screenshot_data_url ?? null,
   }
 }
 
@@ -122,9 +182,9 @@ export default async function handler(request, response) {
     await page.waitForTimeout(4500)
 
     const captureSteps = [
-      { key: 'home', label: 'Inicio', action: null },
-      { key: 'classification', label: 'Clasificacion', action: 'classification' },
-      { key: 'rankings', label: 'Rankings', action: 'rankings' },
+      { key: 'home', label: 'Inicio', action: null, scroll: true },
+      { key: 'classification', label: 'Clasificacion', action: 'classification', scroll: true },
+      { key: 'rankings', label: 'Rankings', action: 'rankings', scroll: true },
     ]
 
     for (const step of captureSteps) {
@@ -132,7 +192,10 @@ export default async function handler(request, response) {
         if (step.action) {
           await clickFlutterNav(page, step.action)
         }
-        routes.push(await captureCurrentView(page, step))
+        routes.push(step.scroll
+          ? await captureScrolledView(page, step)
+          : await captureCurrentView(page, step)
+        )
       } catch (error) {
         routes.push({
           key: step.key,
@@ -151,7 +214,7 @@ export default async function handler(request, response) {
       network: networkSummary,
       findings: [
         'La web de Copa Facil navega dentro del mismo link; el worker usa clicks reales sobre el menu lateral.',
-        'El worker visual puede abrir el torneo, capturar pantallas y descubrir llamadas de red.',
+        'El worker visual abre el torneo, hace scroll por seccion, captura varias pantallas y descubre llamadas de red.',
         'Si goleadores/eventos no aparecen como JSON, el siguiente paso es OCR/click dirigido sobre las pantallas capturadas.',
       ],
       capabilities: {
