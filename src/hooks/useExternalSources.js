@@ -103,6 +103,7 @@ export function useImportCopaFacilMatches() {
           away_score: match.status === 'finished' ? match.away_score : null,
           scheduled_at: match.scheduled_at,
           date_tbd: match.date_tbd,
+          review_status: match.status === 'finished' && match.scheduled_at ? 'confirmed' : 'pending',
           raw: match.raw ?? null,
           updated_at: new Date().toISOString(),
         }))
