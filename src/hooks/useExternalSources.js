@@ -177,6 +177,28 @@ export function useUpdateExternalArchiveMatch() {
   })
 }
 
+export function useComputeExternalArchiveMatch() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id }) => {
+      const { data, error } = await supabase.rpc('compute_external_match', {
+        p_archive_id: id,
+      })
+      if (error) throw error
+      return data
+    },
+    onSuccess: (_, { sourceId, leagueId }) => {
+      qc.invalidateQueries({ queryKey: ['external-match-archive', sourceId] })
+      qc.invalidateQueries({ queryKey: ['official-matches-for-league', leagueId] })
+      qc.invalidateQueries({ queryKey: ['matches'] })
+      qc.invalidateQueries({ queryKey: ['matches-home'] })
+      qc.invalidateQueries({ queryKey: ['home-matches'] })
+      qc.invalidateQueries({ queryKey: ['standings'] })
+      qc.invalidateQueries({ queryKey: ['standings-admin'] })
+    },
+  })
+}
+
 export function useOfficialMatchesForLeague(leagueId) {
   return useQuery({
     queryKey: ['official-matches-for-league', leagueId],

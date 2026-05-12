@@ -7,6 +7,7 @@ import Spinner from '../../components/ui/Spinner'
 import { useLeagues, usePhases } from '../../hooks/useLeagues'
 import { useTeams } from '../../hooks/useTeams'
 import {
+  useComputeExternalArchiveMatch,
   useExternalMatchArchive,
   useExternalSources,
   useExternalTeamMappings,
@@ -60,6 +61,7 @@ export default function ManageExternalSources() {
   const [selectedSourceId, setSelectedSourceId] = useState('')
   const [preview, setPreview] = useState([])
   const [previewError, setPreviewError] = useState('')
+  const [archiveActionError, setArchiveActionError] = useState('')
   const [previewLoading, setPreviewLoading] = useState(false)
   const [localMappings, setLocalMappings] = useState({})
   const [result, setResult] = useState(null)
@@ -89,6 +91,7 @@ export default function ManageExternalSources() {
   const saveMappings = useSaveExternalTeamMappings()
   const importMatches = useImportCopaFacilMatches()
   const updateArchiveMatch = useUpdateExternalArchiveMatch()
+  const computeArchiveMatch = useComputeExternalArchiveMatch()
 
   useEffect(() => {
     if (phases.length > 0 && !form.phase_id) {
@@ -215,6 +218,7 @@ export default function ManageExternalSources() {
   }
 
   function openArchiveEditor(match) {
+    setArchiveActionError('')
     setEditingArchive(match)
     setArchiveForm({
       scheduledAtLocal: toLocalInput(match.scheduled_at),
@@ -226,8 +230,9 @@ export default function ManageExternalSources() {
     })
   }
 
-  async function saveArchiveEditor(markConfirmed = false) {
-    if (!editingArchive) return
+  async function saveArchiveEditor(markConfirmed = false, options = {}) {
+    const { close = true } = options
+    if (!editingArchive) return false
     const homeScore = archiveForm.homeScore === '' ? null : Number(archiveForm.homeScore)
     const awayScore = archiveForm.awayScore === '' ? null : Number(archiveForm.awayScore)
     const hasScore = homeScore !== null && awayScore !== null
@@ -249,7 +254,27 @@ export default function ManageExternalSources() {
         admin_notes: archiveForm.notes || null,
       },
     })
-    setEditingArchive(null)
+    if (close) {
+      setEditingArchive(null)
+    }
+    return true
+  }
+
+  async function computeArchiveEditor() {
+    if (!editingArchive) return
+    setArchiveActionError('')
+    try {
+      const saved = await saveArchiveEditor(true, { close: false })
+      if (!saved) return
+      await computeArchiveMatch.mutateAsync({
+        id: editingArchive.id,
+        sourceId: selectedSourceId,
+        leagueId: selectedSource?.league_id,
+      })
+      setEditingArchive(null)
+    } catch (error) {
+      setArchiveActionError(error?.message ?? 'No se pudo computar el partido en la tabla.')
+    }
   }
 
   function teamName(teamId, externalId) {
@@ -409,6 +434,7 @@ export default function ManageExternalSources() {
               <div className="max-h-[32rem] space-y-2 overflow-y-auto pr-1">
                 {filteredArchive.map((match) => {
                   const complete = match.scheduled_at && match.home_score !== null && match.away_score !== null
+                  const computed = !!match.computed_match_id
                   const matchDate = match.scheduled_at
                     ? format(toZonedTime(new Date(match.scheduled_at), TZ), "dd/MM/yyyy HH:mm")
                     : 'Fecha pendiente'
@@ -422,13 +448,15 @@ export default function ManageExternalSources() {
                       <div className="mb-2 flex items-center justify-between gap-2">
                         <span className="text-xs text-zinc-500">Fecha {match.round ?? '-'} · {matchDate}</span>
                         <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
-                          match.review_status === 'confirmed'
+                          computed
+                            ? 'bg-primary/15 text-primary'
+                            : match.review_status === 'confirmed'
                             ? 'bg-emerald-500/15 text-emerald-300'
                             : complete
                               ? 'bg-sky-500/15 text-sky-300'
                               : 'bg-amber-500/15 text-amber-300'
                         }`}>
-                          {match.review_status === 'confirmed' ? 'Confirmado' : complete ? 'Completo' : 'Pendiente'}
+                          {computed ? 'Computado' : match.review_status === 'confirmed' ? 'Confirmado' : complete ? 'Completo' : 'Pendiente'}
                         </span>
                       </div>
                       <div className="grid grid-cols-[1fr,auto,1fr] items-center gap-2 text-sm">
@@ -714,12 +742,40 @@ export default function ManageExternalSources() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-2 pt-2">
-            <Button variant="secondary" onClick={() => saveArchiveEditor(false)} disabled={updateArchiveMatch.isPending}>
+          <div className="rounded-lg border border-primary/25 bg-primary/10 p-3 text-xs text-primary-light">
+            Computar tabla crea o actualiza el partido oficial en VMScore y recalcula posiciones. Confirmar historico solo lo deja visible como dato revisado.
+          </div>
+
+          {archiveActionError && (
+            <p className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
+              {archiveActionError}
+            </p>
+          )}
+
+          <div className="grid grid-cols-1 gap-2 pt-2 sm:grid-cols-3">
+            <Button
+              variant="secondary"
+              onClick={() => saveArchiveEditor(false)}
+              disabled={updateArchiveMatch.isPending || computeArchiveMatch.isPending}
+            >
               Guardar
             </Button>
-            <Button onClick={() => saveArchiveEditor(true)} disabled={updateArchiveMatch.isPending}>
+            <Button
+              variant="secondary"
+              onClick={() => saveArchiveEditor(true)}
+              disabled={updateArchiveMatch.isPending || computeArchiveMatch.isPending}
+            >
               Confirmar historico
+            </Button>
+            <Button
+              onClick={computeArchiveEditor}
+              disabled={updateArchiveMatch.isPending || computeArchiveMatch.isPending}
+            >
+              {computeArchiveMatch.isPending
+                ? 'Computando...'
+                : editingArchive?.computed_match_id
+                  ? 'Actualizar tabla'
+                  : 'Computar tabla'}
             </Button>
           </div>
         </div>
