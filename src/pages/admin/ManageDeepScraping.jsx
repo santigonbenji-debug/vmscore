@@ -1,0 +1,324 @@
+import { useState } from 'react'
+import Button from '../../components/ui/Button'
+import Spinner from '../../components/ui/Spinner'
+import { useCreateDeepScrapeRun, useDeepScrapeRuns, useUpdateDeepScrapeRun } from '../../hooks/useDeepScrapeRuns'
+
+const INPUT = 'w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none bg-surface-800 text-zinc-100 border border-surface-700'
+
+function Stat({ label, value }) {
+  return (
+    <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">{label}</p>
+      <p className="mt-1 text-xl font-black text-zinc-100">{value}</p>
+    </div>
+  )
+}
+
+function Capability({ enabled, label }) {
+  return (
+    <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${
+      enabled ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300'
+    }`}>
+      {enabled ? 'Listo' : 'Pendiente'} · {label}
+    </span>
+  )
+}
+
+function RunCard({ run, selected, onSelect, onMarkReviewed }) {
+  const extracted = run.extracted ?? {}
+  const tournament = extracted.tournament ?? {}
+  const counts = extracted.counts ?? {}
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(run)}
+      className={`w-full rounded-xl border p-3 text-left transition-colors ${
+        selected ? 'border-primary bg-primary/10' : 'border-surface-800 bg-surface-900 hover:border-surface-700'
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-bold text-zinc-100">
+            {tournament.title || 'Copa Facil'}
+          </p>
+          <p className="mt-1 truncate text-[11px] text-zinc-500">{run.source_url}</p>
+        </div>
+        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${
+          run.status === 'reviewed' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-sky-500/15 text-sky-300'
+        }`}>
+          {run.status === 'reviewed' ? 'Revisado' : 'Capturado'}
+        </span>
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+        <span className="rounded-lg bg-surface-950 px-2 py-1 text-xs text-zinc-300">{counts.matches ?? 0} partidos</span>
+        <span className="rounded-lg bg-surface-950 px-2 py-1 text-xs text-zinc-300">{counts.teams ?? 0} equipos</span>
+        <span className="rounded-lg bg-surface-950 px-2 py-1 text-xs text-zinc-300">{counts.rounds ?? 0} fechas</span>
+      </div>
+      {run.status !== 'reviewed' && (
+        <div className="mt-3">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={(event) => {
+              event.stopPropagation()
+              onMarkReviewed(run)
+            }}
+          >
+            Marcar revisado
+          </Button>
+        </div>
+      )}
+    </button>
+  )
+}
+
+export default function ManageDeepScraping() {
+  const [sourceUrl, setSourceUrl] = useState('https://copafacil.com/-npwhxv1bzzrlfw5szpj@jw5t')
+  const [selectedRun, setSelectedRun] = useState(null)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const { data: runs = [], isLoading } = useDeepScrapeRuns()
+  const createRun = useCreateDeepScrapeRun()
+  const updateRun = useUpdateDeepScrapeRun()
+
+  const activeRun = selectedRun || runs[0]
+  const extracted = activeRun?.extracted ?? {}
+  const counts = extracted.counts ?? {}
+  const capabilities = extracted.capabilities ?? {}
+  const rounds = extracted.rounds ?? []
+  const teams = extracted.teams ?? []
+  const standings = extracted.standings ?? []
+  const matches = extracted.matches ?? []
+  const roundPreview = rounds.slice(0, 8)
+  const teamPreview = teams.slice(0, 14)
+  const standingsPreview = standings.slice(0, 10)
+  const matchesPreview = matches.slice(0, 12)
+
+  async function analyzeSource() {
+    setError('')
+    setLoading(true)
+    try {
+      const response = await fetch('/api/deep-scrape-copafacil', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceUrl }),
+      })
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload?.error ?? 'No se pudo analizar el link.')
+      const run = await createRun.mutateAsync(payload)
+      setSelectedRun(run)
+    } catch (err) {
+      setError(err?.message ?? 'No se pudo analizar el link.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function markReviewed(run) {
+    await updateRun.mutateAsync({
+      id: run.id,
+      values: {
+        status: 'reviewed',
+        reviewed_at: new Date().toISOString(),
+      },
+    })
+    if (activeRun?.id === run.id) {
+      setSelectedRun({ ...run, status: 'reviewed', reviewed_at: new Date().toISOString() })
+    }
+  }
+
+  return (
+    <div className="px-4 py-6 pb-28">
+      <div className="mb-5">
+        <h1 className="text-xl font-bold text-zinc-100">Scraping profundo</h1>
+        <p className="mt-1 text-xs text-zinc-500">
+          Captura datos externos en una bandeja de revision. Nada se importa ni recalcula tablas desde aca.
+        </p>
+      </div>
+
+      <section className="rounded-xl border border-surface-800 bg-surface-900 p-4">
+        <label className="mb-1 block text-xs font-semibold text-zinc-400">Link del torneo</label>
+        <div className="grid gap-2 sm:grid-cols-[1fr,auto]">
+          <input
+            value={sourceUrl}
+            onChange={(event) => setSourceUrl(event.target.value)}
+            className={INPUT}
+            placeholder="https://copafacil.com/torneo@division"
+          />
+          <Button onClick={analyzeSource} disabled={loading || createRun.isPending}>
+            {loading ? 'Analizando...' : 'Analizar y guardar'}
+          </Button>
+        </div>
+        <p className="mt-2 text-[11px] text-zinc-500">
+          Esta primera capa copia fixture, resultados, sedes detectables y una tabla calculada. El worker visual queda aislado para eventos, escudos y goleadores.
+        </p>
+        {error && (
+          <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
+            {error}
+          </p>
+        )}
+      </section>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-[22rem,1fr]">
+        <section className="rounded-xl border border-surface-800 bg-surface-900 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-bold text-zinc-100">Capturas</h2>
+            {isLoading && <Spinner />}
+          </div>
+          <div className="space-y-2">
+            {runs.length === 0 && (
+              <p className="rounded-lg border border-surface-800 bg-surface-950 p-3 text-xs text-zinc-500">
+                Todavia no hay capturas guardadas.
+              </p>
+            )}
+            {runs.map((run) => (
+              <RunCard
+                key={run.id}
+                run={run}
+                selected={activeRun?.id === run.id}
+                onSelect={setSelectedRun}
+                onMarkReviewed={markReviewed}
+              />
+            ))}
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          {!activeRun ? (
+            <div className="rounded-xl border border-surface-800 bg-surface-900 p-4 text-sm text-zinc-500">
+              Analiza un link para ver que puede copiar VMScore.
+            </div>
+          ) : (
+            <>
+              <div className="rounded-xl border border-surface-800 bg-surface-900 p-4">
+                <div className="flex items-start gap-3">
+                  {extracted.tournament?.logo_url && (
+                    <img
+                      src={extracted.tournament.logo_url}
+                      alt=""
+                      className="h-14 w-14 rounded-lg border border-surface-800 object-contain"
+                    />
+                  )}
+                  <div className="min-w-0">
+                    <h2 className="truncate text-lg font-black text-zinc-100">
+                      {extracted.tournament?.title || 'Torneo Copa Facil'}
+                    </h2>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      {activeRun.event_code}@{activeRun.division_code}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                  <Stat label="Partidos" value={counts.matches ?? 0} />
+                  <Stat label="Equipos" value={counts.teams ?? 0} />
+                  <Stat label="Fechas" value={counts.rounds ?? 0} />
+                  <Stat label="Finalizados" value={counts.finished_matches ?? 0} />
+                  <Stat label="Pendientes" value={counts.pending_matches ?? 0} />
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Capability enabled={capabilities.fixture} label="fixture" />
+                  <Capability enabled={capabilities.results} label="resultados" />
+                  <Capability enabled={capabilities.venues} label="sedes" />
+                  <Capability enabled={capabilities.computed_standings} label="tabla calculada" />
+                  <Capability enabled={capabilities.team_logos} label="escudos" />
+                  <Capability enabled={capabilities.player_rankings} label="goleadores" />
+                  <Capability enabled={capabilities.match_events} label="eventos" />
+                </div>
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-2">
+                <div className="rounded-xl border border-surface-800 bg-surface-900 p-4">
+                  <h3 className="mb-3 text-sm font-bold text-zinc-100">Fechas detectadas</h3>
+                  <div className="space-y-2">
+                    {roundPreview.map((round) => (
+                      <div key={round.round} className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-bold text-zinc-100">Fecha {round.round}</span>
+                          <span className="text-xs text-zinc-500">{round.total} partidos</span>
+                        </div>
+                        <p className="mt-1 text-xs text-zinc-500">
+                          {round.finished} finalizados · {round.scheduled} pendientes · {round.goals} goles
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-surface-800 bg-surface-900 p-4">
+                  <h3 className="mb-3 text-sm font-bold text-zinc-100">Equipos a mapear</h3>
+                  <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                    {teamPreview.map((team) => (
+                      <div key={team.external_team_id} className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+                        <p className="font-mono text-xs text-zinc-300">{team.external_team_id}</p>
+                        <p className="mt-1 text-[11px] text-zinc-500">{team.matches} partidos detectados</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-surface-800 bg-surface-900 p-4">
+                <h3 className="mb-3 text-sm font-bold text-zinc-100">Tabla calculada desde resultados</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[42rem] text-sm">
+                    <thead className="text-xs uppercase text-zinc-500">
+                      <tr>
+                        <th className="px-2 py-2 text-left">#</th>
+                        <th className="px-2 py-2 text-left">Equipo externo</th>
+                        <th className="px-2 py-2 text-right">PTS</th>
+                        <th className="px-2 py-2 text-right">PJ</th>
+                        <th className="px-2 py-2 text-right">G</th>
+                        <th className="px-2 py-2 text-right">E</th>
+                        <th className="px-2 py-2 text-right">P</th>
+                        <th className="px-2 py-2 text-right">DG</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {standingsPreview.map((row) => (
+                        <tr key={row.external_team_id} className="border-t border-surface-800">
+                          <td className="px-2 py-2 font-bold text-zinc-100">{row.position}</td>
+                          <td className="px-2 py-2 font-mono text-xs text-zinc-300">{row.external_team_id}</td>
+                          <td className="px-2 py-2 text-right font-black text-zinc-100">{row.points}</td>
+                          <td className="px-2 py-2 text-right text-zinc-400">{row.played}</td>
+                          <td className="px-2 py-2 text-right text-zinc-400">{row.won}</td>
+                          <td className="px-2 py-2 text-right text-zinc-400">{row.drawn}</td>
+                          <td className="px-2 py-2 text-right text-zinc-400">{row.lost}</td>
+                          <td className="px-2 py-2 text-right text-zinc-400">{row.goal_diff}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-surface-800 bg-surface-900 p-4">
+                <h3 className="mb-3 text-sm font-bold text-zinc-100">Partidos de muestra</h3>
+                <div className="space-y-2">
+                  {matchesPreview.map((match) => (
+                    <div key={match.external_match_id} className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <span className="text-xs text-zinc-500">Fecha {match.round}</span>
+                        <span className="text-xs text-zinc-500">{match.scheduled_at ? new Date(match.scheduled_at).toLocaleString('es-AR') : 'Sin horario'}</span>
+                      </div>
+                      <div className="grid grid-cols-[1fr,auto,1fr] items-center gap-2">
+                        <span className="truncate font-mono text-xs text-zinc-300">{match.external_home_team_id}</span>
+                        <span className="font-black text-zinc-100">
+                          {match.home_score !== null && match.away_score !== null ? `${match.home_score} - ${match.away_score}` : 'vs'}
+                        </span>
+                        <span className="truncate text-right font-mono text-xs text-zinc-300">{match.external_away_team_id}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </section>
+      </div>
+    </div>
+  )
+}

@@ -25,6 +25,7 @@ import ManageNews      from './pages/admin/ManageNews'
 import ManageStandings from './pages/admin/ManageStandings'
 import ManageScorers   from './pages/admin/ManageScorers'
 import ManageExternalSources from './pages/admin/ManageExternalSources'
+import ManageDeepScraping from './pages/admin/ManageDeepScraping'
 
 function ProtectedRoute({ children }) {
   const { isAdmin, loading } = useAuth()
@@ -66,6 +67,7 @@ export default function App() {
         <Route path="posiciones"         element={<ManageStandings />} />
         <Route path="goleadores"         element={<ManageScorers />} />
         <Route path="importar"           element={<ManageExternalSources />} />
+        <Route path="scraping"           element={<ManageDeepScraping />} />
       </Route>
     </Routes>
   )
