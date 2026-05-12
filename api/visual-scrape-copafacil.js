@@ -36,11 +36,7 @@ async function launchBrowser() {
   })
 }
 
-async function captureRoute(page, route) {
-  await page.goto(route.url, { waitUntil: 'domcontentloaded', timeout: 45000 })
-  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => null)
-  await page.waitForTimeout(3500)
-
+async function captureCurrentView(page, route) {
   const pageInfo = await page.evaluate(() => {
     const meta = (name) =>
       document.querySelector(`meta[property="${name}"]`)?.getAttribute('content') ||
@@ -66,9 +62,24 @@ async function captureRoute(page, route) {
 
   return {
     ...route,
+    url: page.url(),
     ...pageInfo,
     screenshot_data_url: `data:image/jpeg;base64,${screenshot.toString('base64')}`,
   }
+}
+
+async function clickFlutterNav(page, target) {
+  const navTargets = {
+    home: { x: 104, y: 253 },
+    classification: { x: 117, y: 360 },
+    rankings: { x: 128, y: 466 },
+  }
+  const point = navTargets[target]
+  if (!point) return
+
+  await page.mouse.click(point.x, point.y)
+  await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => null)
+  await page.waitForTimeout(2500)
 }
 
 export default async function handler(request, response) {
@@ -81,11 +92,6 @@ export default async function handler(request, response) {
   try {
     const body = typeof request.body === 'string' ? JSON.parse(request.body || '{}') : request.body
     const sourceUrl = normalizeSourceUrl(body?.sourceUrl)
-    const routesToVisit = [
-      { key: 'home', label: 'Inicio', url: sourceUrl },
-      { key: 'classification', label: 'Clasificacion', url: `${sourceUrl}/classification` },
-      { key: 'rankings', label: 'Rankings', url: `${sourceUrl}/rankings` },
-    ]
 
     browser = await launchBrowser()
     const page = await browser.newPage({
@@ -111,13 +117,28 @@ export default async function handler(request, response) {
     })
 
     const routes = []
-    for (const route of routesToVisit) {
+    await page.goto(sourceUrl, { waitUntil: 'domcontentloaded', timeout: 45000 })
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => null)
+    await page.waitForTimeout(4500)
+
+    const captureSteps = [
+      { key: 'home', label: 'Inicio', action: null },
+      { key: 'classification', label: 'Clasificacion', action: 'classification' },
+      { key: 'rankings', label: 'Rankings', action: 'rankings' },
+    ]
+
+    for (const step of captureSteps) {
       try {
-        routes.push(await captureRoute(page, route))
+        if (step.action) {
+          await clickFlutterNav(page, step.action)
+        }
+        routes.push(await captureCurrentView(page, step))
       } catch (error) {
         routes.push({
-          ...route,
-          error: error?.message ?? 'No se pudo capturar la ruta.',
+          key: step.key,
+          label: step.label,
+          url: page.url(),
+          error: error?.message ?? 'No se pudo capturar la pantalla.',
         })
       }
     }
@@ -129,8 +150,8 @@ export default async function handler(request, response) {
       routes,
       network: networkSummary,
       findings: [
-        'La web de Copa Facil renderiza gran parte del contenido en Flutter/canvas.',
-        'El worker visual ya puede abrir el torneo, capturar pantallas y descubrir llamadas de red.',
+        'La web de Copa Facil navega dentro del mismo link; el worker usa clicks reales sobre el menu lateral.',
+        'El worker visual puede abrir el torneo, capturar pantallas y descubrir llamadas de red.',
         'Si goleadores/eventos no aparecen como JSON, el siguiente paso es OCR/click dirigido sobre las pantallas capturadas.',
       ],
       capabilities: {
