@@ -19,7 +19,7 @@ function Capability({ enabled, label }) {
     <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${
       enabled ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300'
     }`}>
-      {enabled ? 'Listo' : 'Pendiente'} · {label}
+      {enabled ? 'Listo' : 'Pendiente'} - {label}
     </span>
   )
 }
@@ -161,7 +161,7 @@ export default function ManageDeepScraping() {
         )}
       </section>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-[22rem,1fr]">
+      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,22rem),minmax(0,1fr)]">
         <section className="rounded-xl border border-surface-800 bg-surface-900 p-4">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-bold text-zinc-100">Capturas</h2>
@@ -185,7 +185,7 @@ export default function ManageDeepScraping() {
           </div>
         </section>
 
-        <section className="space-y-4">
+        <section className="min-w-0 space-y-4">
           {!activeRun ? (
             <div className="rounded-xl border border-surface-800 bg-surface-900 p-4 text-sm text-zinc-500">
               Analiza un link para ver que puede copiar VMScore.
@@ -241,7 +241,7 @@ export default function ManageDeepScraping() {
                           <span className="text-xs text-zinc-500">{round.total} partidos</span>
                         </div>
                         <p className="mt-1 text-xs text-zinc-500">
-                          {round.finished} finalizados · {round.scheduled} pendientes · {round.goals} goles
+                          {round.finished} finalizados - {round.scheduled} pendientes - {round.goals} goles
                         </p>
                       </div>
                     ))}
@@ -261,27 +261,55 @@ export default function ManageDeepScraping() {
                 </div>
               </div>
 
-              <div className="rounded-xl border border-surface-800 bg-surface-900 p-4">
-                <h3 className="mb-3 text-sm font-bold text-zinc-100">Tabla calculada desde resultados</h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[42rem] text-sm">
+              <div className="min-w-0 rounded-xl border border-surface-800 bg-surface-900 p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-bold text-zinc-100">Tabla calculada desde resultados</h3>
+                  <span className="hidden text-[11px] text-zinc-500 sm:inline">Desliza para ver columnas</span>
+                </div>
+
+                <div className="space-y-2 sm:hidden">
+                  {standingsPreview.map((row) => (
+                    <div key={row.external_team_id} className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-black text-zinc-100">#{row.position}</p>
+                          <p className="truncate font-mono text-xs text-zinc-400">{row.external_team_id}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xl font-black text-zinc-100">{row.points}</p>
+                          <p className="text-[11px] font-bold uppercase text-zinc-500">PTS</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 grid grid-cols-5 gap-1 text-center text-xs">
+                        <span className="rounded bg-surface-800 px-1.5 py-1 text-zinc-300">PJ {row.played}</span>
+                        <span className="rounded bg-surface-800 px-1.5 py-1 text-zinc-300">G {row.won}</span>
+                        <span className="rounded bg-surface-800 px-1.5 py-1 text-zinc-300">E {row.drawn}</span>
+                        <span className="rounded bg-surface-800 px-1.5 py-1 text-zinc-300">P {row.lost}</span>
+                        <span className="rounded bg-surface-800 px-1.5 py-1 text-zinc-300">DG {row.goal_diff}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="hidden min-w-0 overflow-x-auto rounded-lg border border-surface-800 sm:block">
+                  <table className="w-full min-w-[38rem] table-fixed text-sm">
                     <thead className="text-xs uppercase text-zinc-500">
-                      <tr>
-                        <th className="px-2 py-2 text-left">#</th>
+                      <tr className="bg-surface-950">
+                        <th className="w-12 px-2 py-2 text-left">#</th>
                         <th className="px-2 py-2 text-left">Equipo externo</th>
-                        <th className="px-2 py-2 text-right">PTS</th>
-                        <th className="px-2 py-2 text-right">PJ</th>
-                        <th className="px-2 py-2 text-right">G</th>
-                        <th className="px-2 py-2 text-right">E</th>
-                        <th className="px-2 py-2 text-right">P</th>
-                        <th className="px-2 py-2 text-right">DG</th>
+                        <th className="w-16 px-2 py-2 text-right">PTS</th>
+                        <th className="w-14 px-2 py-2 text-right">PJ</th>
+                        <th className="w-14 px-2 py-2 text-right">G</th>
+                        <th className="w-14 px-2 py-2 text-right">E</th>
+                        <th className="w-14 px-2 py-2 text-right">P</th>
+                        <th className="w-14 px-2 py-2 text-right">DG</th>
                       </tr>
                     </thead>
                     <tbody>
                       {standingsPreview.map((row) => (
                         <tr key={row.external_team_id} className="border-t border-surface-800">
                           <td className="px-2 py-2 font-bold text-zinc-100">{row.position}</td>
-                          <td className="px-2 py-2 font-mono text-xs text-zinc-300">{row.external_team_id}</td>
+                          <td className="truncate px-2 py-2 font-mono text-xs text-zinc-300">{row.external_team_id}</td>
                           <td className="px-2 py-2 text-right font-black text-zinc-100">{row.points}</td>
                           <td className="px-2 py-2 text-right text-zinc-400">{row.played}</td>
                           <td className="px-2 py-2 text-right text-zinc-400">{row.won}</td>
