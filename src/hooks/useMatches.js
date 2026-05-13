@@ -168,6 +168,35 @@ export function useUpdateMatch() {
   })
 }
 
+export function useUpdateMatchDetails() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, scheduledAtLocal, ...data }) => {
+      const payload = { ...data }
+      if (scheduledAtLocal) {
+        payload.scheduled_at = localToUTC(scheduledAtLocal)
+        payload.date_tbd = false
+      } else {
+        payload.scheduled_at = null
+        payload.date_tbd = true
+      }
+
+      const { error } = await supabase
+        .from('matches')
+        .update({ ...payload, updated_at: new Date().toISOString() })
+        .eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['matches'] })
+      qc.invalidateQueries({ queryKey: ['match'] })
+      qc.invalidateQueries({ queryKey: ['matches-home'] })
+      qc.invalidateQueries({ queryKey: ['home-matches'] })
+      qc.invalidateQueries({ queryKey: ['matches-all-with-external'] })
+    },
+  })
+}
+
 export function useDeleteMatch() {
   const qc = useQueryClient()
   return useMutation({
