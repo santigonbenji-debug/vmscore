@@ -5,6 +5,7 @@ import Spinner from '../components/ui/Spinner'
 import { useTeam } from '../hooks/useTeams'
 import { useTeamMatches } from '../hooks/useMatches'
 import { useTeamPlayers } from '../hooks/useRosters'
+import { useTeamStandings } from '../hooks/useStandings'
 import { formatFechaLarga, formatHora, labelStatus } from '../lib/helpers'
 
 const GENDERS = [
@@ -117,12 +118,54 @@ function MatchHistory({ teamId, matches, isLoading, onOpenMatch }) {
   )
 }
 
+function PositionSummary({ standings, isLoading }) {
+  if (isLoading) return <Spinner className="py-6" />
+  if (!standings.length) return null
+
+  return (
+    <section className="rounded-xl border border-surface-800 bg-surface-900 p-3">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-xs font-bold uppercase tracking-wide text-zinc-400">Posicion en tablas</h2>
+        <span className="text-xs font-semibold text-zinc-500">{standings.length}</span>
+      </div>
+      <div className="grid gap-2">
+        {standings.map((row) => (
+          <div key={`${row.phase_id}-${row.group_id ?? 'general'}`} className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-zinc-100">
+                  {row.league_name}{row.group_name ? ` - ${row.group_name}` : ''}
+                </p>
+                <p className="mt-0.5 truncate text-xs text-zinc-500">
+                  {row.phase_name} · {row.gender}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-2xl font-black text-primary">#{row.position}</p>
+                <p className="text-xs font-bold text-zinc-100">{row.points} pts</p>
+              </div>
+            </div>
+            <div className="mt-3 grid grid-cols-5 gap-1 text-center text-[11px]">
+              <span className="rounded bg-surface-800 px-1 py-1 text-zinc-300">PJ {row.played}</span>
+              <span className="rounded bg-surface-800 px-1 py-1 text-zinc-300">G {row.won}</span>
+              <span className="rounded bg-surface-800 px-1 py-1 text-zinc-300">E {row.drawn}</span>
+              <span className="rounded bg-surface-800 px-1 py-1 text-zinc-300">P {row.lost}</span>
+              <span className="rounded bg-surface-800 px-1 py-1 text-zinc-300">DG {row.goal_diff}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 export default function TeamProfile() {
   const { teamId } = useParams()
   const navigate = useNavigate()
   const { data: team, isLoading: loadingTeam } = useTeam(teamId)
   const { data: players = [], isLoading: loadingPlayers } = useTeamPlayers(teamId)
   const { data: matches = [], isLoading: loadingMatches } = useTeamMatches(teamId)
+  const { data: standings = [], isLoading: loadingStandings } = useTeamStandings(teamId)
 
   if (loadingTeam) return <Spinner className="py-16" />
 
@@ -163,6 +206,15 @@ export default function TeamProfile() {
         </div>
       </section>
 
+      <PositionSummary standings={standings} isLoading={loadingStandings} />
+
+      <MatchHistory
+        teamId={team.id}
+        matches={matches}
+        isLoading={loadingMatches}
+        onOpenMatch={(matchId) => navigate(`/partido/${matchId}`)}
+      />
+
       {loadingPlayers ? (
         <Spinner className="py-10" />
       ) : (
@@ -174,13 +226,6 @@ export default function TeamProfile() {
           />
         ))
       )}
-
-      <MatchHistory
-        teamId={team.id}
-        matches={matches}
-        isLoading={loadingMatches}
-        onOpenMatch={(matchId) => navigate(`/partido/${matchId}`)}
-      />
     </div>
   )
 }

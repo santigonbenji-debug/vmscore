@@ -185,15 +185,23 @@ export function useSaveResult() {
   return useMutation({
    mutationFn: async ({ matchId, homeScore, awayScore, events = [], mvpPlayerName = null, mvpTeamId = null, mvpPlayerId = null }) => {
   // 1. Actualizar partido con scores + MVP
-  const { error: matchError } = await supabase.from('matches').update({
-    home_score:      parseInt(homeScore),
-    away_score:      parseInt(awayScore),
-    status:          'finished',
+  const parsedHomeScore = homeScore === null || homeScore === undefined || homeScore === '' ? null : parseInt(homeScore)
+  const parsedAwayScore = awayScore === null || awayScore === undefined || awayScore === '' ? null : parseInt(awayScore)
+  const hasCompleteResult = Number.isFinite(parsedHomeScore) && Number.isFinite(parsedAwayScore)
+  const matchUpdate = {
     mvp_player_name: mvpPlayerName || null,
     mvp_team_id:     mvpTeamId || null,
     mvp_player_id:   mvpPlayerId || null,
     updated_at:      new Date().toISOString(),
-  }).eq('id', matchId)
+  }
+
+  if (hasCompleteResult) {
+    matchUpdate.home_score = parsedHomeScore
+    matchUpdate.away_score = parsedAwayScore
+    matchUpdate.status = 'finished'
+  }
+
+  const { error: matchError } = await supabase.from('matches').update(matchUpdate).eq('id', matchId)
   if (matchError) throw matchError
 
   // 2. Reemplazar eventos

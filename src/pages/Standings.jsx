@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import { useLeagues } from '../hooks/useLeagues'
@@ -42,7 +43,7 @@ function useAllScorers() {
   })
 }
 
-function StandingsTable({ rows }) {
+function StandingsTable({ rows, onTeamClick }) {
   return (
     <div className="bg-surface-900 rounded-xl border border-surface-800 overflow-hidden">
       <div className="overflow-x-auto" dir="ltr">
@@ -66,7 +67,11 @@ function StandingsTable({ rows }) {
                            : pos === 2 ? 'text-zinc-300'
                            : pos === 3 ? 'text-amber-700' : 'text-zinc-500'
             return (
-              <tr key={row.team_id ?? i} className="border-t border-surface-800 hover:bg-surface-800/50">
+              <tr
+                key={row.team_id ?? i}
+                onClick={() => row.team_id && onTeamClick(row.team_id)}
+                className="cursor-pointer border-t border-surface-800 hover:bg-surface-800/50"
+              >
                 <td className={`sticky left-0 z-10 bg-surface-900 px-2 py-2 font-bold ${posColor}`}>{pos}</td>
                 <td className="sticky left-8 z-10 bg-surface-900 px-2 py-2">
                   <div className="flex items-center gap-2 min-w-0">
@@ -120,6 +125,7 @@ const COMP_FILTERS = [
 ]
 
 export default function Standings() {
+  const navigate = useNavigate()
   const { data: ligas = [] }     = useLeagues()
   const { data: standings = [], isLoading: stLoading } = useAllStandings()
   const { data: events = [],    isLoading: scLoading } = useAllScorers()
@@ -265,7 +271,7 @@ export default function Standings() {
               )}
             </div>
 
-            <StandingsTable rows={t.rows} />
+            <StandingsTable rows={t.rows} onTeamClick={(teamId) => navigate(`/equipo/${teamId}`)} />
             <ScorersList scorers={scorers} />
           </section>
         )

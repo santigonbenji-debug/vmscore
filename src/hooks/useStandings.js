@@ -15,3 +15,20 @@ export function useStandings({ phaseId, groupId } = {}) {
     enabled: !!phaseId,
   })
 }
+
+export function useTeamStandings(teamId) {
+  return useQuery({
+    queryKey: ['team-standings', teamId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('v_standings')
+        .select('*')
+        .eq('team_id', teamId)
+        .order('year', { ascending: false, nullsFirst: false })
+        .order('position', { ascending: true })
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!teamId,
+  })
+}

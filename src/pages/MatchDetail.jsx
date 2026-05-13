@@ -135,7 +135,15 @@ export default function MatchDetail() {
         </div>
 
         <div className="flex items-center gap-3 max-w-md mx-auto">
-          <div className="flex-1 flex flex-col items-center gap-2 min-w-0">
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => navigate(`/equipo/${match.home_team_id}`)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') navigate(`/equipo/${match.home_team_id}`)
+            }}
+            className="flex-1 flex flex-col items-center gap-2 min-w-0"
+          >
             <div className="relative">
               <TeamLogo logoUrl={match.home_team_logo_url} name={match.home_team_name} color={match.home_primary_color} size="lg" className="border-2 border-white/20" />
               <FavoriteButton teamId={match.home_team_id} className="absolute -right-3 -top-3 bg-surface-950/90 border border-surface-700 p-1.5" />
@@ -160,7 +168,15 @@ export default function MatchDetail() {
             )}
           </div>
 
-          <div className="flex-1 flex flex-col items-center gap-2 min-w-0">
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => navigate(`/equipo/${match.away_team_id}`)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') navigate(`/equipo/${match.away_team_id}`)
+            }}
+            className="flex-1 flex flex-col items-center gap-2 min-w-0"
+          >
             <div className="relative">
               <TeamLogo logoUrl={match.away_team_logo_url} name={match.away_team_name} color={match.away_primary_color} size="lg" className="border-2 border-white/20" />
               <FavoriteButton teamId={match.away_team_id} className="absolute -right-3 -top-3 bg-surface-950/90 border border-surface-700 p-1.5" />

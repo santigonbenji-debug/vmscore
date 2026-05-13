@@ -6,6 +6,8 @@ import Modal from '../../components/ui/Modal'
 import Spinner from '../../components/ui/Spinner'
 import { useLeagues, usePhases } from '../../hooks/useLeagues'
 import { useTeams } from '../../hooks/useTeams'
+import { useVenues } from '../../hooks/useVenues'
+import { useReferees } from '../../hooks/useReferees'
 import {
   useComputeExternalArchiveMatch,
   useExternalMatchArchive,
@@ -13,6 +15,7 @@ import {
   useExternalTeamMappings,
   useImportCopaFacilMatches,
   useOfficialMatchesForLeague,
+  usePublishExternalArchiveMatch,
   useSaveExternalTeamMappings,
   useUpdateExternalArchiveMatch,
   useUpsertExternalSource,
@@ -74,6 +77,8 @@ export default function ManageExternalSources() {
     awayScore: '',
     status: 'scheduled',
     reviewStatus: 'pending',
+    venueId: '',
+    refereeId: '',
     notes: '',
   })
 
@@ -83,6 +88,8 @@ export default function ManageExternalSources() {
   const selectedSource = sources.find((source) => source.id === selectedSourceId)
   const selectedLeague = leagues.find((league) => league.id === (selectedSource?.league_id ?? form.league_id))
   const { data: teams = [] } = useTeams({ sportId: selectedLeague?.sport_id })
+  const { data: canchas = [] } = useVenues()
+  const { data: arbitros = [] } = useReferees()
   const { data: savedMappings = [] } = useExternalTeamMappings(selectedSourceId)
   const { data: archive = [], isLoading: loadingArchive } = useExternalMatchArchive(selectedSourceId)
   const { data: officialMatches = [] } = useOfficialMatchesForLeague(selectedSource?.league_id)
@@ -92,6 +99,7 @@ export default function ManageExternalSources() {
   const importMatches = useImportCopaFacilMatches()
   const updateArchiveMatch = useUpdateExternalArchiveMatch()
   const computeArchiveMatch = useComputeExternalArchiveMatch()
+  const publishArchiveMatch = usePublishExternalArchiveMatch()
 
   useEffect(() => {
     if (phases.length > 0 && !form.phase_id) {
@@ -226,6 +234,8 @@ export default function ManageExternalSources() {
       awayScore: match.away_score ?? '',
       status: match.status ?? 'scheduled',
       reviewStatus: match.review_status ?? 'pending',
+      venueId: match.venue_id ?? '',
+      refereeId: match.referee_id ?? '',
       notes: match.admin_notes ?? '',
     })
   }
@@ -249,8 +259,10 @@ export default function ManageExternalSources() {
         date_tbd: !scheduledAt,
         home_score: homeScore,
         away_score: awayScore,
-        status: hasScore ? 'finished' : archiveForm.status,
+        status: hasScore ? 'finished' : (archiveForm.status === 'finished' ? 'scheduled' : archiveForm.status),
         review_status: reviewStatus,
+        venue_id: archiveForm.venueId || null,
+        referee_id: archiveForm.refereeId || null,
         admin_notes: archiveForm.notes || null,
       },
     })
@@ -274,6 +286,23 @@ export default function ManageExternalSources() {
       setEditingArchive(null)
     } catch (error) {
       setArchiveActionError(error?.message ?? 'No se pudo computar el partido en la tabla.')
+    }
+  }
+
+  async function publishArchiveEditor() {
+    if (!editingArchive) return
+    setArchiveActionError('')
+    try {
+      const saved = await saveArchiveEditor(false, { close: false })
+      if (!saved) return
+      const matchId = await publishArchiveMatch.mutateAsync({
+        id: editingArchive.id,
+        sourceId: selectedSourceId,
+        leagueId: selectedSource?.league_id,
+      })
+      setEditingArchive((current) => current ? { ...current, computed_match_id: matchId } : current)
+    } catch (error) {
+      setArchiveActionError(error?.message ?? 'No se pudo publicar el partido.')
     }
   }
 
@@ -448,7 +477,7 @@ export default function ManageExternalSources() {
                       <div className="mb-2 flex items-center justify-between gap-2">
                         <span className="text-xs text-zinc-500">Fecha {match.round ?? '-'} · {matchDate}</span>
                         <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
-                          computed
+                        computed
                             ? 'bg-primary/15 text-primary'
                             : match.review_status === 'confirmed'
                             ? 'bg-emerald-500/15 text-emerald-300'
@@ -456,7 +485,7 @@ export default function ManageExternalSources() {
                               ? 'bg-sky-500/15 text-sky-300'
                               : 'bg-amber-500/15 text-amber-300'
                         }`}>
-                          {computed ? 'Computado' : match.review_status === 'confirmed' ? 'Confirmado' : complete ? 'Completo' : 'Pendiente'}
+                          {computed ? 'Publicado' : match.review_status === 'confirmed' ? 'Confirmado' : complete ? 'Completo' : 'Pendiente'}
                         </span>
                       </div>
                       <div className="grid grid-cols-[1fr,auto,1fr] items-center gap-2 text-sm">
@@ -470,6 +499,11 @@ export default function ManageExternalSources() {
                           {teamName(match.mapped_away_team_id, match.external_away_team_id)}
                         </span>
                       </div>
+                      {match.venue_id && (
+                        <p className="mt-2 truncate text-xs text-zinc-500">
+                          Cancha: {canchas.find((cancha) => cancha.id === match.venue_id)?.name ?? 'Asignada'}
+                        </p>
+                      )}
                     </button>
                   )
                 })}
@@ -681,6 +715,35 @@ export default function ManageExternalSources() {
             />
           </div>
 
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-zinc-400">Cancha</label>
+              <select
+                value={archiveForm.venueId}
+                onChange={(event) => setArchiveForm({ ...archiveForm, venueId: event.target.value })}
+                className={INPUT}
+              >
+                <option value="">Sin asignar</option>
+                {canchas.map((cancha) => (
+                  <option key={cancha.id} value={cancha.id}>{cancha.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-zinc-400">Arbitro</label>
+              <select
+                value={archiveForm.refereeId}
+                onChange={(event) => setArchiveForm({ ...archiveForm, refereeId: event.target.value })}
+                className={INPUT}
+              >
+                <option value="">Sin asignar</option>
+                {arbitros.map((arbitro) => (
+                  <option key={arbitro.id} value={arbitro.id}>{arbitro.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="mb-1 block text-xs font-semibold text-zinc-400">Goles local</label>
@@ -743,7 +806,7 @@ export default function ManageExternalSources() {
           </div>
 
           <div className="rounded-lg border border-primary/25 bg-primary/10 p-3 text-xs text-primary-light">
-            Computar tabla crea o actualiza el partido oficial en VMScore y recalcula posiciones. Confirmar historico solo lo deja visible como dato revisado.
+            Publicar crea o actualiza el partido oficial para cargar cancha, formacion y eventos sin tocar la tabla. Computar tabla se usa cuando el resultado ya esta confirmado.
           </div>
 
           {archiveActionError && (
@@ -752,24 +815,41 @@ export default function ManageExternalSources() {
             </p>
           )}
 
-          <div className="grid grid-cols-1 gap-2 pt-2 sm:grid-cols-3">
+          {editingArchive?.computed_match_id && (
+            <Button
+              variant="outline"
+              onClick={() => { window.location.href = `/admin/resultado/${editingArchive.computed_match_id}` }}
+              className="w-full"
+            >
+              Cargar detalles y eventos
+            </Button>
+          )}
+
+          <div className="grid grid-cols-1 gap-2 pt-2 sm:grid-cols-4">
             <Button
               variant="secondary"
               onClick={() => saveArchiveEditor(false)}
-              disabled={updateArchiveMatch.isPending || computeArchiveMatch.isPending}
+              disabled={updateArchiveMatch.isPending || computeArchiveMatch.isPending || publishArchiveMatch.isPending}
             >
               Guardar
             </Button>
             <Button
               variant="secondary"
+              onClick={publishArchiveEditor}
+              disabled={updateArchiveMatch.isPending || computeArchiveMatch.isPending || publishArchiveMatch.isPending}
+            >
+              {publishArchiveMatch.isPending ? 'Publicando...' : editingArchive?.computed_match_id ? 'Actualizar oficial' : 'Publicar partido'}
+            </Button>
+            <Button
+              variant="secondary"
               onClick={() => saveArchiveEditor(true)}
-              disabled={updateArchiveMatch.isPending || computeArchiveMatch.isPending}
+              disabled={updateArchiveMatch.isPending || computeArchiveMatch.isPending || publishArchiveMatch.isPending}
             >
               Confirmar historico
             </Button>
             <Button
               onClick={computeArchiveEditor}
-              disabled={updateArchiveMatch.isPending || computeArchiveMatch.isPending}
+              disabled={updateArchiveMatch.isPending || computeArchiveMatch.isPending || publishArchiveMatch.isPending}
             >
               {computeArchiveMatch.isPending
                 ? 'Computando...'

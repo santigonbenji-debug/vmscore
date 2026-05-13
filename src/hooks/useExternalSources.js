@@ -97,6 +97,8 @@ export function useImportCopaFacilMatches() {
           external_away_team_id: match.external_away_team_id,
           mapped_home_team_id: match.home_team_id,
           mapped_away_team_id: match.away_team_id,
+          venue_id: match.venue_id ?? null,
+          referee_id: match.referee_id ?? null,
           round: match.round,
           status: match.status,
           home_score: match.status === 'finished' ? match.home_score : null,
@@ -195,6 +197,27 @@ export function useComputeExternalArchiveMatch() {
       qc.invalidateQueries({ queryKey: ['home-matches'] })
       qc.invalidateQueries({ queryKey: ['standings'] })
       qc.invalidateQueries({ queryKey: ['standings-admin'] })
+    },
+  })
+}
+
+export function usePublishExternalArchiveMatch() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id }) => {
+      const { data, error } = await supabase.rpc('publish_external_match', {
+        p_archive_id: id,
+      })
+      if (error) throw error
+      return data
+    },
+    onSuccess: (_, { sourceId, leagueId }) => {
+      qc.invalidateQueries({ queryKey: ['external-match-archive', sourceId] })
+      qc.invalidateQueries({ queryKey: ['official-matches-for-league', leagueId] })
+      qc.invalidateQueries({ queryKey: ['matches'] })
+      qc.invalidateQueries({ queryKey: ['matches-home'] })
+      qc.invalidateQueries({ queryKey: ['home-matches'] })
+      qc.invalidateQueries({ queryKey: ['matches-all-with-external'] })
     },
   })
 }
