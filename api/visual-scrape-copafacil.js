@@ -130,14 +130,15 @@ async function captureScrolledView(page, route) {
 
 async function clickFlutterNav(page, target) {
   const navTargets = {
-    classification: { x: 112, y: 226 },
-    rankings: { x: 128, y: 306 },
+    classification: { x: 116, y: 358 },
+    rankings: { x: 128, y: 466 },
   }
   const point = navTargets[target]
   if (!point) return
 
+  await resetFlutterScroll(page)
   await page.mouse.click(point.x, point.y)
-  await page.waitForTimeout(1800)
+  await page.waitForTimeout(2400)
 }
 
 async function resetFlutterScroll(page) {
