@@ -130,8 +130,8 @@ async function captureScrolledView(page, route) {
 
 async function clickFlutterNav(page, target) {
   const navTargets = {
-    classification: { x: 116, y: 358 },
-    rankings: { x: 128, y: 466 },
+    classification: { x: 430, y: 735 },
+    rankings: { x: 575, y: 735 },
   }
   const point = navTargets[target]
   if (!point) return
