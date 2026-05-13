@@ -313,7 +313,7 @@ export default function ManageDeepScraping() {
                     <div>
                       <h3 className="text-sm font-bold text-zinc-100">Worker visual</h3>
                       <p className="mt-1 text-xs text-zinc-500">
-                        Abre Copa Facil como navegador real, captura pantallas y descubre endpoints.
+                        Abre Copa Facil como navegador real y captura Clasificacion y Rankings con scroll.
                       </p>
                     </div>
                     <Button onClick={runVisualScrape} disabled={visualLoading || updateRun.isPending}>

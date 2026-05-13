@@ -109,9 +109,9 @@ async function captureScrolledView(page, route) {
 
   captures.push(await captureShot(page, 'arriba', 0))
 
-  for (let index = 1; index <= 1; index += 1) {
+  for (let index = 1; index <= 2; index += 1) {
     await page.mouse.move(840, 500)
-    await page.mouse.wheel(0, 980)
+    await page.mouse.wheel(0, 860)
     await page.waitForTimeout(800)
     lastInfo = await readPageInfo(page)
     ;(lastInfo.image_sources ?? []).forEach((src) => imageSources.add(src))
@@ -130,15 +130,22 @@ async function captureScrolledView(page, route) {
 
 async function clickFlutterNav(page, target) {
   const navTargets = {
-    home: { x: 104, y: 253 },
-    classification: { x: 117, y: 360 },
-    rankings: { x: 128, y: 466 },
+    classification: { x: 112, y: 226 },
+    rankings: { x: 128, y: 306 },
   }
   const point = navTargets[target]
   if (!point) return
 
   await page.mouse.click(point.x, point.y)
   await page.waitForTimeout(1800)
+}
+
+async function resetFlutterScroll(page) {
+  await page.mouse.move(840, 500)
+  for (let i = 0; i < 4; i += 1) {
+    await page.mouse.wheel(0, -1000)
+    await page.waitForTimeout(250)
+  }
 }
 
 export default async function handler(request, response) {
@@ -180,7 +187,6 @@ export default async function handler(request, response) {
     await page.waitForTimeout(4500)
 
     const captureSteps = [
-      { key: 'home', label: 'Inicio', action: null, scroll: true },
       { key: 'classification', label: 'Clasificacion', action: 'classification', scroll: true },
       { key: 'rankings', label: 'Rankings', action: 'rankings', scroll: true },
     ]
@@ -190,6 +196,7 @@ export default async function handler(request, response) {
         if (step.action) {
           await clickFlutterNav(page, step.action)
         }
+        await resetFlutterScroll(page)
         routes.push(step.scroll
           ? await captureScrolledView(page, step)
           : await captureCurrentView(page, step)
@@ -212,7 +219,7 @@ export default async function handler(request, response) {
       network: networkSummary,
       findings: [
         'La web de Copa Facil navega dentro del mismo link; el worker usa clicks reales sobre el menu lateral.',
-        'El worker visual abre el torneo, hace scroll por seccion, captura varias pantallas y descubre llamadas de red.',
+        'El worker visual captura Clasificacion y Rankings con scroll por seccion.',
         'Si goleadores/eventos no aparecen como JSON, el siguiente paso es OCR/click dirigido sobre las pantallas capturadas.',
       ],
       capabilities: {
