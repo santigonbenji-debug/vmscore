@@ -58,7 +58,7 @@ async function readPageInfo(page) {
 async function captureShot(page, label, index) {
   const screenshot = await page.screenshot({
     type: 'jpeg',
-    quality: 28,
+    quality: 72,
     fullPage: false,
   })
 

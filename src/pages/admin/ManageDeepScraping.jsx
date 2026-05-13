@@ -95,8 +95,10 @@ export default function ManageDeepScraping() {
   const [selectedRun, setSelectedRun] = useState(null)
   const [error, setError] = useState('')
   const [visualError, setVisualError] = useState('')
+  const [ocrError, setOcrError] = useState('')
   const [loading, setLoading] = useState(false)
   const [visualLoading, setVisualLoading] = useState(false)
+  const [ocrLoading, setOcrLoading] = useState(false)
 
   const { data: runs = [], isLoading } = useDeepScrapeRuns()
   const createRun = useCreateDeepScrapeRun()
@@ -111,6 +113,7 @@ export default function ManageDeepScraping() {
   const standings = extracted.standings ?? []
   const matches = extracted.matches ?? []
   const visualSummary = extracted.visual ?? null
+  const rankingsOcr = extracted.visual_ocr?.rankings ?? null
   const rawVisual = activeRun?.raw?.visual ?? null
   const roundPreview = rounds.slice(0, 8)
   const teamPreview = teams.slice(0, 14)
@@ -204,6 +207,59 @@ export default function ManageDeepScraping() {
       setVisualError(err?.message ?? 'No se pudo ejecutar el worker visual.')
     } finally {
       setVisualLoading(false)
+    }
+  }
+
+  async function runRankingsOcr() {
+    if (!activeRun || !rawVisual) return
+    const rankingsRoute = (rawVisual.routes ?? []).find((route) => route.key === 'rankings')
+    const captures = rankingsRoute?.captures ?? []
+    if (captures.length === 0) {
+      setOcrError('Primero ejecuta el worker visual para generar capturas de Rankings.')
+      return
+    }
+
+    setOcrError('')
+    setOcrLoading(true)
+    try {
+      const { extractRankingsOcr } = await import('../../lib/ocrRankings')
+      const ocr = await extractRankingsOcr(captures)
+      const nextExtracted = {
+        ...extracted,
+        capabilities: {
+          ...(extracted.capabilities ?? {}),
+          visual_ocr_rankings: true,
+        },
+        visual_ocr: {
+          ...(extracted.visual_ocr ?? {}),
+          rankings: ocr,
+        },
+      }
+      const nextRaw = {
+        ...(activeRun.raw ?? {}),
+        visual_ocr: {
+          ...(activeRun.raw?.visual_ocr ?? {}),
+          rankings: ocr,
+        },
+      }
+
+      await updateRun.mutateAsync({
+        id: activeRun.id,
+        values: {
+          extracted: nextExtracted,
+          raw: nextRaw,
+        },
+      })
+
+      setSelectedRun({
+        ...activeRun,
+        extracted: nextExtracted,
+        raw: nextRaw,
+      })
+    } catch (err) {
+      setOcrError(err?.message ?? 'No se pudo ejecutar OCR de Rankings.')
+    } finally {
+      setOcrLoading(false)
     }
   }
 
@@ -306,6 +362,7 @@ export default function ManageDeepScraping() {
                   <Capability enabled={capabilities.player_rankings} label="goleadores" />
                   <Capability enabled={capabilities.match_events} label="eventos" />
                   <Capability enabled={capabilities.visual_worker_executed} label="worker visual" />
+                  <Capability enabled={capabilities.visual_ocr_rankings} label="OCR goleadores" />
                 </div>
 
                 <div className="mt-4 rounded-xl border border-surface-800 bg-surface-950 p-3">
@@ -417,6 +474,64 @@ export default function ManageDeepScraping() {
                       )}
                     </div>
                   </div>
+                </div>
+              )}
+
+              {rawVisual && (
+                <div className="rounded-xl border border-surface-800 bg-surface-900 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-zinc-100">OCR de Rankings</h3>
+                      <p className="mt-1 text-xs text-zinc-500">
+                        Lee goleadores desde las capturas visuales y los guarda como borrador revisable.
+                      </p>
+                    </div>
+                    <Button onClick={runRankingsOcr} disabled={ocrLoading || updateRun.isPending}>
+                      {ocrLoading ? 'Leyendo...' : 'Extraer goleadores'}
+                    </Button>
+                  </div>
+
+                  {ocrError && (
+                    <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
+                      {ocrError}
+                    </p>
+                  )}
+
+                  {rankingsOcr && (
+                    <div className="mt-4">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <p className="text-xs font-bold text-zinc-100">
+                          {rankingsOcr.counts?.scorers ?? 0} goleadores detectados
+                        </p>
+                        <p className="text-[11px] text-zinc-500">
+                          {rankingsOcr.counts?.captures ?? 0} capturas leidas
+                        </p>
+                      </div>
+
+                      {(rankingsOcr.scorers ?? []).length === 0 ? (
+                        <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+                          OCR no detecto filas confiables. Podemos mejorar con recorte de imagen o OCR por zonas.
+                        </p>
+                      ) : (
+                        <div className="overflow-hidden rounded-lg border border-surface-800">
+                          {(rankingsOcr.scorers ?? []).slice(0, 30).map((scorer) => (
+                            <div
+                              key={`${scorer.position}-${scorer.player_name}-${scorer.goals}`}
+                              className="grid grid-cols-[2.5rem,1fr,3rem] gap-2 border-b border-surface-800 bg-surface-950 px-3 py-2 last:border-b-0"
+                            >
+                              <span className="text-sm font-black text-zinc-100">#{scorer.position}</span>
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-bold text-zinc-100">{scorer.player_name}</p>
+                                <p className="truncate text-xs text-zinc-500">{scorer.team_name || 'Equipo pendiente'}</p>
+                                <p className="truncate font-mono text-[10px] text-zinc-600">{scorer.source_line}</p>
+                              </div>
+                              <span className="text-right text-lg font-black text-zinc-100">{scorer.goals}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
