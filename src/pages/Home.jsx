@@ -38,6 +38,12 @@ function getDateLabel(date) {
   return format(date, "EEE d 'de' MMM", { locale: es })
 }
 
+function formatRoundLabel(rounds = []) {
+  if (!rounds.length) return null
+  if (rounds.length === 1) return `Fecha ${rounds[0]}`
+  return `Fechas ${rounds.join(', ')}`
+}
+
 function buildDateGroups(partidos, mode = 'upcoming') {
   const groups = {}
   const visibles = partidos.filter((match) => match.status !== 'cancelled' && match.status !== 'postponed')
@@ -52,7 +58,6 @@ function buildDateGroups(partidos, mode = 'upcoming') {
       groups[dayKey] = {
         key: dayKey,
         fecha,
-        round: match.round,
         leagues: {},
       }
     }
@@ -63,19 +68,24 @@ function buildDateGroups(partidos, mode = 'upcoming') {
         id: leagueKey,
         name: match.league_name ?? 'Sin liga',
         icon: match.sport_icon ?? '⚽',
+        rounds: new Set(),
         partidos: [],
       }
     }
 
+    if (match.round != null) groups[dayKey].leagues[leagueKey].rounds.add(match.round)
     groups[dayKey].leagues[leagueKey].partidos.push(match)
   }
 
   return Object.values(groups)
     .map((day) => ({
       ...day,
+      rounds: [...new Set(Object.values(day.leagues).flatMap((league) => [...league.rounds]))]
+        .sort((a, b) => Number(a) - Number(b)),
       leagues: Object.values(day.leagues)
         .map((league) => ({
           ...league,
+          rounds: [...league.rounds].sort((a, b) => Number(a) - Number(b)),
           partidos: league.partidos.sort((a, b) => {
             if (!a.scheduled_at && !b.scheduled_at) return String(a.id).localeCompare(String(b.id))
             if (!a.scheduled_at) return 1
@@ -86,7 +96,7 @@ function buildDateGroups(partidos, mode = 'upcoming') {
         .sort((a, b) => a.name.localeCompare(b.name)),
     }))
     .sort((a, b) => {
-      if (!a.fecha && !b.fecha) return Number(a.round ?? 999) - Number(b.round ?? 999)
+      if (!a.fecha && !b.fecha) return String(a.key).localeCompare(String(b.key))
       if (!a.fecha) return mode === 'upcoming' ? 1 : -1
       if (!b.fecha) return mode === 'upcoming' ? -1 : 1
       return mode === 'previous' ? b.fecha - a.fecha : a.fecha - b.fecha
@@ -296,30 +306,32 @@ export default function Home() {
                   {day.fecha ? format(day.fecha, 'MMM', { locale: es }) : 'FECHA'}
                 </p>
                 <p className="text-lg font-extrabold leading-tight">
-                  {day.fecha ? format(day.fecha, 'd') : day.round ?? '-'}
+                  {day.fecha ? format(day.fecha, 'd') : day.rounds[0] ?? '-'}
                 </p>
               </div>
               <div className="min-w-0">
                 <p className="font-bold text-sm truncate text-zinc-100">
-                  {day.fecha ? getDateLabel(day.fecha) : `Fecha ${day.round ?? '-'}`}
+                  {day.fecha ? getDateLabel(day.fecha) : formatRoundLabel(day.rounds) ?? 'Fecha a definir'}
                 </p>
                 <p className="text-xs text-zinc-500 capitalize">
                   {day.fecha ? format(day.fecha, 'EEEE', { locale: es }) : 'Dia y horario a definir'}
                 </p>
               </div>
             </div>
-            {day.round && (
-              <div className="shrink-0 rounded-full bg-surface-800 px-2.5 py-1 text-xs font-bold text-primary">
-                Fecha {day.round}
-              </div>
-            )}
           </div>
 
           {day.leagues.map((league) => (
             <div key={league.id} className="mb-3">
-              <div className="flex items-center gap-2 px-1 py-1.5">
-                <span className="text-base">{league.icon}</span>
-                <p className="text-xs font-semibold text-zinc-300 truncate">{league.name}</p>
+              <div className="flex items-center justify-between gap-2 px-1 py-1.5">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-base">{league.icon}</span>
+                  <p className="text-xs font-semibold text-zinc-300 truncate">{league.name}</p>
+                </div>
+                {formatRoundLabel(league.rounds) && (
+                  <div className="shrink-0 rounded-full bg-surface-800 px-2.5 py-1 text-xs font-bold text-primary">
+                    {formatRoundLabel(league.rounds)}
+                  </div>
+                )}
               </div>
               <div className="bg-surface-900 rounded-xl border border-surface-800 shadow-sm overflow-hidden">
                 {league.partidos.map((p) => (
