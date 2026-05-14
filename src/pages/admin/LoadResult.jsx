@@ -4,6 +4,13 @@ import { useMatch, useSaveResult } from '../../hooks/useMatches'
 import { useAuth } from '../../hooks/useAuth'
 import { useTeamPlayers } from '../../hooks/useRosters'
 import { useAddMatchLineupPlayer, useMatchLineups, useRemoveMatchLineupPlayer } from '../../hooks/useLineups'
+import {
+  useLiveSyncEvents,
+  useMatchLiveLink,
+  useSaveMatchLiveLink,
+  useSyncLocosVmLive,
+  useUpdateLiveSyncEvent,
+} from '../../hooks/useLiveSync'
 import Button from '../../components/ui/Button'
 import Spinner from '../../components/ui/Spinner'
 
@@ -76,6 +83,7 @@ export default function LoadResult() {
   const [mvpTeamId, setMvpTeamId] = useState('')
   const [mvpPlayerId, setMvpPlayerId] = useState('')
   const [lineupForm, setLineupForm] = useState(LINEUP_FORM)
+  const [locosInput, setLocosInput] = useState('')
 
   const puedeCargarResultado = isSuperAdmin || isLigaAdmin
   const miEquipoId = isClubAdmin ? teamId : null
@@ -86,6 +94,11 @@ export default function LoadResult() {
 
   const { data: homePlayers = [] } = useTeamPlayers(data?.match?.home_team_id)
   const { data: awayPlayers = [] } = useTeamPlayers(data?.match?.away_team_id)
+  const { data: liveLink } = useMatchLiveLink(matchId)
+  const { data: liveEvents = [] } = useLiveSyncEvents(matchId)
+  const saveLiveLink = useSaveMatchLiveLink()
+  const syncLocosVm = useSyncLocosVmLive()
+  const updateLiveEvent = useUpdateLiveSyncEvent()
 
   useEffect(() => {
     if (!data?.match) return
@@ -104,6 +117,12 @@ export default function LoadResult() {
       notes: event.notes ?? '',
     })))
   }, [data])
+
+  useEffect(() => {
+    if (liveLink?.external_url || liveLink?.external_match_id) {
+      setLocosInput(liveLink.external_url || liveLink.external_match_id)
+    }
+  }, [liveLink])
 
   // ⚠️ Todos los hooks DEBEN llamarse antes de cualquier return temprano.
   const match = data?.match
@@ -207,6 +226,55 @@ export default function LoadResult() {
     setEvents(events.filter((_, i) => i !== idx))
   }
 
+  async function vincularLocosVm() {
+    if (!match || !locosInput.trim()) return
+    const link = await saveLiveLink.mutateAsync({
+      matchId,
+      externalMatchId: locosInput,
+      externalUrl: locosInput,
+    })
+    await syncLocosVm.mutateAsync({ match, link })
+  }
+
+  async function sincronizarLocosVm() {
+    if (!match || !liveLink) return
+    await syncLocosVm.mutateAsync({ match, link: liveLink })
+  }
+
+  function aplicarMarcadorVivo() {
+    if (!liveLink) return
+    if (liveLink.last_home_score !== null && liveLink.last_home_score !== undefined) {
+      setHomeScore(String(liveLink.last_home_score))
+    }
+    if (liveLink.last_away_score !== null && liveLink.last_away_score !== undefined) {
+      setAwayScore(String(liveLink.last_away_score))
+    }
+  }
+
+  async function aplicarEventoVivo(event) {
+    if (event.event_type === 'goal' && event.team_id) {
+      setEvents((current) => [...current, {
+        team_id: event.team_id,
+        player_id: '',
+        player_name: 'Jugador por confirmar',
+        event_type: 'goal',
+        minute: event.minute ?? '',
+        notes: event.title,
+      }])
+    }
+
+    if (event.event_type === 'finish') {
+      if (event.home_score !== null && event.home_score !== undefined) setHomeScore(String(event.home_score))
+      if (event.away_score !== null && event.away_score !== undefined) setAwayScore(String(event.away_score))
+    }
+
+    await updateLiveEvent.mutateAsync({ id: event.id, matchId, status: 'applied' })
+  }
+
+  async function descartarEventoVivo(event) {
+    await updateLiveEvent.mutateAsync({ id: event.id, matchId, status: 'dismissed' })
+  }
+
   async function guardar() {
     if (puedeCargarResultado && (homeScore === '' || awayScore === '')) {
       return alert('Ingresa los goles de ambos equipos.')
@@ -226,6 +294,9 @@ export default function LoadResult() {
 
   const guardando = guardarResultado.isPending
   const currentLineupPlayers = lineups.filter((player) => !miEquipoId || player.team_id === miEquipoId)
+  const pendingLiveEvents = liveEvents.filter((event) => event.status === 'pending')
+  const liveScoreReady = liveLink?.last_home_score !== null && liveLink?.last_home_score !== undefined &&
+    liveLink?.last_away_score !== null && liveLink?.last_away_score !== undefined
 
   return (
     <div className="px-4 py-6 space-y-5">
@@ -250,6 +321,101 @@ export default function LoadResult() {
           <p className="text-xs text-blue-500">
             Solo podes cargar formacion y eventos de tu equipo. El resultado final lo confirma el organizador.
           </p>
+        </div>
+      )}
+
+      {puedeCargarResultado && (
+        <div className="bg-surface-900 rounded-xl border border-surface-800 shadow-sm p-5 space-y-4">
+          <div>
+            <h2 className="font-bold text-sm text-zinc-100">Vivo asistido Locos VM</h2>
+            <p className="text-xs text-zinc-500 mt-1">
+              Lee inicio, minuto, goles y final. Nada se computa hasta guardar el resultado.
+            </p>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+            <input
+              type="text"
+              value={locosInput}
+              onChange={(event) => setLocosInput(event.target.value)}
+              placeholder="ID o link del partido en Locos VM"
+              className="w-full border border-surface-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+            <Button
+              size="sm"
+              onClick={liveLink ? sincronizarLocosVm : vincularLocosVm}
+              disabled={saveLiveLink.isPending || syncLocosVm.isPending || !locosInput.trim()}
+            >
+              {syncLocosVm.isPending ? 'Leyendo...' : liveLink ? 'Buscar novedades' : 'Vincular'}
+            </Button>
+          </div>
+
+          {liveLink && (
+            <div className="rounded-xl bg-surface-800/50 border border-surface-700 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs text-zinc-500 truncate">ID externo: {liveLink.external_match_id}</p>
+                  <p className="text-sm font-bold text-zinc-100 mt-1">
+                    {liveScoreReady
+                      ? `${liveLink.last_home_score} - ${liveLink.last_away_score}`
+                      : 'Marcador sin leer'}
+                    {liveLink.last_minute !== null && liveLink.last_minute !== undefined ? ` · ${liveLink.last_minute}'` : ''}
+                  </p>
+                  <p className="text-xs text-zinc-500">
+                    {liveLink.last_status ? `Estado: ${liveLink.last_status}` : 'Todavia no se sincronizo.'}
+                  </p>
+                </div>
+                <Button size="sm" variant="outline" onClick={aplicarMarcadorVivo} disabled={!liveScoreReady}>
+                  Usar marcador
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {pendingLiveEvents.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+                Novedades pendientes
+              </p>
+              {pendingLiveEvents.map((event) => (
+                <div key={event.id} className="rounded-xl border border-primary/25 bg-primary/5 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-zinc-100">{event.title}</p>
+                      <p className="text-xs text-zinc-500 mt-1">
+                        {event.minute !== null && event.minute !== undefined ? `${event.minute}' · ` : ''}
+                        {event.home_score !== null && event.home_score !== undefined && event.away_score !== null && event.away_score !== undefined
+                          ? `${event.home_score} - ${event.away_score}`
+                          : 'Sin marcador'}
+                      </p>
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => aplicarEventoVivo(event)}
+                        className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-white"
+                      >
+                        Aplicar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => descartarEventoVivo(event)}
+                        className="rounded-lg bg-surface-800 px-3 py-1.5 text-xs font-bold text-zinc-300"
+                      >
+                        Descartar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {syncLocosVm.isError && (
+            <p className="text-xs text-red-400">
+              {syncLocosVm.error?.message || 'No se pudo leer Locos VM.'}
+            </p>
+          )}
         </div>
       )}
 

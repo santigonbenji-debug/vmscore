@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useMatch } from '../hooks/useMatches'
 import { useMatchLineups } from '../hooks/useLineups'
+import { useLiveSyncEvents, useMatchLiveLink } from '../hooks/useLiveSync'
 import FavoriteButton from '../components/teams/FavoriteButton'
 import TeamLogo from '../components/teams/TeamLogo'
 import Spinner from '../components/ui/Spinner'
@@ -106,6 +107,8 @@ export default function MatchDetail() {
   const match = data?.match
   const events = data?.events ?? []
   const { data: lineups = [] } = useMatchLineups(matchId)
+  const { data: liveLink } = useMatchLiveLink(matchId)
+  const { data: liveEvents = [] } = useLiveSyncEvents(matchId)
 
   if (isLoading) return <Spinner className="py-20" />
   if (!match) {
@@ -119,6 +122,8 @@ export default function MatchDetail() {
 
   const finalizado = match.status === 'finished'
   const enVivo = match.status === 'in_progress'
+  const visibleLiveEvents = liveEvents.filter((event) => event.status !== 'dismissed')
+  const hasLiveState = liveLink?.last_synced_at && liveLink?.last_status
 
   return (
     <div>
@@ -212,6 +217,27 @@ export default function MatchDetail() {
       </div>
 
       <div className="px-3 py-4 space-y-4 pb-28">
+        {tab === 'info' && hasLiveState && (
+          <div className="bg-surface-900 rounded-xl border border-primary/30 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold text-primary uppercase tracking-wide">Vivo asistido</p>
+                <p className="text-2xl font-extrabold text-zinc-100 mt-1">
+                  {liveLink.last_home_score ?? '-'} - {liveLink.last_away_score ?? '-'}
+                </p>
+              </div>
+              <div className="text-right">
+                <Badge variant={liveLink.last_status === 'in_progress' ? 'live' : liveLink.last_status === 'finished' ? 'success' : 'default'}>
+                  {liveLink.last_status === 'in_progress' ? 'En vivo' : liveLink.last_status === 'finished' ? 'Finalizado' : 'Leido'}
+                </Badge>
+                <p className="text-xs text-zinc-500 mt-2">
+                  {liveLink.last_minute !== null && liveLink.last_minute !== undefined ? `${liveLink.last_minute}'` : 'Minuto a leer'}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {tab === 'info' && (
           <div className="bg-surface-900 rounded-xl border border-surface-800 p-4">
             <h2 className="font-bold text-sm mb-3 text-zinc-100">Info del partido</h2>
@@ -227,7 +253,33 @@ export default function MatchDetail() {
           </div>
         )}
 
-        {tab === 'eventos' && <EventsTimeline events={events} match={match} />}
+        {tab === 'eventos' && (
+          <div className="space-y-4">
+            {visibleLiveEvents.length > 0 && (
+              <div className="bg-surface-900 rounded-xl border border-primary/25 overflow-hidden">
+                <div className="px-4 py-3 border-b border-surface-800">
+                  <p className="text-xs font-semibold text-primary uppercase tracking-wide">Novedades en vivo</p>
+                </div>
+                {visibleLiveEvents.map((event) => (
+                  <div key={event.id} className="flex items-center gap-3 px-4 py-3 border-b border-surface-800 last:border-0">
+                    <div className="w-10 text-center text-xs font-bold text-zinc-400 tabular-nums">
+                      {event.minute != null ? `${event.minute}'` : '-'}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-zinc-100 truncate">{event.title}</p>
+                      <p className="text-xs text-zinc-500">
+                        {event.home_score !== null && event.home_score !== undefined && event.away_score !== null && event.away_score !== undefined
+                          ? `${event.home_score} - ${event.away_score}`
+                          : 'Detectado por Locos VM'}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <EventsTimeline events={events} match={match} />
+          </div>
+        )}
 
         {tab === 'formacion' && (
           lineups.length === 0 ? (

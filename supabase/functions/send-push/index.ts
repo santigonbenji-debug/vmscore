@@ -23,7 +23,7 @@ serve(async (req) => {
   }
 
   try {
-    const { type, matchId } = await req.json()
+    const { type, matchId, title: customTitle, body: customBody } = await req.json()
     if (!matchId) throw new Error('matchId requerido')
 
     const { data: match, error: matchError } = await supabase
@@ -42,10 +42,17 @@ serve(async (req) => {
 
     if (subError) throw subError
 
-    const title = type === 'fixture_updated' ? 'Fixture actualizado' : 'Resultado final'
-    const body = type === 'fixture_updated'
-      ? `${match.home_team_short_name ?? match.home_team_name} vs ${match.away_team_short_name ?? match.away_team_name}`
-      : `${match.home_team_short_name ?? match.home_team_name} ${match.home_score ?? '-'} - ${match.away_score ?? '-'} ${match.away_team_short_name ?? match.away_team_name}`
+    const versus = `${match.home_team_short_name ?? match.home_team_name} vs ${match.away_team_short_name ?? match.away_team_name}`
+    const result = `${match.home_team_short_name ?? match.home_team_name} ${match.home_score ?? '-'} - ${match.away_score ?? '-'} ${match.away_team_short_name ?? match.away_team_name}`
+    const defaultTitleByType: Record<string, string> = {
+      fixture_updated: 'Fixture actualizado',
+      match_started: 'Inicio del partido',
+      match_goal: 'Gol en el partido',
+      match_finished_live: 'Finalizo el partido',
+      match_finished: 'Resultado final',
+    }
+    const title = customTitle || defaultTitleByType[type] || 'VMScore'
+    const body = customBody || (type === 'fixture_updated' || type === 'match_started' ? versus : result)
 
     const payload = JSON.stringify({
       title,
