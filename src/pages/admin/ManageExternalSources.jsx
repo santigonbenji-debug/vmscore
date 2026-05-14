@@ -143,6 +143,7 @@ export default function ManageExternalSources() {
   const [archiveActionError, setArchiveActionError] = useState('')
   const [previewLoading, setPreviewLoading] = useState(false)
   const [lastCheckedAt, setLastCheckedAt] = useState(null)
+  const [previewRoundFilter, setPreviewRoundFilter] = useState('all')
   const [localMappings, setLocalMappings] = useState({})
   const [result, setResult] = useState(null)
   const [archiveTab, setArchiveTab] = useState('pending')
@@ -195,9 +196,6 @@ export default function ManageExternalSources() {
   const externalTeams = useMemo(() => summarizeExternalTeams(preview), [preview])
   const teamMap = useMemo(() => new Map(teams.map((team) => [team.id, team])), [teams])
   const mappedCount = externalTeams.filter((team) => localMappings[team.external_team_id]).length
-  const importableCount = preview.filter((match) =>
-    localMappings[match.external_home_team_id] && localMappings[match.external_away_team_id]
-  ).length
   const archiveCounts = useMemo(() => ({
     all: archive.length,
     pending: archive.filter((match) => match.review_status !== 'confirmed').length,
@@ -217,7 +215,22 @@ export default function ManageExternalSources() {
       })
   }, [archive, archiveDate, archiveTab])
   const conflicts = useMemo(() => findArchiveConflicts(archive, officialMatches), [archive, officialMatches])
-  const previewChanges = useMemo(() => findPreviewChanges(preview, archive), [preview, archive])
+  const roundOptions = useMemo(() => {
+    const rounds = new Set()
+    Array.from({ length: 30 }, (_, index) => index + 1).forEach((round) => rounds.add(round))
+    ;[...preview, ...archive].forEach((match) => {
+      if (match.round != null) rounds.add(Number(match.round))
+    })
+    return [...rounds].sort((a, b) => a - b)
+  }, [archive, preview])
+  const previewForReview = useMemo(() => {
+    if (previewRoundFilter === 'all') return preview
+    return preview.filter((match) => Number(match.round) === Number(previewRoundFilter))
+  }, [preview, previewRoundFilter])
+  const previewChanges = useMemo(() => findPreviewChanges(previewForReview, archive), [previewForReview, archive])
+  const importableCount = previewForReview.filter((match) =>
+    localMappings[match.external_home_team_id] && localMappings[match.external_away_team_id]
+  ).length
 
   function fillFromSource(source) {
     setSelectedSourceId(source.id)
@@ -290,11 +303,11 @@ export default function ManageExternalSources() {
   }
 
   async function runImport() {
-    if (!selectedSource || preview.length === 0) return
+    if (!selectedSource || previewForReview.length === 0) return
     await saveMappingChanges()
     const summary = await importMatches.mutateAsync({
       source: selectedSource,
-      matches: preview,
+      matches: previewForReview,
       mappings: localMappings,
     })
     setResult(summary)
@@ -436,7 +449,7 @@ export default function ManageExternalSources() {
       <div className="space-y-4">
         <section className="rounded-xl border border-surface-800 bg-surface-900 p-4">
           <div className="mb-3 flex items-center justify-between gap-3">
-            <h2 className="text-sm font-bold text-zinc-100">Fuentes guardadas</h2>
+            <h2 className="text-sm font-bold text-zinc-100">1. Elegir torneo</h2>
             {loadingSources && <Spinner />}
           </div>
           {sources.length === 0 ? (
@@ -603,7 +616,7 @@ export default function ManageExternalSources() {
         )}
 
         <section className="rounded-xl border border-surface-800 bg-surface-900 p-4">
-          <h2 className="mb-3 text-sm font-bold text-zinc-100">Conexion</h2>
+          <h2 className="mb-3 text-sm font-bold text-zinc-100">2. Buscar datos de Copa Facil</h2>
           <div className="space-y-3">
             <div>
               <label className="mb-1 block text-xs font-semibold text-zinc-400">Liga VMScore</label>
@@ -671,6 +684,23 @@ export default function ManageExternalSources() {
               </p>
             </div>
 
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-zinc-400">Fecha a revisar</label>
+              <select
+                value={previewRoundFilter}
+                onChange={(event) => setPreviewRoundFilter(event.target.value)}
+                className={INPUT}
+              >
+                <option value="all">Todas las fechas</option>
+                {roundOptions.map((round) => (
+                  <option key={round} value={round}>Fecha {round}</option>
+                ))}
+              </select>
+              <p className="mt-1 text-[11px] text-zinc-500">
+                Para revisar una sola jornada, elegi la fecha y toca buscar novedades.
+              </p>
+            </div>
+
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <Button onClick={saveSource} disabled={upsertSource.isPending}>
                 {upsertSource.isPending ? 'Guardando...' : 'Guardar fuente'}
@@ -698,11 +728,11 @@ export default function ManageExternalSources() {
             <section className="rounded-xl border border-primary/30 bg-primary/10 p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-bold text-zinc-100">Actualizaciones detectadas</h2>
+                  <h2 className="text-sm font-bold text-zinc-100">3. Novedades para confirmar</h2>
                   <p className="mt-1 text-xs text-zinc-400">
                     {previewChanges.length === 0
-                      ? 'No hay cambios contra lo que ya esta guardado.'
-                      : `${previewChanges.length} novedad${previewChanges.length === 1 ? '' : 'es'} lista${previewChanges.length === 1 ? '' : 's'} para revisar.`}
+                      ? `No hay cambios${previewRoundFilter === 'all' ? '' : ` en Fecha ${previewRoundFilter}`} contra lo que ya esta guardado.`
+                      : `${previewChanges.length} novedad${previewChanges.length === 1 ? '' : 'es'}${previewRoundFilter === 'all' ? '' : ` en Fecha ${previewRoundFilter}`} lista${previewChanges.length === 1 ? '' : 's'} para revisar.`}
                   </p>
                 </div>
                 <Button
@@ -710,7 +740,7 @@ export default function ManageExternalSources() {
                   onClick={runImport}
                   disabled={!selectedSource || importableCount === 0 || importMatches.isPending}
                 >
-                  {importMatches.isPending ? 'Guardando...' : 'Guardar novedades'}
+                  {importMatches.isPending ? 'Guardando...' : previewRoundFilter === 'all' ? 'Guardar novedades' : `Guardar Fecha ${previewRoundFilter}`}
                 </Button>
               </div>
 
@@ -804,9 +834,9 @@ export default function ManageExternalSources() {
             <section className="rounded-xl border border-surface-800 bg-surface-900 p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-bold text-zinc-100">Partidos detectados</h2>
+                  <h2 className="text-sm font-bold text-zinc-100">Cruces leidos</h2>
                   <p className="mt-1 text-xs text-zinc-500">
-                    {importableCount}/{preview.length} listos. Aca ya ves los cruces con nombres si estan mapeados.
+                    {importableCount}/{previewForReview.length} listos{previewRoundFilter === 'all' ? '' : ` en Fecha ${previewRoundFilter}`}. Aca ya ves los cruces con nombres si estan mapeados.
                   </p>
                 </div>
                 <Button
@@ -814,7 +844,7 @@ export default function ManageExternalSources() {
                   onClick={runImport}
                   disabled={!selectedSource || importableCount === 0 || importMatches.isPending}
                 >
-                  {importMatches.isPending ? 'Guardando...' : 'Guardar todo'}
+                  {importMatches.isPending ? 'Guardando...' : previewRoundFilter === 'all' ? 'Guardar todo' : `Guardar Fecha ${previewRoundFilter}`}
                 </Button>
               </div>
 
@@ -825,12 +855,12 @@ export default function ManageExternalSources() {
               )}
 
               <div className="max-h-96 space-y-2 overflow-y-auto pr-1">
-                {preview.slice(0, 60).map((match) => {
+                {previewForReview.slice(0, 80).map((match) => {
                   const ready = localMappings[match.external_home_team_id] && localMappings[match.external_away_team_id]
                   return (
                     <div key={match.external_match_id} className="rounded-lg border border-surface-800 bg-surface-950 p-3">
                       <div className="mb-2 flex items-center justify-between gap-2">
-                        <span className="text-xs text-zinc-500">Fecha {match.round} · horario a definir</span>
+                        <span className="text-xs text-zinc-500">{previewDateLabel(match)}</span>
                         <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${ready ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300'}`}>
                           {ready ? 'Listo' : 'Falta mapeo'}
                         </span>

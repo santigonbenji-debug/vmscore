@@ -108,30 +108,6 @@ function removeDuplicateTeamMatches(matches) {
   return [...byKey.values()]
 }
 
-function teamMatchSortValue(match) {
-  const now = Date.now()
-  const time = match.scheduled_at ? new Date(match.scheduled_at).getTime() : null
-  const isFinished = match.status === 'finished'
-
-  if (!isFinished && time && time >= now) {
-    return { bucket: 0, value: time }
-  }
-
-  if (!isFinished && !time) {
-    return { bucket: 1, value: Number(match.round ?? 999) }
-  }
-
-  if (!isFinished && time) {
-    return { bucket: 2, value: time }
-  }
-
-  if (isFinished && time) {
-    return { bucket: 3, value: -time }
-  }
-
-  return { bucket: 4, value: -Number(match.round ?? 0) }
-}
-
 export function useTeamMatchesWithExternal(teamId, limit = 80) {
   return useQuery({
     queryKey: ['team-matches-with-external', teamId, limit],
@@ -170,10 +146,17 @@ export function useTeamMatchesWithExternal(teamId, limit = 80) {
 
       return removeDuplicateTeamMatches([...officialRows, ...externalRows])
         .sort((a, b) => {
-          const left = teamMatchSortValue(a)
-          const right = teamMatchSortValue(b)
-          if (left.bucket !== right.bucket) return left.bucket - right.bucket
-          return left.value - right.value
+          const aLeague = String(a.league_name ?? '')
+          const bLeague = String(b.league_name ?? '')
+          if (aLeague !== bLeague) return aLeague.localeCompare(bLeague)
+
+          const aRound = Number(a.round ?? 999)
+          const bRound = Number(b.round ?? 999)
+          if (aRound !== bRound) return aRound - bRound
+
+          const aTime = a.scheduled_at ? new Date(a.scheduled_at).getTime() : Number.MAX_SAFE_INTEGER
+          const bTime = b.scheduled_at ? new Date(b.scheduled_at).getTime() : Number.MAX_SAFE_INTEGER
+          return aTime - bTime
         })
         .slice(0, limit)
     },

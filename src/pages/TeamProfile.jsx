@@ -119,7 +119,18 @@ function MatchesTab({ teamId, matches, isLoading, filter, onFilterChange, filter
       }
       out[key].matches.push(match)
     })
-    return Object.values(out)
+    return Object.values(out).map((group) => ({
+      ...group,
+      matches: group.matches.sort((a, b) => {
+        const aRound = Number(a.round ?? 999)
+        const bRound = Number(b.round ?? 999)
+        if (aRound !== bRound) return aRound - bRound
+
+        const aTime = a.scheduled_at ? new Date(a.scheduled_at).getTime() : Number.MAX_SAFE_INTEGER
+        const bTime = b.scheduled_at ? new Date(b.scheduled_at).getTime() : Number.MAX_SAFE_INTEGER
+        return aTime - bTime
+      }),
+    }))
   }, [visible])
 
   if (isLoading) return <Spinner className="py-10" />
@@ -227,10 +238,10 @@ function StandingsTable({ table, teamId }) {
           <div
             key={row.id ?? `${row.phase_id}-${row.team_id}`}
             className={`grid grid-cols-[3rem,1fr,3rem,3rem,3rem] items-center px-3 py-3 text-sm ${
-              active ? 'bg-primary/12 border-l-2 border-primary' : ''
+              active ? 'border-l-4 border-primary bg-primary/20 shadow-[inset_0_0_0_1px_rgba(249,75,22,0.28)]' : ''
             }`}
           >
-            <span className={`font-black ${row.position <= 2 ? 'text-emerald-400' : 'text-zinc-400'}`}>{row.position}</span>
+            <span className={`font-black ${active ? 'text-primary' : row.position <= 2 ? 'text-emerald-400' : 'text-zinc-400'}`}>{row.position}</span>
             <div className="flex min-w-0 items-center gap-2">
               <TeamLogo logoUrl={row.team_logo_url} name={row.team_name} color={row.primary_color} size="sm" />
               <span className={`truncate ${active ? 'font-black text-zinc-100' : 'font-semibold text-zinc-300'}`}>

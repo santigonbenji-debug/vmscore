@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { differenceInCalendarDays, format } from 'date-fns'
@@ -38,7 +38,7 @@ function getDateLabel(date) {
   return format(date, "EEE d 'de' MMM", { locale: es })
 }
 
-function buildDateGroups(partidos) {
+function buildDateGroups(partidos, mode = 'upcoming') {
   const groups = {}
   const visibles = partidos.filter((match) => match.status !== 'cancelled' && match.status !== 'postponed')
 
@@ -87,9 +87,9 @@ function buildDateGroups(partidos) {
     }))
     .sort((a, b) => {
       if (!a.fecha && !b.fecha) return Number(a.round ?? 999) - Number(b.round ?? 999)
-      if (!a.fecha) return 1
-      if (!b.fecha) return -1
-      return a.fecha - b.fecha
+      if (!a.fecha) return mode === 'upcoming' ? 1 : -1
+      if (!b.fecha) return mode === 'upcoming' ? -1 : 1
+      return mode === 'previous' ? b.fecha - a.fecha : a.fecha - b.fecha
     })
 }
 
@@ -205,9 +205,28 @@ function NewsCarousel({ items, isAdmin, onCreateClick }) {
 export default function Home() {
   const navigate = useNavigate()
   const { isSuperAdmin } = useAuth()
+  const [matchMode, setMatchMode] = useState('upcoming')
   const { data: partidos = [], isLoading } = useHomeMatches()
   const { data: news = [] } = useNews({ limit: 10 })
-  const grupos = useMemo(() => buildDateGroups(partidos), [partidos])
+  const todayKey = format(toZonedTime(new Date(), TZ), 'yyyy-MM-dd')
+  const filteredMatches = useMemo(() => (
+    partidos.filter((match) => {
+      if (match.status === 'cancelled' || match.status === 'postponed') return false
+      if (matchMode === 'previous') return match.status === 'finished'
+      if (match.status === 'finished') return false
+      if (!match.scheduled_at) return true
+      return format(toZonedTime(new Date(match.scheduled_at), TZ), 'yyyy-MM-dd') >= todayKey
+    })
+  ), [matchMode, partidos, todayKey])
+  const grupos = useMemo(() => buildDateGroups(filteredMatches, matchMode), [filteredMatches, matchMode])
+  const modeCounts = useMemo(() => ({
+    upcoming: partidos.filter((match) => {
+      if (match.status === 'finished' || match.status === 'cancelled' || match.status === 'postponed') return false
+      if (!match.scheduled_at) return true
+      return format(toZonedTime(new Date(match.scheduled_at), TZ), 'yyyy-MM-dd') >= todayKey
+    }).length,
+    previous: partidos.filter((match) => match.status === 'finished').length,
+  }), [partidos, todayKey])
 
   return (
     <div className="px-3 py-3 space-y-4 pb-28">
@@ -230,12 +249,41 @@ export default function Home() {
 
       <NewsCarousel items={news} isAdmin={isSuperAdmin} onCreateClick={() => navigate('/admin/noticias')} />
 
+      <div className="grid grid-cols-2 rounded-xl border border-surface-800 bg-surface-900 p-1">
+        {[
+          ['upcoming', 'Proximos'],
+          ['previous', 'Anteriores'],
+        ].map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setMatchMode(key)}
+            className={`rounded-lg px-3 py-2 text-xs font-black transition-colors ${
+              matchMode === key
+                ? 'bg-primary text-white'
+                : 'text-zinc-400 hover:bg-surface-800 hover:text-zinc-100'
+            }`}
+          >
+            {label}
+            {modeCounts[key] > 0 && <span className="ml-1 opacity-75">{modeCounts[key]}</span>}
+          </button>
+        ))}
+      </div>
+
       {isLoading && <Spinner className="py-12" />}
 
       {!isLoading && partidos.length === 0 && (
         <div className="text-center py-16 text-zinc-500">
           <p className="text-3xl mb-2">⚽</p>
           <p className="text-sm font-medium">No hay partidos cargados todavia</p>
+        </div>
+      )}
+
+      {!isLoading && partidos.length > 0 && grupos.length === 0 && (
+        <div className="text-center py-12 text-zinc-500">
+          <p className="text-sm font-medium">
+            {matchMode === 'previous' ? 'Todavia no hay partidos anteriores.' : 'Todavia no hay proximos partidos cargados.'}
+          </p>
         </div>
       )}
 
