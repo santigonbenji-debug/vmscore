@@ -241,13 +241,12 @@ export function useSyncLocosVmLive() {
           body: `${teamName(match, 'home')} vs ${teamName(match, 'away')}`,
         })
       }
-      if (goalEvents.length > 0) {
-        const lastGoal = goalEvents[goalEvents.length - 1]
+      for (const goalEvent of goalEvents) {
         notifyLiveSync({
           match,
           type: 'match_goal',
-          title: lastGoal.title,
-          body: scoreText(match, nextHome, nextAway),
+          title: goalEvent.title,
+          body: scoreText(match, goalEvent.home_score, goalEvent.away_score),
         })
       }
       if (finishedNow) {

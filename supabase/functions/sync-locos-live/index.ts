@@ -206,9 +206,13 @@ async function syncLink(link: Record<string, unknown>) {
   if (updateError) throw updateError
 
   if (startedNow) await sendPush(match, 'match_started', 'Inicio del partido', `${teamName(match, 'home')} vs ${teamName(match, 'away')}`)
-  if (detectedGoals.length > 0) {
-    const lastGoal = detectedGoals[detectedGoals.length - 1]
-    await sendPush(match, 'match_goal', String(lastGoal.title), scoreText(match, nextHome, nextAway))
+  for (const goal of detectedGoals) {
+    await sendPush(
+      match,
+      'match_goal',
+      String(goal.title),
+      scoreText(match, numberOrNull(goal.home_score), numberOrNull(goal.away_score)),
+    )
   }
   if (finishedNow) await sendPush(match, 'match_finished_live', 'Finalizo el partido', scoreText(match, nextHome, nextAway))
 
