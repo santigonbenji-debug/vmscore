@@ -125,11 +125,14 @@ export function useImportCopaFacilMatches() {
 
       return { created: 0, updated: stored, skipped, total: matches.length }
     },
-    onSuccess: () => {
+    onSuccess: (_, { source }) => {
+      qc.invalidateQueries({ queryKey: ['external-match-archive', source.id] })
       qc.invalidateQueries({ queryKey: ['matches'] })
       qc.invalidateQueries({ queryKey: ['matches-home'] })
       qc.invalidateQueries({ queryKey: ['home-matches'] })
       qc.invalidateQueries({ queryKey: ['external-sources'] })
+      qc.invalidateQueries({ queryKey: ['team-matches-with-external'] })
+      qc.invalidateQueries({ queryKey: ['standings-tables-by-phase'] })
     },
   })
 }

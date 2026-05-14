@@ -34,12 +34,23 @@ function parseScore(match) {
   }
 }
 
-export async function fetchCopaFacilMatches({ eventCode, divisionCode }) {
+export async function fetchCopaFacilMatches({ eventCode, divisionCode, fresh = true }) {
   if (!eventCode || !divisionCode) {
     throw new Error('Falta el codigo de Copa Facil.')
   }
 
-  const response = await fetch(`${FIREBASE_BASE}/events/${encodeURIComponent(eventCode)}/matchs.json`)
+  const url = new URL(`${FIREBASE_BASE}/events/${encodeURIComponent(eventCode)}/matchs.json`)
+  if (fresh) {
+    url.searchParams.set('_', String(Date.now()))
+  }
+
+  const response = await fetch(url.toString(), {
+    cache: 'no-store',
+    headers: {
+      Pragma: 'no-cache',
+      'Cache-Control': 'no-cache',
+    },
+  })
   if (!response.ok) {
     throw new Error(`Copa Facil respondio ${response.status}.`)
   }

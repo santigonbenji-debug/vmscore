@@ -59,6 +59,82 @@ function findArchiveConflicts(archiveRows, officialRows) {
     .filter(Boolean)
 }
 
+function normalizedValue(value) {
+  return value === undefined ? null : value
+}
+
+function normalizedTime(value) {
+  if (!value) return null
+  const time = new Date(value).getTime()
+  return Number.isFinite(time) ? time : null
+}
+
+function findPreviewChanges(previewRows, archiveRows) {
+  const archiveByExternalId = new Map(
+    archiveRows.map((row) => [row.external_match_id, row])
+  )
+
+  return previewRows
+    .map((match) => {
+      const archived = archiveByExternalId.get(match.external_match_id)
+      if (!archived) {
+        return {
+          type: 'new_match',
+          priority: 2,
+          label: 'Nuevo cruce',
+          description: 'Copa Facil tiene este partido y todavia no esta en el archivo.',
+          match,
+          archived: null,
+        }
+      }
+
+      const scoreChanged =
+        normalizedValue(match.home_score) !== normalizedValue(archived.home_score) ||
+        normalizedValue(match.away_score) !== normalizedValue(archived.away_score)
+      const resultAppeared = archived.status !== 'finished' && match.status === 'finished'
+      const dateChanged = normalizedTime(match.scheduled_at) !== normalizedTime(archived.scheduled_at)
+      const statusChanged = match.status !== archived.status
+
+      if (!scoreChanged && !resultAppeared && !dateChanged && !statusChanged) return null
+
+      if (resultAppeared || scoreChanged) {
+        return {
+          type: resultAppeared ? 'new_result' : 'score_changed',
+          priority: 4,
+          label: resultAppeared ? 'Resultado nuevo' : 'Resultado actualizado',
+          description: 'Revisalo antes de guardarlo o computarlo en la tabla.',
+          match,
+          archived,
+        }
+      }
+
+      if (dateChanged) {
+        return {
+          type: 'date_changed',
+          priority: 3,
+          label: match.scheduled_at ? 'Fecha u horario actualizado' : 'Fecha pendiente',
+          description: 'Copa Facil cambio el dato de dia u horario.',
+          match,
+          archived,
+        }
+      }
+
+      return {
+        type: 'status_changed',
+        priority: 1,
+        label: 'Estado actualizado',
+        description: 'Copa Facil cambio el estado del partido.',
+        match,
+        archived,
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (b.priority !== a.priority) return b.priority - a.priority
+      return Number(a.match.round ?? 0) - Number(b.match.round ?? 0)
+    })
+}
+
 export default function ManageExternalSources() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [selectedSourceId, setSelectedSourceId] = useState('')
@@ -66,6 +142,7 @@ export default function ManageExternalSources() {
   const [previewError, setPreviewError] = useState('')
   const [archiveActionError, setArchiveActionError] = useState('')
   const [previewLoading, setPreviewLoading] = useState(false)
+  const [lastCheckedAt, setLastCheckedAt] = useState(null)
   const [localMappings, setLocalMappings] = useState({})
   const [result, setResult] = useState(null)
   const [archiveTab, setArchiveTab] = useState('pending')
@@ -140,6 +217,7 @@ export default function ManageExternalSources() {
       })
   }, [archive, archiveDate, archiveTab])
   const conflicts = useMemo(() => findArchiveConflicts(archive, officialMatches), [archive, officialMatches])
+  const previewChanges = useMemo(() => findPreviewChanges(preview, archive), [preview, archive])
 
   function fillFromSource(source) {
     setSelectedSourceId(source.id)
@@ -192,8 +270,10 @@ export default function ManageExternalSources() {
       const matches = await fetchCopaFacilMatches({
         eventCode: sourceLike.event_code,
         divisionCode: sourceLike.division_code,
+        fresh: true,
       })
       setPreview(matches)
+      setLastCheckedAt(new Date())
       if (matches.length === 0) {
         setPreviewError('No se encontraron partidos para esa division.')
       }
@@ -218,6 +298,7 @@ export default function ManageExternalSources() {
       mappings: localMappings,
     })
     setResult(summary)
+    setArchiveTab('pending')
   }
 
   function toLocalInput(value) {
@@ -310,6 +391,15 @@ export default function ManageExternalSources() {
     return teamMap.get(teamId)?.short_name || teamMap.get(teamId)?.name || externalId || 'Equipo'
   }
 
+  function previewTeamName(externalId) {
+    return teamName(localMappings[externalId], externalId)
+  }
+
+  function previewDateLabel(match) {
+    if (!match.scheduled_at) return `Fecha ${match.round ?? '-'} · a definir`
+    return `Fecha ${match.round ?? '-'} · ${format(toZonedTime(new Date(match.scheduled_at), TZ), 'dd/MM/yyyy HH:mm')}`
+  }
+
   async function keepOfficial(conflict) {
     await updateArchiveMatch.mutateAsync({
       id: conflict.archive.id,
@@ -337,9 +427,9 @@ export default function ManageExternalSources() {
   return (
     <div className="px-4 py-6 pb-28">
       <div className="mb-5">
-        <h1 className="text-xl font-bold text-zinc-100">Archivo Copa Facil</h1>
+        <h1 className="text-xl font-bold text-zinc-100">Importar Copa Facil</h1>
         <p className="mt-1 text-xs text-zinc-500">
-          Guarda datos externos sin modificar fixture, Home ni tabla de posiciones.
+          Busca novedades, revisa cruces y despues decide que guardar, publicar o computar.
         </p>
       </div>
 
@@ -581,14 +671,19 @@ export default function ManageExternalSources() {
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <Button onClick={saveSource} disabled={upsertSource.isPending}>
                 {upsertSource.isPending ? 'Guardando...' : 'Guardar fuente'}
               </Button>
               <Button variant="secondary" onClick={loadPreview} disabled={previewLoading || (!selectedSource && !form.source_url)}>
-                {previewLoading ? 'Leyendo...' : 'Leer datos'}
+                {previewLoading ? 'Buscando...' : 'Buscar novedades ahora'}
               </Button>
             </div>
+            {lastCheckedAt && (
+              <p className="text-[11px] text-zinc-500">
+                Ultima lectura directa de Copa Facil: {format(lastCheckedAt, 'HH:mm:ss')}
+              </p>
+            )}
           </div>
         </section>
 
@@ -600,6 +695,68 @@ export default function ManageExternalSources() {
 
         {preview.length > 0 && (
           <>
+            <section className="rounded-xl border border-primary/30 bg-primary/10 p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-bold text-zinc-100">Actualizaciones detectadas</h2>
+                  <p className="mt-1 text-xs text-zinc-400">
+                    {previewChanges.length === 0
+                      ? 'No hay cambios contra lo que ya esta guardado.'
+                      : `${previewChanges.length} novedad${previewChanges.length === 1 ? '' : 'es'} lista${previewChanges.length === 1 ? '' : 's'} para revisar.`}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={runImport}
+                  disabled={!selectedSource || importableCount === 0 || importMatches.isPending}
+                >
+                  {importMatches.isPending ? 'Guardando...' : 'Guardar novedades'}
+                </Button>
+              </div>
+
+              {previewChanges.length === 0 ? (
+                <p className="rounded-lg border border-surface-800 bg-surface-950/80 p-3 text-xs text-zinc-500">
+                  Si Copa Facil carga un resultado nuevo, toca "Buscar novedades ahora" y va a aparecer aca antes de guardarlo.
+                </p>
+              ) : (
+                <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
+                  {previewChanges.slice(0, 20).map((change) => {
+                    const ready = localMappings[change.match.external_home_team_id] && localMappings[change.match.external_away_team_id]
+                    const previousScore = change.archived?.home_score != null && change.archived?.away_score != null
+                      ? `${change.archived.home_score} - ${change.archived.away_score}`
+                      : 'sin resultado'
+                    const nextScore = change.match.status === 'finished'
+                      ? `${change.match.home_score} - ${change.match.away_score}`
+                      : 'sin resultado'
+
+                    return (
+                      <div key={`${change.type}-${change.match.external_match_id}`} className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <span className="rounded-full bg-primary/20 px-2 py-0.5 text-[11px] font-bold text-primary-light">
+                            {change.label}
+                          </span>
+                          <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${ready ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300'}`}>
+                            {ready ? 'Mapeado' : 'Falta mapeo'}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-[1fr,auto,1fr] items-center gap-2 text-sm">
+                          <span className="truncate font-semibold text-zinc-100">{previewTeamName(change.match.external_home_team_id)}</span>
+                          <span className="font-black text-zinc-100">{nextScore}</span>
+                          <span className="truncate text-right font-semibold text-zinc-100">{previewTeamName(change.match.external_away_team_id)}</span>
+                        </div>
+                        <p className="mt-2 text-xs text-zinc-500">{previewDateLabel(change.match)}</p>
+                        {change.archived && (
+                          <p className="mt-1 text-[11px] text-zinc-600">
+                            Guardado antes: {previousScore}
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </section>
+
             <section className="rounded-xl border border-surface-800 bg-surface-900 p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
@@ -617,8 +774,12 @@ export default function ManageExternalSources() {
                 {externalTeams.map((team) => (
                   <div key={team.external_team_id} className="grid grid-cols-[1fr,1.3fr] items-center gap-2 rounded-lg border border-surface-800 bg-surface-950 p-2">
                     <div className="min-w-0">
-                      <p className="truncate text-xs font-mono text-zinc-300">{team.external_team_id}</p>
-                      <p className="text-[11px] text-zinc-600">{team.matches} partidos</p>
+                      <p className="truncate text-xs font-semibold text-zinc-100">
+                        {localMappings[team.external_team_id] ? previewTeamName(team.external_team_id) : 'Equipo sin vincular'}
+                      </p>
+                      <p className="truncate text-[11px] text-zinc-600">
+                        Copa Facil: {team.external_team_id} · {team.matches} partidos
+                      </p>
                     </div>
                     <select
                       value={localMappings[team.external_team_id] ?? ''}
@@ -645,7 +806,7 @@ export default function ManageExternalSources() {
                 <div>
                   <h2 className="text-sm font-bold text-zinc-100">Partidos detectados</h2>
                   <p className="mt-1 text-xs text-zinc-500">
-                    {importableCount}/{preview.length} listos para archivar.
+                    {importableCount}/{preview.length} listos. Aca ya ves los cruces con nombres si estan mapeados.
                   </p>
                 </div>
                 <Button
@@ -653,7 +814,7 @@ export default function ManageExternalSources() {
                   onClick={runImport}
                   disabled={!selectedSource || importableCount === 0 || importMatches.isPending}
                 >
-                  {importMatches.isPending ? 'Guardando...' : 'Archivar datos'}
+                  {importMatches.isPending ? 'Guardando...' : 'Guardar todo'}
                 </Button>
               </div>
 
@@ -675,11 +836,15 @@ export default function ManageExternalSources() {
                         </span>
                       </div>
                       <div className="grid grid-cols-[1fr,auto,1fr] items-center gap-2 text-sm">
-                        <span className="truncate font-mono text-zinc-300">{match.external_home_team_id}</span>
+                        <span className={`truncate ${ready ? 'font-semibold text-zinc-100' : 'font-mono text-zinc-400'}`}>
+                          {previewTeamName(match.external_home_team_id)}
+                        </span>
                         <span className="font-bold text-zinc-100">
                           {match.status === 'finished' ? `${match.home_score} - ${match.away_score}` : 'vs'}
                         </span>
-                        <span className="truncate text-right font-mono text-zinc-300">{match.external_away_team_id}</span>
+                        <span className={`truncate text-right ${ready ? 'font-semibold text-zinc-100' : 'font-mono text-zinc-400'}`}>
+                          {previewTeamName(match.external_away_team_id)}
+                        </span>
                       </div>
                     </div>
                   )

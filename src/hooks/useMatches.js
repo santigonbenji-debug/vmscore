@@ -108,6 +108,30 @@ function removeDuplicateTeamMatches(matches) {
   return [...byKey.values()]
 }
 
+function teamMatchSortValue(match) {
+  const now = Date.now()
+  const time = match.scheduled_at ? new Date(match.scheduled_at).getTime() : null
+  const isFinished = match.status === 'finished'
+
+  if (!isFinished && time && time >= now) {
+    return { bucket: 0, value: time }
+  }
+
+  if (!isFinished && !time) {
+    return { bucket: 1, value: Number(match.round ?? 999) }
+  }
+
+  if (!isFinished && time) {
+    return { bucket: 2, value: time }
+  }
+
+  if (isFinished && time) {
+    return { bucket: 3, value: -time }
+  }
+
+  return { bucket: 4, value: -Number(match.round ?? 0) }
+}
+
 export function useTeamMatchesWithExternal(teamId, limit = 80) {
   return useQuery({
     queryKey: ['team-matches-with-external', teamId, limit],
@@ -146,10 +170,10 @@ export function useTeamMatchesWithExternal(teamId, limit = 80) {
 
       return removeDuplicateTeamMatches([...officialRows, ...externalRows])
         .sort((a, b) => {
-          if (!a.scheduled_at && !b.scheduled_at) return Number(b.round ?? 0) - Number(a.round ?? 0)
-          if (!a.scheduled_at) return 1
-          if (!b.scheduled_at) return -1
-          return new Date(b.scheduled_at) - new Date(a.scheduled_at)
+          const left = teamMatchSortValue(a)
+          const right = teamMatchSortValue(b)
+          if (left.bucket !== right.bucket) return left.bucket - right.bucket
+          return left.value - right.value
         })
         .slice(0, limit)
     },

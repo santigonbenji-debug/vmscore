@@ -6,8 +6,8 @@ import Spinner from '../components/ui/Spinner'
 import { useTeam } from '../hooks/useTeams'
 import { useTeamMatchesWithExternal } from '../hooks/useMatches'
 import { useTeamPlayers } from '../hooks/useRosters'
-import { useTeamStandingsTables } from '../hooks/useStandings'
-import { formatFechaLarga, formatHora, labelStatus } from '../lib/helpers'
+import { useStandingsTablesByPhase, useTeamStandingsTables } from '../hooks/useStandings'
+import { formatFechaLarga, formatHora } from '../lib/helpers'
 
 const TABS = [
   { key: 'partidos', label: 'Partidos' },
@@ -184,19 +184,10 @@ function MatchesTab({ teamId, matches, isLoading, filter, onFilterChange, filter
                         </span>
                         {match.status === 'finished' && <span className="ml-auto text-sm font-black text-zinc-100">{match.away_score}</span>}
                       </div>
-                      {match.source_kind === 'external' && (
-                        <p className="mt-1 text-[10px] font-semibold uppercase text-zinc-600">Importado</p>
-                      )}
                     </div>
 
                     <div className="flex justify-end">
-                      {match.status === 'finished' ? (
-                        <ResultPill value={result} />
-                      ) : (
-                        <span className="rounded-full bg-surface-800 px-2 py-1 text-[10px] font-bold uppercase text-zinc-400">
-                          {labelStatus(match.status)}
-                        </span>
-                      )}
+                      <ResultPill value={result} />
                     </div>
                   </button>
                 )
@@ -218,6 +209,11 @@ function StandingsTable({ table, teamId }) {
         </h2>
         <p className="mt-0.5 text-xs text-zinc-500">{table.phase_name} · {table.gender}</p>
       </div>
+      {!table.team_position && (
+        <p className="border-b border-surface-800 px-4 pb-3 text-xs text-amber-300">
+          Este equipo tiene partidos en esta competencia, pero todavia no figura en la tabla cargada.
+        </p>
+      )}
       <div className="grid grid-cols-[3rem,1fr,3rem,3rem,3rem] border-b border-surface-800 px-3 py-2 text-xs font-bold uppercase text-zinc-500">
         <span>#</span>
         <span>Equipo</span>
@@ -295,7 +291,22 @@ export default function TeamProfile() {
   const { data: team, isLoading: loadingTeam } = useTeam(teamId)
   const { data: players = [], isLoading: loadingPlayers } = useTeamPlayers(teamId)
   const { data: matches = [], isLoading: loadingMatches } = useTeamMatchesWithExternal(teamId)
-  const { data: standingsTables = [], isLoading: loadingStandings } = useTeamStandingsTables(teamId)
+  const phaseIdsFromMatches = useMemo(() => (
+    [...new Set(matches.map((match) => match.phase_id).filter(Boolean))]
+  ), [matches])
+  const { data: teamStandingsTables = [], isLoading: loadingTeamStandings } = useTeamStandingsTables(teamId)
+  const { data: phaseStandingsTables = [], isLoading: loadingPhaseStandings } = useStandingsTablesByPhase(teamId, phaseIdsFromMatches)
+  const standingsTables = useMemo(() => {
+    const byKey = new Map()
+    ;[...teamStandingsTables, ...phaseStandingsTables].forEach((table) => {
+      const current = byKey.get(table.key)
+      if (!current || (!current.team_position && table.team_position)) {
+        byKey.set(table.key, table)
+      }
+    })
+    return [...byKey.values()]
+  }, [teamStandingsTables, phaseStandingsTables])
+  const loadingStandings = loadingTeamStandings || loadingPhaseStandings
 
   const matchFilterOptions = useMemo(() => {
     const map = new Map()
