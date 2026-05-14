@@ -251,8 +251,8 @@ export default function Home() {
 
       <div className="grid grid-cols-2 rounded-xl border border-surface-800 bg-surface-900 p-1">
         {[
-          ['upcoming', 'Anteriores'],
-          ['previous', 'Proximos'],
+          ['previous', 'Anteriores'],
+          ['upcoming', 'Proximos'],
         ].map(([key, label]) => (
           <button
             key={key}
