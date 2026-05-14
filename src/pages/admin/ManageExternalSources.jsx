@@ -147,6 +147,7 @@ export default function ManageExternalSources() {
   const [localMappings, setLocalMappings] = useState({})
   const [result, setResult] = useState(null)
   const [archiveTab, setArchiveTab] = useState('pending')
+  const [archiveRoundFilter, setArchiveRoundFilter] = useState('all')
   const [archiveDate, setArchiveDate] = useState('')
   const [editingArchive, setEditingArchive] = useState(null)
   const [archiveForm, setArchiveForm] = useState({
@@ -209,11 +210,15 @@ export default function ManageExternalSources() {
         return true
       })
       .filter((match) => {
+        if (archiveRoundFilter === 'all') return true
+        return Number(match.round) === Number(archiveRoundFilter)
+      })
+      .filter((match) => {
         if (!archiveDate) return true
         if (!match.scheduled_at) return false
         return format(toZonedTime(new Date(match.scheduled_at), TZ), 'yyyy-MM-dd') === archiveDate
       })
-  }, [archive, archiveDate, archiveTab])
+  }, [archive, archiveDate, archiveRoundFilter, archiveTab])
   const conflicts = useMemo(() => findArchiveConflicts(archive, officialMatches), [archive, officialMatches])
   const roundOptions = useMemo(() => {
     const rounds = new Set()
@@ -312,6 +317,8 @@ export default function ManageExternalSources() {
     })
     setResult(summary)
     setArchiveTab('pending')
+    setArchiveRoundFilter(previewRoundFilter)
+    setArchiveDate('')
   }
 
   function toLocalInput(value) {
@@ -543,16 +550,39 @@ export default function ManageExternalSources() {
               ))}
             </div>
 
-            <div className="mb-3">
-              <label className="mb-1 block text-xs font-semibold text-zinc-400">Filtrar por dia</label>
-              <div className="grid grid-cols-[1fr,auto] gap-2">
+            <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr,1fr,auto]">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-zinc-400">Filtrar por fecha</label>
+                <select
+                  value={archiveRoundFilter}
+                  onChange={(event) => setArchiveRoundFilter(event.target.value)}
+                  className={INPUT}
+                >
+                  <option value="all">Todas las fechas</option>
+                  {roundOptions.map((round) => (
+                    <option key={round} value={round}>Fecha {round}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-zinc-400">Filtrar por dia</label>
                 <input
                   type="date"
                   value={archiveDate}
                   onChange={(event) => setArchiveDate(event.target.value)}
                   className={INPUT}
                 />
-                <Button variant="secondary" onClick={() => setArchiveDate('')} disabled={!archiveDate}>
+              </div>
+              <div className="flex items-end">
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setArchiveDate('')
+                    setArchiveRoundFilter('all')
+                  }}
+                  disabled={!archiveDate && archiveRoundFilter === 'all'}
+                  className="w-full"
+                >
                   Limpiar
                 </Button>
               </div>
