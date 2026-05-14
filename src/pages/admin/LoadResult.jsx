@@ -8,6 +8,7 @@ import {
   useLiveSyncEvents,
   useMatchLiveLink,
   useSaveMatchLiveLink,
+  useSearchLocosVmMatches,
   useSyncLocosVmLive,
   useUpdateLiveSyncEvent,
 } from '../../hooks/useLiveSync'
@@ -97,6 +98,7 @@ export default function LoadResult() {
   const { data: liveLink } = useMatchLiveLink(matchId)
   const { data: liveEvents = [] } = useLiveSyncEvents(matchId)
   const saveLiveLink = useSaveMatchLiveLink()
+  const searchLocosVm = useSearchLocosVmMatches()
   const syncLocosVm = useSyncLocosVmLive()
   const updateLiveEvent = useUpdateLiveSyncEvent()
 
@@ -241,6 +243,22 @@ export default function LoadResult() {
     await syncLocosVm.mutateAsync({ match, link: liveLink })
   }
 
+  async function buscarPartidosLocosVm() {
+    if (!match) return
+    await searchLocosVm.mutateAsync({ match })
+  }
+
+  async function vincularCandidatoLocosVm(candidate) {
+    if (!match) return
+    setLocosInput(candidate.id)
+    const link = await saveLiveLink.mutateAsync({
+      matchId,
+      externalMatchId: candidate.id,
+      externalUrl: candidate.streamUrl || candidate.vodUrl || '',
+    })
+    await syncLocosVm.mutateAsync({ match, link })
+  }
+
   function aplicarMarcadorVivo() {
     if (!liveLink) return
     if (liveLink.last_home_score !== null && liveLink.last_home_score !== undefined) {
@@ -332,6 +350,65 @@ export default function LoadResult() {
               Lee inicio, minuto, goles y final. Nada se computa hasta guardar el resultado.
             </p>
           </div>
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={buscarPartidosLocosVm}
+            disabled={searchLocosVm.isPending}
+            className="w-full"
+          >
+            {searchLocosVm.isPending ? 'Buscando partidos...' : 'Buscar partido en Locos VM'}
+          </Button>
+
+          {searchLocosVm.data?.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+                Coincidencias encontradas
+              </p>
+              {searchLocosVm.data.map((candidate) => (
+                <button
+                  key={candidate.id}
+                  type="button"
+                  onClick={() => vincularCandidatoLocosVm(candidate)}
+                  className="w-full rounded-xl border border-surface-700 bg-surface-800/40 p-3 text-left hover:border-primary/60 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-zinc-100">
+                        {candidate.homeTeam?.shortName ?? candidate.homeTeam?.name} vs {candidate.awayTeam?.shortName ?? candidate.awayTeam?.name}
+                      </p>
+                      <p className="text-xs text-zinc-500 mt-1">
+                        {candidate.date || 'sin fecha'} {candidate.time ? `· ${candidate.time}` : ''}
+                        {candidate.venue ? ` · ${candidate.venue}` : ''}
+                      </p>
+                      {candidate.description && (
+                        <p className="text-xs text-zinc-600 mt-1 truncate">{candidate.description}</p>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-extrabold text-zinc-100">
+                        {candidate.homeScore ?? '-'} - {candidate.awayScore ?? '-'}
+                      </p>
+                      <p className="text-[10px] text-primary font-bold uppercase mt-1">Vincular</p>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {searchLocosVm.isSuccess && searchLocosVm.data?.length === 0 && (
+            <p className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+              No encontre una coincidencia clara. Podes pegar el ID o link manual si lo conseguis.
+            </p>
+          )}
+
+          {searchLocosVm.isError && (
+            <p className="text-xs text-red-400">
+              {searchLocosVm.error?.message || 'No se pudo buscar en Locos VM.'}
+            </p>
+          )}
 
           <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
             <input

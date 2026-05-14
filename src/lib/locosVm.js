@@ -48,6 +48,24 @@ async function fetchFirestorePath(path) {
   return response.json()
 }
 
+async function fetchFirestoreCollection(collection, pageSize = 100, maxPages = 5) {
+  const rows = []
+  let pageToken = ''
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const token = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''
+    const url = `${FIRESTORE_BASE}/${collection}?pageSize=${pageSize}${token}&key=${API_KEY}`
+    const response = await fetch(url, { cache: 'no-store' })
+    if (!response.ok) throw new Error(`Locos VM respondio ${response.status}.`)
+    const payload = await response.json()
+    rows.push(...(payload.documents ?? []).map(firestoreDocToObject).filter(Boolean))
+    if (!payload.nextPageToken) break
+    pageToken = payload.nextPageToken
+  }
+
+  return rows
+}
+
 export async function fetchLocosVmMatch(matchId) {
   const id = parseLocosVmMatchId(matchId)
   if (!id) throw new Error('Falta el ID del partido de Locos VM.')
@@ -57,7 +75,95 @@ export async function fetchLocosVmMatch(matchId) {
 export async function fetchLocosVmLiveState(matchId) {
   const id = parseLocosVmMatchId(matchId)
   if (!id) throw new Error('Falta el ID del partido de Locos VM.')
-  return firestoreDocToObject(await fetchFirestorePath(`matches/${id}/liveState/state`))
+  try {
+    return firestoreDocToObject(await fetchFirestorePath(`matches/${id}/liveState/state`))
+  } catch {
+    return fetchLocosVmMatch(id)
+  }
+}
+
+function normalizeText(value) {
+  return String(value ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function localDateKey(date) {
+  if (!date) return ''
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Argentina/San_Luis',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(date))
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  return `${byType.year}-${byType.month}-${byType.day}`
+}
+
+function dateDistance(a, b) {
+  if (!a || !b) return 30
+  const diff = Math.abs(new Date(`${a}T12:00:00`).getTime() - new Date(`${b}T12:00:00`).getTime())
+  return diff / 86400000
+}
+
+function nameScore(vmName, appName) {
+  const vm = normalizeText(vmName)
+  const app = normalizeText(appName)
+  if (!vm || !app) return 0
+  if (vm === app) return 6
+  if (vm.includes(app) || app.includes(vm)) return 4
+  const appWords = app.split(' ').filter((word) => word.length > 2)
+  const matches = appWords.filter((word) => vm.includes(word)).length
+  return matches
+}
+
+function pairScore(candidate, match) {
+  const direct =
+    nameScore(candidate.homeTeam?.name, match.home_team_name) +
+    nameScore(candidate.homeTeam?.shortName, match.home_team_short_name) +
+    nameScore(candidate.awayTeam?.name, match.away_team_name) +
+    nameScore(candidate.awayTeam?.shortName, match.away_team_short_name)
+
+  const inverted =
+    nameScore(candidate.homeTeam?.name, match.away_team_name) +
+    nameScore(candidate.homeTeam?.shortName, match.away_team_short_name) +
+    nameScore(candidate.awayTeam?.name, match.home_team_name) +
+    nameScore(candidate.awayTeam?.shortName, match.home_team_short_name)
+
+  return Math.max(direct, inverted)
+}
+
+export async function searchLocosVmMatchCandidates(match) {
+  const [teams, matches] = await Promise.all([
+    fetchFirestoreCollection('teams', 100, 3),
+    fetchFirestoreCollection('matches', 100, 6),
+  ])
+
+  const teamsById = new Map(teams.map((team) => [team.id, team]))
+  const matchDate = localDateKey(match?.scheduled_at)
+
+  return matches
+    .map((item) => {
+      const candidate = {
+        ...item,
+        homeTeam: teamsById.get(item.homeTeamId),
+        awayTeam: teamsById.get(item.awayTeamId),
+      }
+      const names = pairScore(candidate, match)
+      const days = dateDistance(candidate.date, matchDate)
+      const dateBonus = days === 0 ? 8 : days <= 1 ? 5 : days <= 3 ? 2 : 0
+      return {
+        ...candidate,
+        confidence: names + dateBonus,
+        dateDistance: days,
+      }
+    })
+    .filter((item) => item.homeTeam && item.awayTeam && item.confidence >= 3)
+    .sort((a, b) => b.confidence - a.confidence || a.dateDistance - b.dateDistance)
+    .slice(0, 8)
 }
 
 export function normalizeLocosStatus(status) {

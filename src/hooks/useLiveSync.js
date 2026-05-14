@@ -1,6 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
-import { buildLiveStatePayload, fetchLocosVmLiveState, parseLocosVmMatchId } from '../lib/locosVm'
+import {
+  buildLiveStatePayload,
+  fetchLocosVmLiveState,
+  parseLocosVmMatchId,
+  searchLocosVmMatchCandidates,
+} from '../lib/locosVm'
 
 function teamName(match, side) {
   if (side === 'home') return match.home_team_short_name ?? match.home_team_name ?? 'Local'
@@ -124,6 +129,15 @@ export function useSaveMatchLiveLink() {
     },
     onSuccess: (_, { matchId }) => {
       qc.invalidateQueries({ queryKey: ['match-live-link', matchId] })
+    },
+  })
+}
+
+export function useSearchLocosVmMatches() {
+  return useMutation({
+    mutationFn: async ({ match }) => {
+      if (!match) throw new Error('Falta el partido de VMScore.')
+      return searchLocosVmMatchCandidates(match)
     },
   })
 }
