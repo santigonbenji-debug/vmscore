@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import BrandLogo from '../brand/BrandLogo'
 import { usePushNotifications } from '../../hooks/usePushNotifications'
+import { useFavorites } from '../../hooks/useFavorites'
 
 export default function PushNotificationsButton() {
   const [open, setOpen] = useState(false)
   const { supported, enabled, loading, message, error, enableNotifications } = usePushNotifications()
+  const { favorites } = useFavorites()
 
-  if (!supported || enabled) return null
+  if (!supported || enabled || favorites.length === 0) return null
 
   return (
     <div className="fixed bottom-36 left-0 right-0 z-40 mx-auto w-full max-w-lg px-3 pointer-events-none">
@@ -17,7 +19,7 @@ export default function PushNotificationsButton() {
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-bold text-zinc-100">Alertas de partidos</p>
-            <p className="text-xs text-zinc-500">Recibi finales y cambios de fixture de tus favoritos.</p>
+            <p className="text-xs text-zinc-500">Inicio, goles y finales de tus favoritos.</p>
           </div>
           <button
             type="button"

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import { useFavorites } from '../hooks/useFavorites'
+import { usePushNotifications } from '../hooks/usePushNotifications'
 import { useTeams }     from '../hooks/useTeams'
 import { toZonedTime } from 'date-fns-tz'
 import { format } from 'date-fns'
@@ -110,9 +111,43 @@ function FechaCard({ fecha, partidos, favoriteIds, onMatchClick }) {
   )
 }
 
+function AlertsCard({ supported, enabled, loading, message, error, onEnable }) {
+  if (!supported || enabled) return null
+
+  return (
+    <section className="mb-5 rounded-xl border border-primary/25 bg-primary/10 p-4">
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-lg font-black text-white">
+          !
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-black text-zinc-100">Alertas de tus favoritos</p>
+          <p className="mt-0.5 text-xs leading-relaxed text-zinc-400">
+            Recibi aviso cuando empieza un partido, cuando hay gol y cuando termina.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onEnable}
+          disabled={loading}
+          className="shrink-0 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+        >
+          {loading ? '...' : 'Activar'}
+        </button>
+      </div>
+      {(message || error) && (
+        <p className={`mt-3 border-t border-primary/20 pt-3 text-xs ${error ? 'text-red-300' : 'text-emerald-300'}`}>
+          {error || message}
+        </p>
+      )}
+    </section>
+  )
+}
+
 export default function Favorites() {
   const navigate  = useNavigate()
   const { favorites } = useFavorites()
+  const push = usePushNotifications()
   const { data: equipos = [], isLoading: loadingEquipos } = useTeams()
 
   const [tab, setTab]       = useState('matches')
@@ -238,6 +273,17 @@ export default function Favorites() {
                 ))}
               </div>
             </section>
+          )}
+
+          {equiposFav.length > 0 && (
+            <AlertsCard
+              supported={push.supported}
+              enabled={push.enabled}
+              loading={push.loading}
+              message={push.message}
+              error={push.error}
+              onEnable={push.enableNotifications}
+            />
           )}
 
           {isLoading && <Spinner className="py-12" />}
