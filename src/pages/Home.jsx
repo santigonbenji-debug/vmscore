@@ -7,11 +7,13 @@ import { toZonedTime } from 'date-fns-tz'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { useFavorites } from '../hooks/useFavorites'
+import { useNow } from '../hooks/useNow'
 import { useNews } from '../hooks/useNews'
 import FavoriteButton from '../components/teams/FavoriteButton'
 import TeamLogo from '../components/teams/TeamLogo'
 import Spinner from '../components/ui/Spinner'
 import Badge from '../components/ui/Badge'
+import { matchStartedByClock } from '../lib/helpers'
 
 const TZ = 'America/Argentina/San_Luis'
 
@@ -104,9 +106,10 @@ function buildDateGroups(partidos, mode = 'upcoming') {
     })
 }
 
-function MatchRow({ match, onClick, favoriteIds = [] }) {
+function MatchRow({ match, onClick, favoriteIds = [], now }) {
   const finalizado = match.status === 'finished'
   const enVivo = match.status === 'in_progress'
+  const comenzadoPorHorario = matchStartedByClock(match, now)
   const hora = match.scheduled_at
     ? format(toZonedTime(new Date(match.scheduled_at), TZ), 'HH:mm')
     : 'A def.'
@@ -131,6 +134,8 @@ function MatchRow({ match, onClick, favoriteIds = [] }) {
           <span className="text-emerald-400 font-bold animate-pulse">VIVO</span>
         ) : finalizado ? (
           'FT'
+        ) : comenzadoPorHorario ? (
+          <span className="text-amber-300 font-bold leading-tight">COMENZADO</span>
         ) : (
           hora
         )}
@@ -220,6 +225,7 @@ export default function Home() {
   const navigate = useNavigate()
   const { isSuperAdmin } = useAuth()
   const { favorites } = useFavorites()
+  const now = useNow()
   const [matchMode, setMatchMode] = useState('upcoming')
   const [matchScope, setMatchScope] = useState('all')
   const { data: partidos = [], isLoading } = useHomeMatches()
@@ -378,7 +384,7 @@ export default function Home() {
               </div>
               <div className="bg-surface-900 rounded-xl border border-surface-800 shadow-sm overflow-hidden">
                 {league.partidos.map((p) => (
-                  <MatchRow key={p.id} match={p} favoriteIds={favorites} onClick={() => navigate(`/partido/${p.id}`)} />
+                  <MatchRow key={p.id} match={p} favoriteIds={favorites} now={now} onClick={() => navigate(`/partido/${p.id}`)} />
                 ))}
               </div>
             </div>

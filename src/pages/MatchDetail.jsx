@@ -3,11 +3,12 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useMatch } from '../hooks/useMatches'
 import { useMatchLineups } from '../hooks/useLineups'
 import { useLiveSyncEvents, useMatchLiveLink } from '../hooks/useLiveSync'
+import { useNow } from '../hooks/useNow'
 import FavoriteButton from '../components/teams/FavoriteButton'
 import TeamLogo from '../components/teams/TeamLogo'
 import Spinner from '../components/ui/Spinner'
 import Badge from '../components/ui/Badge'
-import { formatFechaLarga, formatHora, labelStatus } from '../lib/helpers'
+import { formatFechaLarga, formatHora, labelStatus, matchStartedByClock } from '../lib/helpers'
 
 const TABS = [
   { key: 'info', label: 'Info' },
@@ -102,6 +103,7 @@ export default function MatchDetail() {
   const { matchId } = useParams()
   const navigate = useNavigate()
   const [tab, setTab] = useState('info')
+  const now = useNow()
 
   const { data, isLoading } = useMatch(matchId)
   const match = data?.match
@@ -122,6 +124,7 @@ export default function MatchDetail() {
 
   const finalizado = match.status === 'finished'
   const enVivo = match.status === 'in_progress'
+  const comenzadoPorHorario = matchStartedByClock(match, now)
   const visibleLiveEvents = liveEvents.filter((event) => event.status !== 'dismissed')
   const hasLiveState = liveLink?.last_synced_at && liveLink?.last_status
 
@@ -134,7 +137,7 @@ export default function MatchDetail() {
 
         <div className="flex items-center justify-center gap-2 mb-3">
           <Badge variant={enVivo ? 'live' : finalizado ? 'success' : 'default'}>
-            {labelStatus(match.status)}
+            {comenzadoPorHorario ? 'Partido comenzado' : labelStatus(match.status)}
           </Badge>
           {match.round != null && <span className="text-xs text-zinc-500">Fecha {match.round}</span>}
         </div>

@@ -20,6 +20,8 @@ import { es } from 'date-fns/locale'
 import FavoriteButton from '../components/teams/FavoriteButton'
 import TeamLogo from '../components/teams/TeamLogo'
 import Spinner from '../components/ui/Spinner'
+import { useNow } from '../hooks/useNow'
+import { matchStartedByClock } from '../lib/helpers'
 
 const TZ = 'America/Argentina/San_Luis'
 
@@ -109,9 +111,10 @@ function removeDuplicateMatches(matches) {
   return [...byKey.values()]
 }
 
-function MatchRow({ p, onClick }) {
+function MatchRow({ p, onClick, now }) {
   const finalizado = p.status === 'finished'
   const enVivo = p.status === 'in_progress'
+  const comenzadoPorHorario = matchStartedByClock(p, now)
   const hora = p.scheduled_at
     ? format(toZonedTime(new Date(p.scheduled_at), TZ), 'HH:mm')
     : 'A def.'
@@ -136,6 +139,8 @@ function MatchRow({ p, onClick }) {
           <span className="text-emerald-400 text-[11px] font-bold tracking-wide animate-pulse">VIVO</span>
         ) : finalizado ? (
           <span className="text-[11px] text-zinc-500 font-semibold">FT</span>
+        ) : comenzadoPorHorario ? (
+          <span className="text-[10px] text-amber-300 font-bold leading-tight">COMENZADO</span>
         ) : (
           <span className="text-xs text-zinc-300 font-medium">{hora}</span>
         )}
@@ -328,6 +333,7 @@ const STATUS_TABS = [
 
 export default function Fixture() {
   const navigate = useNavigate()
+  const now = useNow()
   const { data: partidos = [], isLoading } = useAllMatches()
   const [tab, setTab] = useState('all')
   const [selectedDay, setSelectedDay] = useState(() => dayKey(zonedNow()))
@@ -461,6 +467,7 @@ export default function Fixture() {
               <MatchRow
                 key={p.app_id}
                 p={p}
+                now={now}
                 onClick={p.source_kind === 'official' ? () => navigate(`/partido/${p.id}`) : undefined}
               />
             ))}

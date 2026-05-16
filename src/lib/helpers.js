@@ -67,6 +67,11 @@ export function labelStatus(status) {
   return map[status] ?? status
 }
 
+export function matchStartedByClock(match, now = Date.now()) {
+  if (!match?.scheduled_at || match.status !== 'scheduled') return false
+  return new Date(match.scheduled_at).getTime() <= now
+}
+
 export function labelGenero(gender) {
   const map = { masculino: 'Masculino', femenino: 'Femenino', mixto: 'Mixto' }
   return map[gender] ?? gender

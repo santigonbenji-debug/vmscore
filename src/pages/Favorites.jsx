@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import { useFavorites } from '../hooks/useFavorites'
 import { usePushNotifications } from '../hooks/usePushNotifications'
+import { useNow } from '../hooks/useNow'
 import { useTeams }     from '../hooks/useTeams'
 import { toZonedTime } from 'date-fns-tz'
 import { format } from 'date-fns'
@@ -11,6 +12,7 @@ import { es } from 'date-fns/locale'
 import FavoriteButton from '../components/teams/FavoriteButton'
 import TeamLogo from '../components/teams/TeamLogo'
 import Spinner from '../components/ui/Spinner'
+import { matchStartedByClock } from '../lib/helpers'
 
 const TZ = 'America/Argentina/San_Luis'
 
@@ -31,9 +33,10 @@ function useAllMatchesByTeams(teamIds) {
   })
 }
 
-function MatchRow({ p, onClick, favoriteIds }) {
+function MatchRow({ p, onClick, favoriteIds, now }) {
   const finalizado = p.status === 'finished'
   const enVivo     = p.status === 'in_progress'
+  const comenzadoPorHorario = matchStartedByClock(p, now)
   const hora = p.scheduled_at
     ? format(toZonedTime(new Date(p.scheduled_at), TZ), 'HH:mm')
     : 'A def.'
@@ -50,6 +53,8 @@ function MatchRow({ p, onClick, favoriteIds }) {
           ? <span className="text-emerald-400 text-[11px] font-bold tracking-wide animate-pulse">VIVO</span>
           : finalizado
             ? <span className="text-[11px] text-zinc-500 font-semibold">FT</span>
+            : comenzadoPorHorario
+              ? <span className="text-[10px] text-amber-300 font-bold leading-tight">COMENZADO</span>
             : <span className="text-xs text-zinc-300 font-medium">{hora}</span>}
       </div>
       <div className="flex-1 min-w-0 space-y-1">
@@ -94,7 +99,7 @@ function groupByDate(partidos) {
   return out
 }
 
-function FechaCard({ fecha, partidos, favoriteIds, onMatchClick }) {
+function FechaCard({ fecha, partidos, favoriteIds, onMatchClick, now }) {
   const isRoundOnly = fecha.startsWith('fecha-')
   const fechaDate = isRoundOnly ? null : new Date(fecha + 'T12:00:00')
   return (
@@ -104,7 +109,7 @@ function FechaCard({ fecha, partidos, favoriteIds, onMatchClick }) {
       </p>
       <div className="bg-surface-900 rounded-xl border border-surface-800 overflow-hidden">
         {partidos.map((p) => (
-          <MatchRow key={p.id} p={p} favoriteIds={favoriteIds} onClick={() => onMatchClick(p.id)} />
+          <MatchRow key={p.id} p={p} favoriteIds={favoriteIds} now={now} onClick={() => onMatchClick(p.id)} />
         ))}
       </div>
     </div>
@@ -148,6 +153,7 @@ export default function Favorites() {
   const navigate  = useNavigate()
   const { favorites } = useFavorites()
   const push = usePushNotifications()
+  const now = useNow()
   const { data: equipos = [], isLoading: loadingEquipos } = useTeams()
 
   const [tab, setTab]       = useState('matches')
@@ -297,6 +303,7 @@ export default function Favorites() {
               <div className="bg-surface-900 rounded-xl border border-emerald-500/30 overflow-hidden">
                 {enVivo.map((p) => (
                   <MatchRow key={p.id} p={p} favoriteIds={favorites}
+                    now={now}
                     onClick={() => navigate(`/partido/${p.id}`)} />
                 ))}
               </div>
@@ -310,7 +317,7 @@ export default function Favorites() {
               </p>
               {Object.entries(groupByDate(proximos)).map(([fecha, lista]) => (
                 <FechaCard key={fecha} fecha={fecha} partidos={lista}
-                  favoriteIds={favorites} onMatchClick={(id) => navigate(`/partido/${id}`)} />
+                  favoriteIds={favorites} now={now} onMatchClick={(id) => navigate(`/partido/${id}`)} />
               ))}
             </section>
           )}
@@ -322,7 +329,7 @@ export default function Favorites() {
               </p>
               {Object.entries(groupByDate(finalizados)).map(([fecha, lista]) => (
                 <FechaCard key={fecha} fecha={fecha} partidos={lista}
-                  favoriteIds={favorites} onMatchClick={(id) => navigate(`/partido/${id}`)} />
+                  favoriteIds={favorites} now={now} onMatchClick={(id) => navigate(`/partido/${id}`)} />
               ))}
             </section>
           )}
