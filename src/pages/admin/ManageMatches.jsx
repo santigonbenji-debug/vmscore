@@ -312,7 +312,11 @@ export default function ManageMatches() {
                   <div className="flex items-center justify-center gap-3 py-1">
                     <span className="flex-1 text-right text-sm font-semibold text-zinc-100">{partido.home_team_short_name ?? partido.home_team_name}</span>
                     <span className="text-sm font-bold text-zinc-500">
-                      {partido.status === 'finished' ? `${partido.home_score} - ${partido.away_score}` : 'vs'}
+                      {(partido.status === 'finished' || partido.status === 'in_progress') &&
+                      partido.home_score !== null &&
+                      partido.away_score !== null
+                        ? `${partido.home_score} - ${partido.away_score}`
+                        : 'vs'}
                     </span>
                     <span className="flex-1 text-left text-sm font-semibold text-zinc-100">{partido.away_team_short_name ?? partido.away_team_name}</span>
                   </div>
@@ -323,9 +327,11 @@ export default function ManageMatches() {
                   </div>
 
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {partido.status !== 'finished' && (
+                    {partido.status !== 'finished' && partido.status !== 'postponed' && partido.status !== 'cancelled' && (
                       <Link to={`/admin/resultado/${partido.id}`}>
-                        <Button size="sm" variant="primary">Cargar resultado</Button>
+                        <Button size="sm" variant="primary">
+                          {partido.status === 'in_progress' ? 'Cargar en vivo' : 'Cargar datos'}
+                        </Button>
                       </Link>
                     )}
                     {partido.status === 'finished' && (

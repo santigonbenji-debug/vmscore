@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useMatch, useSaveResult } from '../../hooks/useMatches'
+import { useMatch, useSaveLiveMatchData, useSaveResult } from '../../hooks/useMatches'
 import { useAuth } from '../../hooks/useAuth'
 import { useTeamPlayers } from '../../hooks/useRosters'
 import { useAddMatchLineupPlayer, useMatchLineups, useRemoveMatchLineupPlayer } from '../../hooks/useLineups'
@@ -74,6 +74,7 @@ export default function LoadResult() {
   const navigate = useNavigate()
   const { isSuperAdmin, isLigaAdmin, isClubAdmin, teamId } = useAuth()
   const { data, isLoading } = useMatch(matchId)
+  const guardarEnVivoMutation = useSaveLiveMatchData()
   const guardarResultado = useSaveResult()
 
   const [homeScore, setHomeScore] = useState('')
@@ -314,7 +315,23 @@ export default function LoadResult() {
     navigate(-1)
   }
 
-  const guardando = guardarResultado.isPending
+  async function guardarEnVivo() {
+    if ((homeScore === '') !== (awayScore === '')) {
+      return alert('Para publicar marcador en vivo, carga ambos goles o deja ambos vacios.')
+    }
+
+    await guardarEnVivoMutation.mutateAsync({
+      matchId,
+      homeScore,
+      awayScore,
+      events,
+      mvpPlayerName: mvpPlayerName || null,
+      mvpTeamId: mvpTeamId || null,
+      mvpPlayerId: mvpPlayerId || null,
+    })
+  }
+
+  const guardando = guardarResultado.isPending || guardarEnVivoMutation.isPending
   const currentLineupPlayers = lineups.filter((player) => !miEquipoId || player.team_id === miEquipoId)
   const pendingLiveEvents = liveEvents.filter((event) => event.status === 'pending')
   const liveScoreReady = liveLink?.last_home_score !== null && liveLink?.last_home_score !== undefined &&
@@ -525,6 +542,11 @@ export default function LoadResult() {
           <p className="text-xs font-semibold text-zinc-500 text-center mb-4 uppercase tracking-wide">
             Resultado
           </p>
+          {match.status !== 'finished' && (
+            <p className="mb-4 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+              Para un partido en curso podes cargar marcador y eventos ahora, y finalizarlo despues.
+            </p>
+          )}
           <div className="flex items-center justify-center gap-4">
             <div className="flex-1 text-center">
               <p className="font-bold text-sm mb-2">{match.home_team_short_name ?? match.home_team_name}</p>
@@ -755,13 +777,25 @@ export default function LoadResult() {
         </div>
       </div>
 
-      <Button onClick={guardar} disabled={guardando} className="w-full" size="lg">
-        {guardando ? 'Guardando...' : 'Guardar'}
-      </Button>
+      <div className="grid gap-2">
+        {puedeCargarResultado && match.status !== 'finished' && match.status !== 'postponed' && match.status !== 'cancelled' && (
+          <Button onClick={guardarEnVivo} disabled={guardando} className="w-full" size="lg" variant="outline">
+            {guardarEnVivoMutation.isPending ? 'Publicando...' : 'Guardar datos en vivo'}
+          </Button>
+        )}
+        <Button onClick={guardar} disabled={guardando} className="w-full" size="lg">
+          {guardarResultado.isPending ? 'Guardando...' : puedeCargarResultado ? 'Guardar resultado final' : 'Guardar'}
+        </Button>
+      </div>
 
       {guardarResultado.isError && (
         <p className="text-red-400 text-xs text-center">
           Error al guardar. Revisa los datos e intenta de nuevo.
+        </p>
+      )}
+      {guardarEnVivoMutation.isError && (
+        <p className="text-red-400 text-xs text-center">
+          {guardarEnVivoMutation.error?.message || 'No se pudieron guardar los datos en vivo.'}
         </p>
       )}
     </div>

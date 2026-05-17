@@ -315,13 +315,78 @@ export function useDeleteMatch() {
 }
 
 // Guardar resultado completo: scores + eventos → trigger recalcula standings
+async function replaceMatchEvents(matchId, events = []) {
+  const { error: deleteError } = await supabase.from('match_events').delete().eq('match_id', matchId)
+  if (deleteError) throw deleteError
+
+  if (events.length === 0) return
+
+  const { error: insertError } = await supabase
+    .from('match_events')
+    .insert(events.map((event) => ({
+      match_id: matchId,
+      team_id: event.team_id,
+      player_id: event.player_id || null,
+      player_name: event.player_name || null,
+      event_type: event.event_type,
+      minute: event.minute ?? null,
+      notes: event.notes ?? null,
+    })))
+  if (insertError) throw insertError
+}
+
+function parseOptionalScore(score) {
+  return score === null || score === undefined || score === '' ? null : parseInt(score)
+}
+
+export function useSaveLiveMatchData() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ matchId, homeScore, awayScore, events = [], mvpPlayerName = null, mvpTeamId = null, mvpPlayerId = null }) => {
+      const parsedHomeScore = parseOptionalScore(homeScore)
+      const parsedAwayScore = parseOptionalScore(awayScore)
+      const hasAnyScore = parsedHomeScore !== null || parsedAwayScore !== null
+      const hasCompleteScore = Number.isFinite(parsedHomeScore) && Number.isFinite(parsedAwayScore)
+
+      if (hasAnyScore && !hasCompleteScore) {
+        throw new Error('Para publicar marcador en vivo, carga ambos goles o deja ambos vacios.')
+      }
+
+      const matchUpdate = {
+        status: 'in_progress',
+        mvp_player_name: mvpPlayerName || null,
+        mvp_team_id: mvpTeamId || null,
+        mvp_player_id: mvpPlayerId || null,
+        updated_at: new Date().toISOString(),
+      }
+
+      if (hasCompleteScore) {
+        matchUpdate.home_score = parsedHomeScore
+        matchUpdate.away_score = parsedAwayScore
+      }
+
+      const { error: matchError } = await supabase.from('matches').update(matchUpdate).eq('id', matchId)
+      if (matchError) throw matchError
+
+      await replaceMatchEvents(matchId, events)
+    },
+    onSuccess: (_, { matchId }) => {
+      qc.invalidateQueries({ queryKey: ['match', matchId] })
+      qc.invalidateQueries({ queryKey: ['matches'] })
+      qc.invalidateQueries({ queryKey: ['matches-home'] })
+      qc.invalidateQueries({ queryKey: ['home-matches'] })
+      qc.invalidateQueries({ queryKey: ['matches-all-with-external'] })
+    },
+  })
+}
+
 export function useSaveResult() {
   const qc = useQueryClient()
   return useMutation({
    mutationFn: async ({ matchId, homeScore, awayScore, events = [], mvpPlayerName = null, mvpTeamId = null, mvpPlayerId = null }) => {
   // 1. Actualizar partido con scores + MVP
-  const parsedHomeScore = homeScore === null || homeScore === undefined || homeScore === '' ? null : parseInt(homeScore)
-  const parsedAwayScore = awayScore === null || awayScore === undefined || awayScore === '' ? null : parseInt(awayScore)
+  const parsedHomeScore = parseOptionalScore(homeScore)
+  const parsedAwayScore = parseOptionalScore(awayScore)
   const hasCompleteResult = Number.isFinite(parsedHomeScore) && Number.isFinite(parsedAwayScore)
   const matchUpdate = {
     mvp_player_name: mvpPlayerName || null,
@@ -340,27 +405,15 @@ export function useSaveResult() {
   if (matchError) throw matchError
 
   // 2. Reemplazar eventos
-  await supabase.from('match_events').delete().eq('match_id', matchId)
-  if (events.length > 0) {
-    const { error: evErr } = await supabase
-      .from('match_events')
-      .insert(events.map((e) => ({
-        match_id: matchId,
-        team_id: e.team_id,
-        player_id: e.player_id || null,
-        player_name: e.player_name || null,
-        event_type: e.event_type,
-        minute: e.minute ?? null,
-        notes: e.notes ?? null,
-      })))
-    if (evErr) throw evErr
-  }
+  await replaceMatchEvents(matchId, events)
 
-  supabase.functions.invoke('send-push', {
-    body: { type: 'match_finished', matchId },
-  }).catch((error) => {
-    console.warn('No se pudo enviar notificacion push', error)
-  })
+  if (hasCompleteResult) {
+    supabase.functions.invoke('send-push', {
+      body: { type: 'match_finished', matchId },
+    }).catch((error) => {
+      console.warn('No se pudo enviar notificacion push', error)
+    })
+  }
 },
     onSuccess: (_, { matchId }) => {
       qc.invalidateQueries({ queryKey: ['match', matchId] })
