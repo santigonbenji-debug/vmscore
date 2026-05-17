@@ -61,10 +61,17 @@ export function labelStatus(status) {
     scheduled:   'Programado',
     in_progress: 'En Vivo',
     finished:    'Finalizado',
-    postponed:   'Postergado',
+    postponed:   'Suspendido',
     cancelled:   'Cancelado',
   }
   return map[status] ?? status
+}
+
+export function matchStatusDetail(match) {
+  if (match?.status === 'postponed' && !match?.scheduled_at) {
+    return 'Suspendido, fecha nueva a definir'
+  }
+  return labelStatus(match?.status)
 }
 
 export function matchStartedByClock(match, now = Date.now()) {

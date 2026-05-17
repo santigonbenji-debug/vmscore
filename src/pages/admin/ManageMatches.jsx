@@ -5,8 +5,8 @@ import {
   useCreateMatch,
   useDeleteMatch,
   useMatches,
+  usePostponeMatch,
   useUpdateMatchDetails,
-  useUpdateMatchStatus,
 } from '../../hooks/useMatches'
 import { useTeams } from '../../hooks/useTeams'
 import { useVenues } from '../../hooks/useVenues'
@@ -16,7 +16,7 @@ import Modal from '../../components/ui/Modal'
 import Button from '../../components/ui/Button'
 import Badge from '../../components/ui/Badge'
 import Spinner from '../../components/ui/Spinner'
-import { formatFechaHora, labelStatus, utcToInputLocal } from '../../lib/helpers'
+import { formatFechaHora, matchStatusDetail, utcToInputLocal } from '../../lib/helpers'
 
 const INPUT = 'w-full rounded-lg border border-surface-700 bg-surface-800 px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-primary/30'
 
@@ -71,7 +71,7 @@ export default function ManageMatches() {
 
   const crearPartido = useCreateMatch()
   const borrarPartido = useDeleteMatch()
-  const cambiarStatus = useUpdateMatchStatus()
+  const postergarPartido = usePostponeMatch()
   const actualizarDetalles = useUpdateMatchDetails()
 
   const fechasDisponibles = useMemo(() => {
@@ -191,6 +191,14 @@ export default function ManageMatches() {
     await borrarPartido.mutateAsync(partido.id)
   }
 
+  async function suspender(partido) {
+    const confirmar = window.confirm(
+      'Marcar este partido como suspendido y dejar la nueva fecha a definir?'
+    )
+    if (!confirmar) return
+    await postergarPartido.mutateAsync({ id: partido.id })
+  }
+
   const guardando = crearPartido.isPending
 
   return (
@@ -291,9 +299,13 @@ export default function ManageMatches() {
               {grupo.partidos.map((partido) => (
                 <div key={partido.id} className="rounded-xl border border-surface-800 bg-surface-900 p-4 shadow-sm">
                   <div className="mb-2 flex items-center justify-between">
-                    <span className="text-xs text-zinc-500">{formatFechaHora(partido.scheduled_at)}</span>
+                    <span className="text-xs text-zinc-500">
+                      {partido.status === 'postponed' && !partido.scheduled_at
+                        ? 'Fecha nueva a definir'
+                        : formatFechaHora(partido.scheduled_at)}
+                    </span>
                     <Badge variant={STATUS_VARIANT[partido.status] ?? 'default'}>
-                      {labelStatus(partido.status)}
+                      {matchStatusDetail(partido)}
                     </Badge>
                   </div>
 
@@ -328,9 +340,9 @@ export default function ManageMatches() {
                       <Button
                         size="sm"
                         variant="secondary"
-                        onClick={() => cambiarStatus.mutate({ id: partido.id, status: 'postponed' })}
+                        onClick={() => suspender(partido)}
                       >
-                        Postergar
+                        Suspender
                       </Button>
                     )}
                     <button onClick={() => eliminar(partido)} className="ml-auto text-xs font-medium text-red-400 hover:text-red-300">

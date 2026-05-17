@@ -8,7 +8,7 @@ import FavoriteButton from '../components/teams/FavoriteButton'
 import TeamLogo from '../components/teams/TeamLogo'
 import Spinner from '../components/ui/Spinner'
 import Badge from '../components/ui/Badge'
-import { formatFechaLarga, formatHora, labelStatus, matchStartedByClock } from '../lib/helpers'
+import { formatFechaLarga, formatHora, matchStartedByClock, matchStatusDetail } from '../lib/helpers'
 
 const TABS = [
   { key: 'info', label: 'Info' },
@@ -137,7 +137,7 @@ export default function MatchDetail() {
 
         <div className="flex items-center justify-center gap-2 mb-3">
           <Badge variant={enVivo ? 'live' : finalizado ? 'success' : 'default'}>
-            {comenzadoPorHorario ? 'Partido comenzado' : labelStatus(match.status)}
+            {comenzadoPorHorario ? 'Partido comenzado' : matchStatusDetail(match)}
           </Badge>
           {match.round != null && <span className="text-xs text-zinc-500">Fecha {match.round}</span>}
         </div>
@@ -248,7 +248,9 @@ export default function MatchDetail() {
               {match.scheduled_at && (
                 <p>{formatFechaLarga(match.scheduled_at)} · {formatHora(match.scheduled_at)}</p>
               )}
-              {!match.scheduled_at && <p>Dia y horario a definir</p>}
+              {!match.scheduled_at && (
+                <p>{match.status === 'postponed' ? 'Fecha nueva a definir' : 'Dia y horario a definir'}</p>
+              )}
               {match.venue_name && <p>{match.venue_name}{match.venue_address ? ` · ${match.venue_address}` : ''}</p>}
               {match.referee_name && <p>Arbitro: {match.referee_name}</p>}
               <p>{match.league_name}{match.season ? ` · ${match.season}` : ''}</p>

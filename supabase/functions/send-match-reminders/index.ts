@@ -77,11 +77,12 @@ serve(async (req) => {
           timeZone: 'America/Argentina/San_Luis',
           hour: '2-digit',
           minute: '2-digit',
+          hour12: false,
         }).format(new Date(match.scheduled_at))
 
         const payload = JSON.stringify({
           title: 'Hoy juega tu favorito',
-          body: `${match.home_team_short_name ?? match.home_team_name} vs ${match.away_team_short_name ?? match.away_team_name} · ${startsAt}`,
+          body: `${match.home_team_short_name ?? match.home_team_name} vs ${match.away_team_short_name ?? match.away_team_name} · ${startsAt} hs`,
           url: `/partido/${match.id}`,
         })
 

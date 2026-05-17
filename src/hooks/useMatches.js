@@ -377,7 +377,38 @@ export function useUpdateMatchStatus() {
         .eq('id', id)
       if (error) throw error
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['matches'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['matches'] })
+      qc.invalidateQueries({ queryKey: ['match'] })
+      qc.invalidateQueries({ queryKey: ['matches-home'] })
+      qc.invalidateQueries({ queryKey: ['home-matches'] })
+      qc.invalidateQueries({ queryKey: ['matches-all-with-external'] })
+    },
+  })
+}
+
+export function usePostponeMatch() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id }) => {
+      const { error } = await supabase
+        .from('matches')
+        .update({
+          status: 'postponed',
+          scheduled_at: null,
+          date_tbd: true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['matches'] })
+      qc.invalidateQueries({ queryKey: ['match'] })
+      qc.invalidateQueries({ queryKey: ['matches-home'] })
+      qc.invalidateQueries({ queryKey: ['home-matches'] })
+      qc.invalidateQueries({ queryKey: ['matches-all-with-external'] })
+    },
   })
 }
 // Partidos filtrados por fecha específica (para el calendario tipo SofaScore)

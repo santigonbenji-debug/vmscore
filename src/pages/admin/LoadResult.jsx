@@ -85,6 +85,7 @@ export default function LoadResult() {
   const [mvpPlayerId, setMvpPlayerId] = useState('')
   const [lineupForm, setLineupForm] = useState(LINEUP_FORM)
   const [locosInput, setLocosInput] = useState('')
+  const [locosMessage, setLocosMessage] = useState('')
 
   const puedeCargarResultado = isSuperAdmin || isLigaAdmin
   const miEquipoId = isClubAdmin ? teamId : null
@@ -236,11 +237,13 @@ export default function LoadResult() {
       externalUrl: locosInput,
     })
     await syncLocosVm.mutateAsync({ match, link })
+    setLocosMessage('Partido vinculado. La sincronizacion queda guardada para futuras lecturas.')
   }
 
   async function sincronizarLocosVm() {
     if (!match || !liveLink) return
     await syncLocosVm.mutateAsync({ match, link: liveLink })
+    setLocosMessage('Novedades buscadas en Locos VM.')
   }
 
   async function buscarPartidosLocosVm() {
@@ -257,6 +260,7 @@ export default function LoadResult() {
       externalUrl: candidate.streamUrl || candidate.vodUrl || '',
     })
     await syncLocosVm.mutateAsync({ match, link })
+    setLocosMessage('Partido vinculado. La sincronizacion queda guardada para futuras lecturas.')
   }
 
   function aplicarMarcadorVivo() {
@@ -371,7 +375,11 @@ export default function LoadResult() {
                   key={candidate.id}
                   type="button"
                   onClick={() => vincularCandidatoLocosVm(candidate)}
-                  className="w-full rounded-xl border border-surface-700 bg-surface-800/40 p-3 text-left hover:border-primary/60 transition-colors"
+                  className={`w-full rounded-xl border p-3 text-left transition-colors ${
+                    liveLink?.external_match_id === candidate.id
+                      ? 'border-emerald-500/40 bg-emerald-500/10'
+                      : 'border-surface-700 bg-surface-800/40 hover:border-primary/60'
+                  }`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -390,7 +398,11 @@ export default function LoadResult() {
                       <p className="text-sm font-extrabold text-zinc-100">
                         {candidate.homeScore ?? '-'} - {candidate.awayScore ?? '-'}
                       </p>
-                      <p className="text-[10px] text-primary font-bold uppercase mt-1">Vincular</p>
+                      <p className={`text-[10px] font-bold uppercase mt-1 ${
+                        liveLink?.external_match_id === candidate.id ? 'text-emerald-300' : 'text-primary'
+                      }`}>
+                        {liveLink?.external_match_id === candidate.id ? 'Vinculado' : 'Vincular'}
+                      </p>
                     </div>
                   </div>
                 </button>
@@ -423,12 +435,18 @@ export default function LoadResult() {
               onClick={liveLink ? sincronizarLocosVm : vincularLocosVm}
               disabled={saveLiveLink.isPending || syncLocosVm.isPending || !locosInput.trim()}
             >
-              {syncLocosVm.isPending ? 'Leyendo...' : liveLink ? 'Buscar novedades' : 'Vincular'}
+              {syncLocosVm.isPending ? 'Leyendo...' : liveLink ? 'Actualizar desde Locos VM' : 'Vincular'}
             </Button>
           </div>
 
           {liveLink && (
-            <div className="rounded-xl bg-surface-800/50 border border-surface-700 p-3">
+            <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-3">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <p className="text-xs font-black uppercase tracking-wide text-emerald-300">Vinculado a Locos VM</p>
+                <span className="rounded-full bg-emerald-500/15 px-2 py-1 text-[10px] font-black uppercase text-emerald-200">
+                  Activo
+                </span>
+              </div>
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-xs text-zinc-500 truncate">ID externo: {liveLink.external_match_id}</p>
@@ -447,6 +465,12 @@ export default function LoadResult() {
                 </Button>
               </div>
             </div>
+          )}
+
+          {locosMessage && (
+            <p className="rounded-xl border border-primary/20 bg-primary/10 px-3 py-2 text-xs text-zinc-200">
+              {locosMessage}
+            </p>
           )}
 
           {pendingLiveEvents.length > 0 && (
