@@ -1,0 +1,2 @@
+[functions.sync-locos-live]
+verify_jwt = false

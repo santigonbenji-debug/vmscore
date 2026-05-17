@@ -35,8 +35,15 @@ function fieldValue(field: Record<string, unknown> | undefined): unknown {
 async function fetchLocosState(externalMatchId: string) {
   const url = `${firestoreBase}/matches/${externalMatchId}/liveState/state?key=${locosApiKey}`
   const response = await fetch(url)
-  if (!response.ok) throw new Error(`Locos VM ${response.status}`)
-  const document = await response.json()
+  if (response.ok) {
+    const document = await response.json()
+    return Object.fromEntries(Object.entries(document.fields ?? {}).map(([key, value]) => [key, fieldValue(value as Record<string, unknown>)]))
+  }
+
+  const fallbackUrl = `${firestoreBase}/matches/${externalMatchId}?key=${locosApiKey}`
+  const fallbackResponse = await fetch(fallbackUrl)
+  if (!fallbackResponse.ok) throw new Error(`Locos VM ${fallbackResponse.status}`)
+  const document = await fallbackResponse.json()
   return Object.fromEntries(Object.entries(document.fields ?? {}).map(([key, value]) => [key, fieldValue(value as Record<string, unknown>)]))
 }
 
