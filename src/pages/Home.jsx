@@ -13,7 +13,7 @@ import FavoriteButton from '../components/teams/FavoriteButton'
 import TeamLogo from '../components/teams/TeamLogo'
 import Spinner from '../components/ui/Spinner'
 import Badge from '../components/ui/Badge'
-import { matchStartedByClock } from '../lib/helpers'
+import { matchStartedByClock, matchStatusDetail } from '../lib/helpers'
 
 const TZ = 'America/Argentina/San_Luis'
 
@@ -49,7 +49,7 @@ function formatRoundLabel(rounds = []) {
 
 function buildDateGroups(partidos, mode = 'upcoming') {
   const groups = {}
-  const visibles = partidos.filter((match) => match.status !== 'cancelled' && match.status !== 'postponed')
+  const visibles = partidos.filter((match) => match.status !== 'cancelled')
 
   for (const match of visibles) {
     const fecha = match.scheduled_at ? toZonedTime(new Date(match.scheduled_at), TZ) : null
@@ -109,6 +109,7 @@ function buildDateGroups(partidos, mode = 'upcoming') {
 function MatchRow({ match, onClick, favoriteIds = [], now }) {
   const finalizado = match.status === 'finished'
   const enVivo = match.status === 'in_progress'
+  const suspendido = match.status === 'postponed'
   const comenzadoPorHorario = matchStartedByClock(match, now)
   const hora = match.scheduled_at
     ? format(toZonedTime(new Date(match.scheduled_at), TZ), 'HH:mm')
@@ -134,6 +135,8 @@ function MatchRow({ match, onClick, favoriteIds = [], now }) {
           <span className="text-emerald-400 font-bold animate-pulse">VIVO</span>
         ) : finalizado ? (
           'FT'
+        ) : suspendido ? (
+          <span className="text-amber-300 font-bold leading-tight">SUSP.</span>
         ) : comenzadoPorHorario ? (
           <span className="text-amber-300 font-bold leading-tight">COMENZADO</span>
         ) : (
@@ -142,6 +145,11 @@ function MatchRow({ match, onClick, favoriteIds = [], now }) {
       </div>
 
       <div className="flex-1 min-w-0 space-y-1">
+        {suspendido && (
+          <p className="text-[10px] font-bold uppercase tracking-wide text-amber-300">
+            {matchStatusDetail(match)}
+          </p>
+        )}
         <div className="flex items-center gap-2 min-w-0">
           <FavoriteButton teamId={match.home_team_id} className="-ml-1 p-1" />
           <TeamLogo logoUrl={match.home_team_logo_url} name={match.home_team_name} color={match.home_primary_color} />
@@ -237,9 +245,10 @@ export default function Home() {
   }, [favorites, matchScope, partidos])
   const filteredMatches = useMemo(() => (
     scopedMatches.filter((match) => {
-      if (match.status === 'cancelled' || match.status === 'postponed') return false
+      if (match.status === 'cancelled') return false
       if (matchMode === 'previous') return match.status === 'finished'
       if (match.status === 'finished') return false
+      if (match.status === 'postponed') return true
       if (!match.scheduled_at) return true
       return format(toZonedTime(new Date(match.scheduled_at), TZ), 'yyyy-MM-dd') >= todayKey
     })
@@ -247,7 +256,8 @@ export default function Home() {
   const grupos = useMemo(() => buildDateGroups(filteredMatches, matchMode), [filteredMatches, matchMode])
   const modeCounts = useMemo(() => ({
     upcoming: scopedMatches.filter((match) => {
-      if (match.status === 'finished' || match.status === 'cancelled' || match.status === 'postponed') return false
+      if (match.status === 'finished' || match.status === 'cancelled') return false
+      if (match.status === 'postponed') return true
       if (!match.scheduled_at) return true
       return format(toZonedTime(new Date(match.scheduled_at), TZ), 'yyyy-MM-dd') >= todayKey
     }).length,

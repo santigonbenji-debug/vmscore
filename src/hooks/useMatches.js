@@ -68,11 +68,11 @@ function pairKey(match) {
 function matchDuplicateKey(match) {
   const teams = pairKey(match)
   if (!teams) return null
+  if (match.round != null) {
+    return `${match.league_id ?? 'sin-liga'}|${teams}|round-${match.round}`
+  }
   if (match.scheduled_at) {
     return `${match.league_id ?? 'sin-liga'}|${teams}|${new Date(match.scheduled_at).toISOString().slice(0, 10)}`
-  }
-  if (match.round) {
-    return `${match.league_id ?? 'sin-liga'}|${teams}|round-${match.round}`
   }
   return null
 }
@@ -98,9 +98,12 @@ function removeDuplicateTeamMatches(matches) {
     const currentOfficial = current.source_kind === 'official'
     const nextOfficial = match.source_kind === 'official'
 
-    if (!currentPreferred && nextPreferred) {
+    if (currentOfficial && !nextOfficial) {
+      continue
+    }
+    if (!currentOfficial && nextOfficial) {
       byKey.set(key, match)
-    } else if (!currentPreferred && !nextPreferred && !currentOfficial && nextOfficial) {
+    } else if (!currentPreferred && nextPreferred) {
       byKey.set(key, match)
     }
   }
@@ -395,7 +398,6 @@ export function usePostponeMatch() {
         .from('matches')
         .update({
           status: 'postponed',
-          scheduled_at: null,
           date_tbd: true,
           updated_at: new Date().toISOString(),
         })

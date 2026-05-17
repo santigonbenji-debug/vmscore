@@ -68,7 +68,7 @@ export function labelStatus(status) {
 }
 
 export function matchStatusDetail(match) {
-  if (match?.status === 'postponed' && !match?.scheduled_at) {
+  if (match?.status === 'postponed') {
     return 'Suspendido, fecha nueva a definir'
   }
   return labelStatus(match?.status)

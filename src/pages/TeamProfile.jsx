@@ -7,7 +7,7 @@ import { useTeam } from '../hooks/useTeams'
 import { useTeamMatchesWithExternal } from '../hooks/useMatches'
 import { useTeamPlayers } from '../hooks/useRosters'
 import { useStandingsTablesByPhase, useTeamStandingsTables } from '../hooks/useStandings'
-import { formatFechaLarga, formatHora } from '../lib/helpers'
+import { formatFechaLarga, formatHora, matchStatusDetail } from '../lib/helpers'
 
 const TABS = [
   { key: 'partidos', label: 'Partidos' },
@@ -170,7 +170,13 @@ function MatchesTab({ teamId, matches, isLoading, filter, onFilterChange, filter
                       {match.scheduled_at ? (
                         <>
                           <p>{formatFechaLarga(match.scheduled_at).split(' de ')[0]}</p>
-                          <p className="mt-0.5">{match.status === 'finished' ? 'FT' : formatHora(match.scheduled_at)}</p>
+                          <p className="mt-0.5">
+                            {match.status === 'finished'
+                              ? 'FT'
+                              : match.status === 'postponed'
+                                ? 'Suspendido'
+                                : formatHora(match.scheduled_at)}
+                          </p>
                         </>
                       ) : (
                         <>
@@ -181,6 +187,11 @@ function MatchesTab({ teamId, matches, isLoading, filter, onFilterChange, filter
                     </div>
 
                     <div className="min-w-0 border-l border-surface-700 pl-3">
+                      {match.status === 'postponed' && (
+                        <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-amber-300">
+                          {matchStatusDetail(match)}
+                        </p>
+                      )}
                       <div className="flex items-center gap-2">
                         <TeamLogo logoUrl={match.home_team_logo_url} name={match.home_team_name} color={match.home_primary_color} size="sm" />
                         <span className={`truncate text-sm ${isHome ? 'font-bold text-zinc-100' : 'text-zinc-400'}`}>

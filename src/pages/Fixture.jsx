@@ -21,7 +21,7 @@ import FavoriteButton from '../components/teams/FavoriteButton'
 import TeamLogo from '../components/teams/TeamLogo'
 import Spinner from '../components/ui/Spinner'
 import { useNow } from '../hooks/useNow'
-import { matchStartedByClock } from '../lib/helpers'
+import { matchStartedByClock, matchStatusDetail } from '../lib/helpers'
 
 const TZ = 'America/Argentina/San_Luis'
 
@@ -70,12 +70,12 @@ function pairKey(match) {
 function duplicateKey(match) {
   const teams = pairKey(match)
   if (!teams) return null
+  if (match.round != null) {
+    return `${match.league_id ?? 'sin-liga'}|${teams}|round-${match.round}`
+  }
   if (match.scheduled_at) {
     const date = dayKey(toZonedTime(new Date(match.scheduled_at), TZ))
     return `${match.league_id ?? 'sin-liga'}|${teams}|${date}`
-  }
-  if (match.round) {
-    return `${match.league_id ?? 'sin-liga'}|${teams}|round-${match.round}`
   }
   return null
 }
@@ -101,9 +101,12 @@ function removeDuplicateMatches(matches) {
     const currentIsOfficial = current.source_kind === 'official'
     const nextIsOfficial = match.source_kind === 'official'
 
-    if (!currentPreferred && nextPreferred) {
+    if (currentIsOfficial && !nextIsOfficial) {
+      continue
+    }
+    if (!currentIsOfficial && nextIsOfficial) {
       byKey.set(key, match)
-    } else if (!currentPreferred && !nextPreferred && !currentIsOfficial && nextIsOfficial) {
+    } else if (!currentPreferred && nextPreferred) {
       byKey.set(key, match)
     }
   }
@@ -114,6 +117,7 @@ function removeDuplicateMatches(matches) {
 function MatchRow({ p, onClick, now }) {
   const finalizado = p.status === 'finished'
   const enVivo = p.status === 'in_progress'
+  const suspendido = p.status === 'postponed'
   const comenzadoPorHorario = matchStartedByClock(p, now)
   const hora = p.scheduled_at
     ? format(toZonedTime(new Date(p.scheduled_at), TZ), 'HH:mm')
@@ -139,6 +143,8 @@ function MatchRow({ p, onClick, now }) {
           <span className="text-emerald-400 text-[11px] font-bold tracking-wide animate-pulse">VIVO</span>
         ) : finalizado ? (
           <span className="text-[11px] text-zinc-500 font-semibold">FT</span>
+        ) : suspendido ? (
+          <span className="text-[10px] text-amber-300 font-bold leading-tight">SUSP.</span>
         ) : comenzadoPorHorario ? (
           <span className="text-[10px] text-amber-300 font-bold leading-tight">COMENZADO</span>
         ) : (
@@ -147,6 +153,11 @@ function MatchRow({ p, onClick, now }) {
       </div>
 
       <div className="flex-1 min-w-0 space-y-1">
+        {suspendido && (
+          <p className="text-[10px] font-bold uppercase tracking-wide text-amber-300">
+            {matchStatusDetail(p)}
+          </p>
+        )}
         <div className="flex items-center gap-2">
           <FavoriteButton teamId={p.home_team_id} className="-ml-1 p-1" />
           <TeamLogo logoUrl={p.home_team_logo_url} name={p.home_team_name} color={p.home_primary_color} />
@@ -340,7 +351,7 @@ export default function Fixture() {
   const [calOpen, setCalOpen] = useState(false)
 
   const datedMatches = useMemo(() => partidos.filter((p) => p.scheduled_at), [partidos])
-  const tbdMatches = useMemo(() => partidos.filter((p) => !p.scheduled_at), [partidos])
+  const tbdMatches = useMemo(() => partidos.filter((p) => p.date_tbd), [partidos])
 
   const dayMatches = useMemo(() => (
     datedMatches.filter((p) => dayKey(toZonedTime(new Date(p.scheduled_at), TZ)) === selectedDay)

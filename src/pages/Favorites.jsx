@@ -12,7 +12,7 @@ import { es } from 'date-fns/locale'
 import FavoriteButton from '../components/teams/FavoriteButton'
 import TeamLogo from '../components/teams/TeamLogo'
 import Spinner from '../components/ui/Spinner'
-import { matchStartedByClock } from '../lib/helpers'
+import { matchStartedByClock, matchStatusDetail } from '../lib/helpers'
 
 const TZ = 'America/Argentina/San_Luis'
 
@@ -36,6 +36,7 @@ function useAllMatchesByTeams(teamIds) {
 function MatchRow({ p, onClick, favoriteIds, now }) {
   const finalizado = p.status === 'finished'
   const enVivo     = p.status === 'in_progress'
+  const suspendido = p.status === 'postponed'
   const comenzadoPorHorario = matchStartedByClock(p, now)
   const hora = p.scheduled_at
     ? format(toZonedTime(new Date(p.scheduled_at), TZ), 'HH:mm')
@@ -53,11 +54,18 @@ function MatchRow({ p, onClick, favoriteIds, now }) {
           ? <span className="text-emerald-400 text-[11px] font-bold tracking-wide animate-pulse">VIVO</span>
           : finalizado
             ? <span className="text-[11px] text-zinc-500 font-semibold">FT</span>
+            : suspendido
+              ? <span className="text-[10px] text-amber-300 font-bold leading-tight">SUSP.</span>
             : comenzadoPorHorario
               ? <span className="text-[10px] text-amber-300 font-bold leading-tight">COMENZADO</span>
             : <span className="text-xs text-zinc-300 font-medium">{hora}</span>}
       </div>
       <div className="flex-1 min-w-0 space-y-1">
+        {suspendido && (
+          <p className="text-[10px] font-bold uppercase tracking-wide text-amber-300">
+            {matchStatusDetail(p)}
+          </p>
+        )}
         <div className="flex items-center gap-2">
           <TeamLogo logoUrl={p.home_team_logo_url} name={p.home_team_name} color={p.home_primary_color} size="sm" />
           <span className={`text-sm flex-1 truncate ${homeWon ? 'font-bold text-zinc-100' : finalizado ? 'text-zinc-500' : 'font-medium text-zinc-200'}`}>
@@ -180,6 +188,7 @@ export default function Favorites() {
     const live = []
     for (const p of partidos) {
       if (p.status === 'in_progress') live.push(p)
+      else if (p.status === 'postponed') next.push(p)
       else if (p.status === 'finished' || (p.scheduled_at && new Date(p.scheduled_at).getTime() < ahora - 6 * 3600 * 1000)) past.push(p)
       else next.push(p)
     }

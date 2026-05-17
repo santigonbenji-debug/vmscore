@@ -300,7 +300,7 @@ export default function ManageMatches() {
                 <div key={partido.id} className="rounded-xl border border-surface-800 bg-surface-900 p-4 shadow-sm">
                   <div className="mb-2 flex items-center justify-between">
                     <span className="text-xs text-zinc-500">
-                      {partido.status === 'postponed' && !partido.scheduled_at
+                      {partido.status === 'postponed'
                         ? 'Fecha nueva a definir'
                         : formatFechaHora(partido.scheduled_at)}
                     </span>

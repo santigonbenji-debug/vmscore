@@ -245,10 +245,10 @@ export default function MatchDetail() {
           <div className="bg-surface-900 rounded-xl border border-surface-800 p-4">
             <h2 className="font-bold text-sm mb-3 text-zinc-100">Info del partido</h2>
             <div className="space-y-1.5 text-sm text-zinc-300">
-              {match.scheduled_at && (
+              {match.scheduled_at && match.status !== 'postponed' && (
                 <p>{formatFechaLarga(match.scheduled_at)} · {formatHora(match.scheduled_at)}</p>
               )}
-              {!match.scheduled_at && (
+              {(!match.scheduled_at || match.status === 'postponed') && (
                 <p>{match.status === 'postponed' ? 'Fecha nueva a definir' : 'Dia y horario a definir'}</p>
               )}
               {match.venue_name && <p>{match.venue_name}{match.venue_address ? ` · ${match.venue_address}` : ''}</p>}
