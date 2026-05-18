@@ -8,8 +8,10 @@ import {
   useLiveSyncEvents,
   useMatchLiveLink,
   useCreateManualLiveEvent,
+  useSaveCopaFacilMatchLink,
   useSyncCopaFacilLive,
   useSaveMatchLiveLink,
+  useSearchCopaFacilMatches,
   useSearchLocosVmMatches,
   useSyncLocosVmLive,
   useUpdateLiveSyncEvent,
@@ -89,6 +91,7 @@ export default function LoadResult() {
   const [lineupForm, setLineupForm] = useState(LINEUP_FORM)
   const [locosInput, setLocosInput] = useState('')
   const [locosMessage, setLocosMessage] = useState('')
+  const [copaFacilMessage, setCopaFacilMessage] = useState('')
   const [manualLiveEvent, setManualLiveEvent] = useState({ teamId: '', minute: '' })
   const [manualLiveMessage, setManualLiveMessage] = useState('')
 
@@ -106,6 +109,8 @@ export default function LoadResult() {
   const { data: liveEvents = [] } = useLiveSyncEvents(matchId)
   const saveLiveLink = useSaveMatchLiveLink()
   const searchLocosVm = useSearchLocosVmMatches()
+  const searchCopaFacil = useSearchCopaFacilMatches()
+  const saveCopaFacilLink = useSaveCopaFacilMatchLink()
   const syncLocosVm = useSyncLocosVmLive()
   const updateLiveEvent = useUpdateLiveSyncEvent()
   const createManualLiveEvent = useCreateManualLiveEvent()
@@ -319,6 +324,19 @@ export default function LoadResult() {
   async function sincronizarCopaFacil() {
     if (!match) return
     await syncCopaFacilLive.mutateAsync({ matchId: match.id })
+    setCopaFacilMessage('Novedades buscadas en Copa Facil.')
+  }
+
+  async function buscarPartidosCopaFacil() {
+    if (!match) return
+    await searchCopaFacil.mutateAsync({ match })
+  }
+
+  async function vincularCandidatoCopaFacil(candidate) {
+    if (!match) return
+    await saveCopaFacilLink.mutateAsync({ match, candidate })
+    await syncCopaFacilLive.mutateAsync({ matchId: match.id })
+    setCopaFacilMessage('Partido vinculado a Copa Facil. La sincronizacion automatica queda activa.')
   }
 
   async function guardar() {
@@ -611,14 +629,91 @@ export default function LoadResult() {
               )}
             </>
           ) : (
+            <div className="space-y-3">
+              <p className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                Este partido todavia no tiene vinculo con Copa Facil. Busca una coincidencia para dejarlo sincronizado.
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={buscarPartidosCopaFacil}
+                disabled={searchCopaFacil.isPending}
+                className="w-full"
+              >
+                {searchCopaFacil.isPending ? 'Buscando partidos...' : 'Buscar partido en Copa Facil'}
+              </Button>
+            </div>
+          )}
+
+          {searchCopaFacil.data?.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+                Coincidencias de Copa Facil
+              </p>
+              {searchCopaFacil.data.map((candidate) => (
+                <button
+                  key={`${candidate.source_id}-${candidate.external_match_id}`}
+                  type="button"
+                  onClick={() => vincularCandidatoCopaFacil(candidate)}
+                  className={`w-full rounded-xl border p-3 text-left transition-colors ${
+                    match.external_match_id === candidate.external_match_id
+                      ? 'border-emerald-500/40 bg-emerald-500/10'
+                      : 'border-surface-700 bg-surface-800/40 hover:border-primary/60'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-zinc-100">
+                        {teamLabel(match, candidate.mapped_home_team_id) || candidate.external_home_team_id}
+                        {' vs '}
+                        {teamLabel(match, candidate.mapped_away_team_id) || candidate.external_away_team_id}
+                      </p>
+                      <p className="text-xs text-zinc-500 mt-1">
+                        {candidate.source_label} - Fecha {candidate.round ?? '-'}
+                        {candidate.scheduled_at ? ` - ${new Date(candidate.scheduled_at).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ' - fecha a definir'}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-extrabold text-zinc-100">
+                        {candidate.home_score ?? '-'} - {candidate.away_score ?? '-'}
+                      </p>
+                      <p className="mt-1 text-[10px] font-bold uppercase text-primary">
+                        Vincular
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {searchCopaFacil.isSuccess && searchCopaFacil.data?.length === 0 && (
             <p className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
-              Este partido todavia no tiene vinculo con Copa Facil. Publicalo desde Importar para habilitar la sincronizacion.
+              No encontre coincidencias claras. Revisa que la fuente de Copa Facil este guardada y que los equipos esten mapeados.
+            </p>
+          )}
+
+          {copaFacilMessage && (
+            <p className="rounded-xl border border-primary/20 bg-primary/10 px-3 py-2 text-xs text-zinc-200">
+              {copaFacilMessage}
             </p>
           )}
 
           {syncCopaFacilLive.isError && (
             <p className="text-xs text-red-400">
               {syncCopaFacilLive.error?.message || 'No se pudo leer Copa Facil.'}
+            </p>
+          )}
+
+          {searchCopaFacil.isError && (
+            <p className="text-xs text-red-400">
+              {searchCopaFacil.error?.message || 'No se pudo buscar en Copa Facil.'}
+            </p>
+          )}
+
+          {saveCopaFacilLink.isError && (
+            <p className="text-xs text-red-400">
+              {saveCopaFacilLink.error?.message || 'No se pudo vincular Copa Facil.'}
             </p>
           )}
         </div>

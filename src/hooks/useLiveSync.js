@@ -6,6 +6,7 @@ import {
   parseLocosVmMatchId,
   searchLocosVmMatchCandidates,
 } from '../lib/locosVm'
+import { searchCopaFacilMatchCandidates } from '../lib/copaFacil'
 
 function teamName(match, side) {
   if (side === 'home') return match.home_team_short_name ?? match.home_team_name ?? 'Local'
@@ -161,6 +162,82 @@ export function useSearchLocosVmMatches() {
     mutationFn: async ({ match }) => {
       if (!match) throw new Error('Falta el partido de VMScore.')
       return searchLocosVmMatchCandidates(match)
+    },
+  })
+}
+
+export function useSearchCopaFacilMatches() {
+  return useMutation({
+    mutationFn: async ({ match }) => {
+      if (!match) throw new Error('Falta el partido de VMScore.')
+
+      const { data: sources, error: sourcesError } = await supabase
+        .from('external_sources')
+        .select('*, leagues(id, name), phases(id, name)')
+        .eq('provider', 'copafacil')
+        .eq('sync_enabled', true)
+      if (sourcesError) throw sourcesError
+
+      const sourceIds = (sources ?? []).map((source) => source.id)
+      let mappings = []
+      if (sourceIds.length > 0) {
+        const { data, error } = await supabase
+          .from('external_team_mappings')
+          .select('source_id, external_team_id, team_id')
+          .in('source_id', sourceIds)
+        if (error) throw error
+        mappings = data ?? []
+      }
+
+      const mappingsBySource = mappings.reduce((acc, mapping) => {
+        acc[mapping.source_id] = acc[mapping.source_id] ?? {}
+        acc[mapping.source_id][mapping.external_team_id] = mapping.team_id
+        return acc
+      }, {})
+
+      return searchCopaFacilMatchCandidates({ match, sources: sources ?? [], mappingsBySource })
+    },
+  })
+}
+
+export function useSaveCopaFacilMatchLink() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ match, candidate }) => {
+      if (!match || !candidate) throw new Error('Falta seleccionar una coincidencia de Copa Facil.')
+
+      const now = new Date().toISOString()
+      const { error: matchError } = await supabase
+        .from('matches')
+        .update({
+          external_provider: 'copafacil',
+          external_source_id: candidate.source_id,
+          external_match_id: candidate.external_match_id,
+          updated_at: now,
+        })
+        .eq('id', match.id)
+      if (matchError) throw matchError
+
+      const { data: link, error: linkError } = await supabase
+        .from('match_live_links')
+        .upsert({
+          match_id: match.id,
+          provider: 'copafacil',
+          external_match_id: candidate.external_match_id,
+          external_url: candidate.source_url || null,
+          enabled: true,
+          updated_at: now,
+        }, { onConflict: 'match_id,provider' })
+        .select()
+        .single()
+      if (linkError) throw linkError
+
+      return { link, matchId: match.id }
+    },
+    onSuccess: (_, { match }) => {
+      qc.invalidateQueries({ queryKey: ['match', match.id] })
+      qc.invalidateQueries({ queryKey: ['match-live-link', match.id, 'copafacil'] })
+      qc.invalidateQueries({ queryKey: ['match-live-link', match.id, 'any'] })
     },
   })
 }

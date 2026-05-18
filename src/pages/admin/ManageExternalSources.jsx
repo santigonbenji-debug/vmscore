@@ -70,6 +70,20 @@ function normalizedTime(value) {
   return Number.isFinite(time) ? time : null
 }
 
+function CapabilityPill({ enabled, label, tone = 'ok' }) {
+  const styles = enabled
+    ? tone === 'warn'
+      ? 'bg-amber-500/15 text-amber-300'
+      : 'bg-emerald-500/15 text-emerald-300'
+    : 'bg-surface-800 text-zinc-500'
+
+  return (
+    <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${styles}`}>
+      {enabled ? 'Disponible' : 'No detectado'} - {label}
+    </span>
+  )
+}
+
 function findPreviewChanges(previewRows, archiveRows) {
   const archiveByExternalId = new Map(
     archiveRows.map((row) => [row.external_match_id, row])
@@ -502,6 +516,41 @@ export default function ManageExternalSources() {
           )}
         </section>
 
+        {selectedSource && (
+          <section className="rounded-xl border border-surface-800 bg-surface-900 p-4">
+            <h2 className="text-sm font-bold text-zinc-100">Opciones de sincronizacion</h2>
+            <p className="mt-1 text-xs text-zinc-500">
+              Esta fuente puede alimentar fixture, resultados y vivo. La tabla solo cambia cuando publicas o computas un partido.
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+                <p className="text-xs font-bold text-emerald-300">Importar partidos</p>
+                <p className="mt-1 text-[11px] text-zinc-500">
+                  Guarda cruces, fechas, sedes detectables y resultados en revision.
+                </p>
+              </div>
+              <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+                <p className="text-xs font-bold text-emerald-300">Vincular y sincronizar</p>
+                <p className="mt-1 text-[11px] text-zinc-500">
+                  Los partidos publicados quedan conectados a Copa Facil para detectar goles y final.
+                </p>
+              </div>
+              <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+                <p className="text-xs font-bold text-amber-300">Computar tabla</p>
+                <p className="mt-1 text-[11px] text-zinc-500">
+                  Manual y confirmado. Asi juveniles, futsal o primera no rompen posiciones por error.
+                </p>
+              </div>
+              <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+                <p className="text-xs font-bold text-amber-300">Crear nuevas ligas</p>
+                <p className="mt-1 text-[11px] text-zinc-500">
+                  Si Copa Facil tiene juveniles u otro torneo, primero creas la liga/fase y luego guardas esta fuente.
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
+
         {selectedSourceId && (
           <section className="rounded-xl border border-surface-800 bg-surface-900 p-4">
             <div className="mb-3 flex items-start justify-between gap-3">
@@ -804,25 +853,35 @@ export default function ManageExternalSources() {
               </div>
 
               <div className="flex flex-wrap gap-2">
-                {[
-                  ['Equipos', locosSnapshot.capabilities.teams],
-                  ['Fixture', locosSnapshot.capabilities.fixtures],
-                  ['Resultados', locosSnapshot.capabilities.scores],
-                  ['Sedes', locosSnapshot.capabilities.venues],
-                  ['Streams', locosSnapshot.capabilities.streams],
-                  ['Repeticiones', locosSnapshot.capabilities.vods],
-                  ['Planes', locosSnapshot.capabilities.credit_plans],
-                  ['Vivo real', locosSnapshot.capabilities.live_state],
-                ].map(([label, enabled]) => (
-                  <span
-                    key={label}
-                    className={`rounded-full px-2 py-1 text-[11px] font-bold ${
-                      enabled ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300'
-                    }`}
-                  >
-                    {enabled ? 'Disponible' : 'No visto'} - {label}
-                  </span>
-                ))}
+                <CapabilityPill enabled={locosSnapshot.capabilities.teams} label="equipos" />
+                <CapabilityPill enabled={locosSnapshot.capabilities.fixtures} label="fixture" />
+                <CapabilityPill enabled={locosSnapshot.capabilities.scores} label="resultados" />
+                <CapabilityPill enabled={locosSnapshot.capabilities.venues} label="sedes" />
+                <CapabilityPill enabled={locosSnapshot.capabilities.streams} label="links publicados" tone="warn" />
+                <CapabilityPill enabled={locosSnapshot.capabilities.vods} label="repeticiones" tone="warn" />
+                <CapabilityPill enabled={locosSnapshot.capabilities.credit_plans} label="planes" tone="warn" />
+                <CapabilityPill enabled={locosSnapshot.capabilities.live_state} label="vivo real" tone="warn" />
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-3">
+                <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3">
+                  <p className="text-xs font-bold text-emerald-300">Podemos usar</p>
+                  <p className="mt-1 text-[11px] text-zinc-400">
+                    Equipos, fixture, sedes y marcadores como referencia/importacion.
+                  </p>
+                </div>
+                <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3">
+                  <p className="text-xs font-bold text-amber-300">Requiere decision</p>
+                  <p className="mt-1 text-[11px] text-zinc-400">
+                    Links de video y planes son visibles, pero no significan acceso libre.
+                  </p>
+                </div>
+                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+                  <p className="text-xs font-bold text-zinc-300">No confirmado</p>
+                  <p className="mt-1 text-[11px] text-zinc-500">
+                    Vivo minuto a minuto solo si aparece un partido live con datos cambiantes.
+                  </p>
+                </div>
               </div>
 
               <div className="grid gap-3 lg:grid-cols-3">
