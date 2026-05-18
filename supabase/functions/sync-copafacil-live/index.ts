@@ -278,11 +278,11 @@ serve(async (req) => {
       .eq('sync_enabled', true)
     if (sourceError) throw sourceError
 
-    const matchIds = (matches ?? []).map((match) => match.id)
+    const queriedMatchIds = (matches ?? []).map((match) => match.id)
     const { data: links, error: linkError } = await supabase
       .from('match_live_links')
       .select('*')
-      .in('match_id', matchIds)
+      .in('match_id', queriedMatchIds)
       .eq('provider', 'copafacil')
     if (linkError) throw linkError
 
