@@ -348,3 +348,22 @@ export function useCreateManualLiveEvent() {
     },
   })
 }
+
+export function useSyncCopaFacilLive() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ matchId }) => {
+      const { data, error } = await supabase.functions.invoke('sync-copafacil-live', {
+        body: { matchIds: [matchId], limit: 1 },
+      })
+      if (error) throw error
+      return data
+    },
+    onSuccess: (_, { matchId }) => {
+      qc.invalidateQueries({ queryKey: ['match-live-link', matchId, 'copafacil'] })
+      qc.invalidateQueries({ queryKey: ['match-live-link', matchId, 'any'] })
+      qc.invalidateQueries({ queryKey: ['live-sync-events', matchId] })
+      qc.invalidateQueries({ queryKey: ['match', matchId] })
+    },
+  })
+}

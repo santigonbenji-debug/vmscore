@@ -8,6 +8,7 @@ import {
   useLiveSyncEvents,
   useMatchLiveLink,
   useCreateManualLiveEvent,
+  useSyncCopaFacilLive,
   useSaveMatchLiveLink,
   useSearchLocosVmMatches,
   useSyncLocosVmLive,
@@ -101,12 +102,14 @@ export default function LoadResult() {
   const { data: homePlayers = [] } = useTeamPlayers(data?.match?.home_team_id)
   const { data: awayPlayers = [] } = useTeamPlayers(data?.match?.away_team_id)
   const { data: liveLink } = useMatchLiveLink(matchId)
+  const { data: copaFacilLiveLink } = useMatchLiveLink(matchId, 'copafacil')
   const { data: liveEvents = [] } = useLiveSyncEvents(matchId)
   const saveLiveLink = useSaveMatchLiveLink()
   const searchLocosVm = useSearchLocosVmMatches()
   const syncLocosVm = useSyncLocosVmLive()
   const updateLiveEvent = useUpdateLiveSyncEvent()
   const createManualLiveEvent = useCreateManualLiveEvent()
+  const syncCopaFacilLive = useSyncCopaFacilLive()
 
   useEffect(() => {
     if (!data?.match) return
@@ -311,6 +314,11 @@ export default function LoadResult() {
     })
     setManualLiveMessage(`Gol publicado para ${teamLabel(match, manualLiveEvent.teamId)}.`)
     setManualLiveEvent((current) => ({ ...current, minute: '' }))
+  }
+
+  async function sincronizarCopaFacil() {
+    if (!match) return
+    await syncCopaFacilLive.mutateAsync({ matchId: match.id })
   }
 
   async function guardar() {
@@ -547,6 +555,70 @@ export default function LoadResult() {
           {syncLocosVm.isError && (
             <p className="text-xs text-red-400">
               {syncLocosVm.error?.message || 'No se pudo leer Locos VM.'}
+            </p>
+          )}
+        </div>
+      )}
+
+      {puedeCargarResultado && (
+        <div className="bg-surface-900 rounded-xl border border-surface-800 shadow-sm p-5 space-y-4">
+          <div>
+            <h2 className="font-bold text-sm text-zinc-100">Vivo asistido Copa Facil</h2>
+            <p className="text-xs text-zinc-500 mt-1">
+              Si el partido viene de Copa Facil, queda vinculado automaticamente. Podes buscar goles, inicio y final sin tocar la tabla.
+            </p>
+          </div>
+
+          {match.external_provider === 'copafacil' && match.external_match_id ? (
+            <>
+              <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-3">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <p className="text-xs font-black uppercase tracking-wide text-emerald-300">Vinculado a Copa Facil</p>
+                  <span className="rounded-full bg-emerald-500/15 px-2 py-1 text-[10px] font-black uppercase text-emerald-200">
+                    Activo
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs text-zinc-500 truncate">ID externo: {match.external_match_id}</p>
+                    <p className="text-sm font-bold text-zinc-100 mt-1">
+                      {copaFacilLiveLink?.last_home_score !== null && copaFacilLiveLink?.last_home_score !== undefined &&
+                      copaFacilLiveLink?.last_away_score !== null && copaFacilLiveLink?.last_away_score !== undefined
+                        ? `${copaFacilLiveLink.last_home_score} - ${copaFacilLiveLink.last_away_score}`
+                        : 'Marcador sin leer'}
+                    </p>
+                    <p className="text-xs text-zinc-500">
+                      {copaFacilLiveLink?.last_status
+                        ? `Estado: ${copaFacilLiveLink.last_status}`
+                        : 'Todavia no se sincronizo.'}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={sincronizarCopaFacil}
+                    disabled={syncCopaFacilLive.isPending}
+                  >
+                    {syncCopaFacilLive.isPending ? 'Leyendo...' : 'Buscar novedades'}
+                  </Button>
+                </div>
+              </div>
+
+              {syncCopaFacilLive.data && (
+                <p className="rounded-xl border border-primary/20 bg-primary/10 px-3 py-2 text-xs text-zinc-200">
+                  Lectura de Copa Facil realizada.
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+              Este partido todavia no tiene vinculo con Copa Facil. Publicalo desde Importar para habilitar la sincronizacion.
+            </p>
+          )}
+
+          {syncCopaFacilLive.isError && (
+            <p className="text-xs text-red-400">
+              {syncCopaFacilLive.error?.message || 'No se pudo leer Copa Facil.'}
             </p>
           )}
         </div>

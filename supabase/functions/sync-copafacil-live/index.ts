@@ -254,7 +254,8 @@ serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}))
     const limit = Math.min(Number(body.limit ?? 60), 120)
-    const { data: matches, error: matchError } = await supabase
+    const matchIds = Array.isArray(body.matchIds) ? body.matchIds.filter(Boolean) : []
+    let matchQuery = supabase
       .from('v_matches')
       .select('*')
       .eq('external_provider', 'copafacil')
@@ -262,6 +263,10 @@ serve(async (req) => {
       .not('external_source_id', 'is', null)
       .not('external_match_id', 'is', null)
       .limit(limit)
+    if (matchIds.length > 0) {
+      matchQuery = matchQuery.in('id', matchIds)
+    }
+    const { data: matches, error: matchError } = await matchQuery
     if (matchError) throw matchError
 
     const sourceIds = [...new Set((matches ?? []).map((match) => match.external_source_id).filter(Boolean))]
