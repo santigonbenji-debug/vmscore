@@ -315,11 +315,72 @@ export function useDeleteMatch() {
 }
 
 // Guardar resultado completo: scores + eventos → trigger recalcula standings
+const GOAL_EVENT_TYPES = new Set(['goal', 'penalty_goal', 'own_goal'])
+
+function savedEventKey(event) {
+  return [
+    event.team_id || '',
+    event.event_type || '',
+    event.player_id || '',
+    event.player_name || '',
+    event.minute ?? '',
+    event.notes || '',
+  ].join('|')
+}
+
+async function notifyNewGoalEvents(matchId, events = []) {
+  const goals = events.filter((event) => GOAL_EVENT_TYPES.has(event.event_type) && event.team_id)
+  if (goals.length === 0) return
+
+  const { data: match, error } = await supabase
+    .from('v_matches')
+    .select('id, home_team_id, away_team_id, home_team_name, home_team_short_name, away_team_name, away_team_short_name, home_score, away_score')
+    .eq('id', matchId)
+    .single()
+  if (error || !match) return
+
+  for (const event of goals) {
+    const isHome = event.team_id === match.home_team_id
+    const isAway = event.team_id === match.away_team_id
+    if (!isHome && !isAway) continue
+
+    const scoringTeamName = isHome
+      ? (match.home_team_short_name ?? match.home_team_name)
+      : (match.away_team_short_name ?? match.away_team_name)
+    const scoreBody = `${match.home_team_short_name ?? match.home_team_name} ${match.home_score ?? '-'} - ${match.away_score ?? '-'} ${match.away_team_short_name ?? match.away_team_name}`
+
+    supabase.functions.invoke('send-push', {
+      body: {
+        type: 'match_goal',
+        matchId,
+        title: `Gol de ${scoringTeamName}`,
+        body: scoreBody,
+        targetTeamIds: [event.team_id],
+      },
+    }).catch((pushError) => {
+      console.warn('No se pudo enviar push de gol', pushError)
+    })
+  }
+}
+
 async function replaceMatchEvents(matchId, events = []) {
+  const { data: existingEvents, error: existingError } = await supabase
+    .from('match_events')
+    .select('team_id, player_id, player_name, event_type, minute, notes')
+    .eq('match_id', matchId)
+  if (existingError) throw existingError
+
+  const existingKeys = new Set((existingEvents ?? []).map(savedEventKey))
+  const newGoalEvents = events.filter((event) => (
+    GOAL_EVENT_TYPES.has(event.event_type) &&
+    event.team_id &&
+    !existingKeys.has(savedEventKey(event))
+  ))
+
   const { error: deleteError } = await supabase.from('match_events').delete().eq('match_id', matchId)
   if (deleteError) throw deleteError
 
-  if (events.length === 0) return
+  if (events.length === 0) return []
 
   const { error: insertError } = await supabase
     .from('match_events')
@@ -333,6 +394,8 @@ async function replaceMatchEvents(matchId, events = []) {
       notes: event.notes ?? null,
     })))
   if (insertError) throw insertError
+
+  return newGoalEvents
 }
 
 function parseOptionalScore(score) {
@@ -368,7 +431,8 @@ export function useSaveLiveMatchData() {
       const { error: matchError } = await supabase.from('matches').update(matchUpdate).eq('id', matchId)
       if (matchError) throw matchError
 
-      await replaceMatchEvents(matchId, events)
+      const newGoalEvents = await replaceMatchEvents(matchId, events)
+      await notifyNewGoalEvents(matchId, newGoalEvents)
     },
     onSuccess: (_, { matchId }) => {
       qc.invalidateQueries({ queryKey: ['match', matchId] })
@@ -405,7 +469,8 @@ export function useSaveResult() {
   if (matchError) throw matchError
 
   // 2. Reemplazar eventos
-  await replaceMatchEvents(matchId, events)
+  const newGoalEvents = await replaceMatchEvents(matchId, events)
+  await notifyNewGoalEvents(matchId, newGoalEvents)
 
   if (hasCompleteResult) {
     supabase.functions.invoke('send-push', {
