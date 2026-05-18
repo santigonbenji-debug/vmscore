@@ -23,7 +23,7 @@ serve(async (req) => {
   }
 
   try {
-    const { type, matchId, title: customTitle, body: customBody } = await req.json()
+    const { type, matchId, title: customTitle, body: customBody, targetTeamIds } = await req.json()
     if (!matchId) throw new Error('matchId requerido')
 
     const { data: match, error: matchError } = await supabase
@@ -34,7 +34,11 @@ serve(async (req) => {
 
     if (matchError) throw matchError
 
-    const teamIds = [match.home_team_id, match.away_team_id].filter(Boolean)
+    const allowedTeamIds = [match.home_team_id, match.away_team_id].filter(Boolean)
+    const requestedTeamIds = Array.isArray(targetTeamIds)
+      ? targetTeamIds.filter((teamId) => allowedTeamIds.includes(teamId))
+      : []
+    const teamIds = requestedTeamIds.length > 0 ? requestedTeamIds : allowedTeamIds
     const { data: subscriptions, error: subError } = await supabase
       .from('push_subscriptions')
       .select('*')

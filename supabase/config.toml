@@ -1,2 +1,5 @@
 [functions.sync-locos-live]
 verify_jwt = false
+
+[functions.sync-copafacil-live]
+verify_jwt = false

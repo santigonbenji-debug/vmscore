@@ -30,8 +30,14 @@ function parseScore(match) {
   return {
     homeScore: numberOrNull(dt.qt_g1) ?? 0,
     awayScore: numberOrNull(dt.qt_g2) ?? 0,
-    isFinished: true,
+    isFinished: Boolean(match?.finished) || Number(match?.st) === 3,
   }
+}
+
+function parseStatus(match, hasScore, isFinished) {
+  if (isFinished) return 'finished'
+  if (hasScore) return 'in_progress'
+  return 'scheduled'
 }
 
 export async function fetchCopaFacilMatches({ eventCode, divisionCode, fresh = true }) {
@@ -61,18 +67,20 @@ export async function fetchCopaFacilMatches({ eventCode, divisionCode, fresh = t
     .filter(([, match]) => match?.evt === eventKey)
     .map(([id, match]) => {
       const { homeScore, awayScore, isFinished } = parseScore(match)
+      const hasScore = homeScore !== null || awayScore !== null
       const rawDate = Number.isFinite(Number(match.d_i)) ? new Date(Number(match.d_i)).toISOString() : null
+      const status = parseStatus(match, hasScore, isFinished)
 
       return {
         external_match_id: id,
         external_home_team_id: match.team1,
         external_away_team_id: match.team2,
-        scheduled_at: isFinished ? rawDate : null,
-        date_tbd: !isFinished,
+        scheduled_at: rawDate,
+        date_tbd: !rawDate,
         copa_facil_raw_date: rawDate,
         home_score: homeScore,
         away_score: awayScore,
-        status: isFinished ? 'finished' : 'scheduled',
+        status,
         match_set: match.m_set ?? null,
         stage_id: match.fs ?? null,
         raw: match,

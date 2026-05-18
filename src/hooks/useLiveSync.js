@@ -72,18 +72,41 @@ async function notifyLiveSync({ match, type, title, body }) {
   }
 }
 
-export function useMatchLiveLink(matchId) {
+async function notifyTeamLiveEvent({ match, teamId, title, body }) {
+  try {
+    await supabase.functions.invoke('send-push', {
+      body: {
+        type: 'match_goal',
+        matchId: match.id,
+        title,
+        body,
+        targetTeamIds: [teamId],
+      },
+    })
+  } catch (error) {
+    console.warn('No se pudo enviar notificacion de evento en vivo', error)
+  }
+}
+
+export function useMatchLiveLink(matchId, provider = 'locos_vm') {
   return useQuery({
-    queryKey: ['match-live-link', matchId],
+    queryKey: ['match-live-link', matchId, provider],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('match_live_links')
         .select('*')
         .eq('match_id', matchId)
-        .eq('provider', 'locos_vm')
-        .maybeSingle()
+      if (provider === 'any') {
+        query = query.in('provider', ['copafacil', 'locos_vm']).order('provider', { ascending: true })
+      } else {
+        query = query.eq('provider', provider)
+      }
+      const { data, error } = await query
       if (error) throw error
-      return data
+      if (provider === 'any') {
+        return data?.find((link) => link.provider === 'copafacil') ?? data?.[0] ?? null
+      }
+      return data?.[0] ?? null
     },
     enabled: !!matchId,
   })
@@ -281,6 +304,47 @@ export function useUpdateLiveSyncEvent() {
     },
     onSuccess: ({ matchId }) => {
       qc.invalidateQueries({ queryKey: ['live-sync-events', matchId] })
+    },
+  })
+}
+
+export function useCreateManualLiveEvent() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ match, teamId, minute = null }) => {
+      if (!match || !teamId) throw new Error('Selecciona el equipo que marco el gol.')
+
+      const isHome = teamId === match.home_team_id
+      const title = `Gol de ${teamName(match, isHome ? 'home' : 'away')}`
+      const { data, error } = await supabase
+        .from('live_sync_events')
+        .insert({
+          match_id: match.id,
+          provider: 'manual',
+          event_key: `manual-goal-${teamId}-${Date.now()}`,
+          event_type: 'goal',
+          team_id: teamId,
+          team_side: isHome ? 'home' : 'away',
+          minute: minute === '' || minute === null || minute === undefined ? null : Number(minute),
+          title,
+          status: 'applied',
+          raw: { source: 'manual' },
+        })
+        .select()
+        .single()
+      if (error) throw error
+
+      await notifyTeamLiveEvent({
+        match,
+        teamId,
+        title,
+        body: `${teamName(match, isHome ? 'home' : 'away')} marco gol.`,
+      })
+
+      return data
+    },
+    onSuccess: (_, { match }) => {
+      qc.invalidateQueries({ queryKey: ['live-sync-events', match.id] })
     },
   })
 }

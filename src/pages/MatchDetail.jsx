@@ -78,15 +78,22 @@ function EventsTimeline({ events, match }) {
         const teamName = isHome
           ? (match.home_team_short_name ?? match.home_team_name)
           : (match.away_team_short_name ?? match.away_team_name)
+        const logoUrl = isHome ? match.home_team_logo_url : match.away_team_logo_url
+        const color = isHome ? match.home_primary_color : match.away_primary_color
+        const isAnonymousGoal = event.event_type === 'goal' && !event.player_name
         return (
           <div key={event.id} className="flex items-center gap-3 px-4 py-3 border-b border-surface-800 last:border-0">
             <div className="w-10 text-center text-xs font-bold text-zinc-400 tabular-nums">
               {event.minute != null ? `${event.minute}'` : '-'}
             </div>
-            <div className={`w-1.5 h-8 rounded-full ${isHome ? 'bg-primary' : 'bg-zinc-500'}`} />
+            {isAnonymousGoal ? (
+              <TeamLogo logoUrl={logoUrl} name={teamName} color={color} />
+            ) : (
+              <div className={`w-1.5 h-8 rounded-full ${isHome ? 'bg-primary' : 'bg-zinc-500'}`} />
+            )}
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-zinc-100 truncate">
-                {event.player_name || 'Jugador sin nombre'}
+                {isAnonymousGoal ? 'Gol' : (event.player_name || 'Jugador sin nombre')}
               </p>
               <p className="text-xs text-zinc-500">
                 {EVENT_LABEL[event.event_type] ?? event.event_type} · {teamName}
@@ -109,7 +116,7 @@ export default function MatchDetail() {
   const match = data?.match
   const events = data?.events ?? []
   const { data: lineups = [] } = useMatchLineups(matchId)
-  const { data: liveLink } = useMatchLiveLink(matchId)
+  const { data: liveLink } = useMatchLiveLink(matchId, 'any')
   const { data: liveEvents = [] } = useLiveSyncEvents(matchId)
 
   if (isLoading) return <Spinner className="py-20" />
@@ -265,21 +272,44 @@ export default function MatchDetail() {
                 <div className="px-4 py-3 border-b border-surface-800">
                   <p className="text-xs font-semibold text-primary uppercase tracking-wide">Novedades en vivo</p>
                 </div>
-                {visibleLiveEvents.map((event) => (
-                  <div key={event.id} className="flex items-center gap-3 px-4 py-3 border-b border-surface-800 last:border-0">
-                    <div className="w-10 text-center text-xs font-bold text-zinc-400 tabular-nums">
-                      {event.minute != null ? `${event.minute}'` : '-'}
+                {visibleLiveEvents.map((event) => {
+                  const isHome = event.team_id === match.home_team_id
+                  const liveTeamName = isHome
+                    ? (match.home_team_short_name ?? match.home_team_name)
+                    : (match.away_team_short_name ?? match.away_team_name)
+                  const liveLogoUrl = isHome ? match.home_team_logo_url : match.away_team_logo_url
+                  const liveColor = isHome ? match.home_primary_color : match.away_primary_color
+                  const isGoal = event.event_type === 'goal'
+
+                  return (
+                    <div key={event.id} className="flex items-center gap-3 px-4 py-3 border-b border-surface-800 last:border-0">
+                      <div className="w-10 text-center text-xs font-bold text-zinc-400 tabular-nums">
+                        {event.minute != null ? `${event.minute}'` : '-'}
+                      </div>
+                      {isGoal ? (
+                        <TeamLogo logoUrl={liveLogoUrl} name={liveTeamName} color={liveColor} />
+                      ) : (
+                        <div className="h-8 w-1.5 rounded-full bg-primary" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-zinc-100 truncate">
+                          {isGoal ? 'Gol' : event.title}
+                        </p>
+                        <p className="text-xs text-zinc-500">
+                          {isGoal
+                            ? liveTeamName
+                            : event.home_score !== null && event.home_score !== undefined && event.away_score !== null && event.away_score !== undefined
+                              ? `${event.home_score} - ${event.away_score}`
+                              : event.provider === 'manual'
+                                ? 'Cargado por VMScore'
+                                : event.provider === 'copafacil'
+                                  ? 'Detectado por Copa Facil'
+                                  : 'Detectado por Locos VM'}
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-zinc-100 truncate">{event.title}</p>
-                      <p className="text-xs text-zinc-500">
-                        {event.home_score !== null && event.home_score !== undefined && event.away_score !== null && event.away_score !== undefined
-                          ? `${event.home_score} - ${event.away_score}`
-                          : 'Detectado por Locos VM'}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
             <EventsTimeline events={events} match={match} />

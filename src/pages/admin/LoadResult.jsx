@@ -7,6 +7,7 @@ import { useAddMatchLineupPlayer, useMatchLineups, useRemoveMatchLineupPlayer } 
 import {
   useLiveSyncEvents,
   useMatchLiveLink,
+  useCreateManualLiveEvent,
   useSaveMatchLiveLink,
   useSearchLocosVmMatches,
   useSyncLocosVmLive,
@@ -87,6 +88,8 @@ export default function LoadResult() {
   const [lineupForm, setLineupForm] = useState(LINEUP_FORM)
   const [locosInput, setLocosInput] = useState('')
   const [locosMessage, setLocosMessage] = useState('')
+  const [manualLiveEvent, setManualLiveEvent] = useState({ teamId: '', minute: '' })
+  const [manualLiveMessage, setManualLiveMessage] = useState('')
 
   const puedeCargarResultado = isSuperAdmin || isLigaAdmin
   const miEquipoId = isClubAdmin ? teamId : null
@@ -103,6 +106,7 @@ export default function LoadResult() {
   const searchLocosVm = useSearchLocosVmMatches()
   const syncLocosVm = useSyncLocosVmLive()
   const updateLiveEvent = useUpdateLiveSyncEvent()
+  const createManualLiveEvent = useCreateManualLiveEvent()
 
   useEffect(() => {
     if (!data?.match) return
@@ -296,6 +300,17 @@ export default function LoadResult() {
 
   async function descartarEventoVivo(event) {
     await updateLiveEvent.mutateAsync({ id: event.id, matchId, status: 'dismissed' })
+  }
+
+  async function publicarGolEnVivo() {
+    if (!match || !manualLiveEvent.teamId) return
+    await createManualLiveEvent.mutateAsync({
+      match,
+      teamId: manualLiveEvent.teamId,
+      minute: manualLiveEvent.minute,
+    })
+    setManualLiveMessage(`Gol publicado para ${teamLabel(match, manualLiveEvent.teamId)}.`)
+    setManualLiveEvent((current) => ({ ...current, minute: '' }))
   }
 
   async function guardar() {
@@ -532,6 +547,57 @@ export default function LoadResult() {
           {syncLocosVm.isError && (
             <p className="text-xs text-red-400">
               {syncLocosVm.error?.message || 'No se pudo leer Locos VM.'}
+            </p>
+          )}
+        </div>
+      )}
+
+      {puedeCargarResultado && (
+        <div className="bg-surface-900 rounded-xl border border-surface-800 shadow-sm p-5 space-y-4">
+          <div>
+            <h2 className="font-bold text-sm text-zinc-100">Eventos en vivo manuales</h2>
+            <p className="text-xs text-zinc-500 mt-1">
+              Publica un gol como novedad en vivo y avisa solo a quienes siguen a ese equipo. No modifica el resultado ni la tabla.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_6rem_auto]">
+            <select
+              value={manualLiveEvent.teamId}
+              onChange={(event) => setManualLiveEvent({ ...manualLiveEvent, teamId: event.target.value })}
+              className="w-full border border-surface-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <option value="">Equipo que marco</option>
+              <option value={match.home_team_id}>{teamLabel(match, match.home_team_id)}</option>
+              <option value={match.away_team_id}>{teamLabel(match, match.away_team_id)}</option>
+            </select>
+            <input
+              type="number"
+              min="0"
+              max="150"
+              value={manualLiveEvent.minute}
+              onChange={(event) => setManualLiveEvent({ ...manualLiveEvent, minute: event.target.value })}
+              placeholder="Min."
+              className="w-full border border-surface-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+            <Button
+              size="sm"
+              onClick={publicarGolEnVivo}
+              disabled={!manualLiveEvent.teamId || createManualLiveEvent.isPending}
+            >
+              {createManualLiveEvent.isPending ? 'Publicando...' : 'Publicar gol'}
+            </Button>
+          </div>
+
+          {manualLiveMessage && (
+            <p className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+              {manualLiveMessage}
+            </p>
+          )}
+
+          {createManualLiveEvent.isError && (
+            <p className="text-xs text-red-400">
+              {createManualLiveEvent.error?.message || 'No se pudo publicar el evento en vivo.'}
             </p>
           )}
         </div>

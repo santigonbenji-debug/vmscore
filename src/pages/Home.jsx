@@ -247,8 +247,8 @@ export default function Home() {
     scopedMatches.filter((match) => {
       if (match.status === 'cancelled') return false
       if (matchMode === 'previous') return match.status === 'finished'
-      if (match.status === 'finished') return false
-      if (match.status === 'postponed') return true
+      if (matchMode === 'postponed') return match.status === 'postponed'
+      if (match.status === 'finished' || match.status === 'postponed') return false
       if (!match.scheduled_at) return true
       return format(toZonedTime(new Date(match.scheduled_at), TZ), 'yyyy-MM-dd') >= todayKey
     })
@@ -256,12 +256,12 @@ export default function Home() {
   const grupos = useMemo(() => buildDateGroups(filteredMatches, matchMode), [filteredMatches, matchMode])
   const modeCounts = useMemo(() => ({
     upcoming: scopedMatches.filter((match) => {
-      if (match.status === 'finished' || match.status === 'cancelled') return false
-      if (match.status === 'postponed') return true
+      if (match.status === 'finished' || match.status === 'cancelled' || match.status === 'postponed') return false
       if (!match.scheduled_at) return true
       return format(toZonedTime(new Date(match.scheduled_at), TZ), 'yyyy-MM-dd') >= todayKey
     }).length,
     previous: scopedMatches.filter((match) => match.status === 'finished').length,
+    postponed: scopedMatches.filter((match) => match.status === 'postponed').length,
   }), [scopedMatches, todayKey])
 
   return (
@@ -318,10 +318,11 @@ export default function Home() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 rounded-xl border border-surface-800 bg-surface-900 p-1">
+      <div className="grid grid-cols-3 rounded-xl border border-surface-800 bg-surface-900 p-1">
         {[
           ['previous', 'Anteriores'],
           ['upcoming', 'Proximos'],
+          ['postponed', 'Suspendidos'],
         ].map(([key, label]) => (
           <button
             key={key}
@@ -351,7 +352,11 @@ export default function Home() {
       {!isLoading && partidos.length > 0 && grupos.length === 0 && (
         <div className="text-center py-12 text-zinc-500">
           <p className="text-sm font-medium">
-            {matchMode === 'previous' ? 'Todavia no hay partidos anteriores.' : 'Todavia no hay proximos partidos cargados.'}
+            {matchMode === 'previous'
+              ? 'Todavia no hay partidos anteriores.'
+              : matchMode === 'postponed'
+                ? 'No hay partidos suspendidos.'
+                : 'Todavia no hay proximos partidos cargados.'}
           </p>
         </div>
       )}
