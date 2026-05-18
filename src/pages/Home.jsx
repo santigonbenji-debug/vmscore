@@ -47,7 +47,7 @@ function formatRoundLabel(rounds = []) {
   return `Fechas ${rounds.join(', ')}`
 }
 
-function buildDateGroups(partidos, mode = 'upcoming') {
+function buildDateGroups(partidos, todayKey) {
   const groups = {}
   const visibles = partidos.filter((match) => match.status !== 'cancelled')
 
@@ -100,9 +100,16 @@ function buildDateGroups(partidos, mode = 'upcoming') {
     }))
     .sort((a, b) => {
       if (!a.fecha && !b.fecha) return String(a.key).localeCompare(String(b.key))
-      if (!a.fecha) return mode === 'upcoming' ? 1 : -1
-      if (!b.fecha) return mode === 'upcoming' ? -1 : 1
-      return mode === 'previous' ? b.fecha - a.fecha : a.fecha - b.fecha
+      if (!a.fecha) return 1
+      if (!b.fecha) return -1
+
+      const aKey = format(a.fecha, 'yyyy-MM-dd')
+      const bKey = format(b.fecha, 'yyyy-MM-dd')
+      const aUpcoming = aKey >= todayKey
+      const bUpcoming = bKey >= todayKey
+
+      if (aUpcoming !== bUpcoming) return aUpcoming ? -1 : 1
+      return aUpcoming ? a.fecha - b.fecha : b.fecha - a.fecha
     })
 }
 
@@ -234,7 +241,6 @@ export default function Home() {
   const { isSuperAdmin } = useAuth()
   const { favorites } = useFavorites()
   const now = useNow()
-  const [matchMode, setMatchMode] = useState('upcoming')
   const [matchScope, setMatchScope] = useState('all')
   const { data: partidos = [], isLoading } = useHomeMatches()
   const { data: news = [] } = useNews({ limit: 10 })
@@ -244,25 +250,9 @@ export default function Home() {
     return partidos.filter((match) => favorites.includes(match.home_team_id) || favorites.includes(match.away_team_id))
   }, [favorites, matchScope, partidos])
   const filteredMatches = useMemo(() => (
-    scopedMatches.filter((match) => {
-      if (match.status === 'cancelled') return false
-      if (matchMode === 'previous') return match.status === 'finished'
-      if (matchMode === 'postponed') return match.status === 'postponed'
-      if (match.status === 'finished' || match.status === 'postponed') return false
-      if (!match.scheduled_at) return true
-      return format(toZonedTime(new Date(match.scheduled_at), TZ), 'yyyy-MM-dd') >= todayKey
-    })
-  ), [matchMode, scopedMatches, todayKey])
-  const grupos = useMemo(() => buildDateGroups(filteredMatches, matchMode), [filteredMatches, matchMode])
-  const modeCounts = useMemo(() => ({
-    upcoming: scopedMatches.filter((match) => {
-      if (match.status === 'finished' || match.status === 'cancelled' || match.status === 'postponed') return false
-      if (!match.scheduled_at) return true
-      return format(toZonedTime(new Date(match.scheduled_at), TZ), 'yyyy-MM-dd') >= todayKey
-    }).length,
-    previous: scopedMatches.filter((match) => match.status === 'finished').length,
-    postponed: scopedMatches.filter((match) => match.status === 'postponed').length,
-  }), [scopedMatches, todayKey])
+    scopedMatches.filter((match) => match.status !== 'cancelled' && match.scheduled_at)
+  ), [scopedMatches])
+  const grupos = useMemo(() => buildDateGroups(filteredMatches, todayKey), [filteredMatches, todayKey])
 
   return (
     <div className="px-3 py-3 space-y-4 pb-28">
@@ -318,28 +308,6 @@ export default function Home() {
         </div>
       )}
 
-      <div className="grid grid-cols-3 rounded-xl border border-surface-800 bg-surface-900 p-1">
-        {[
-          ['previous', 'Anteriores'],
-          ['upcoming', 'Proximos'],
-          ['postponed', 'Suspendidos'],
-        ].map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setMatchMode(key)}
-            className={`rounded-lg px-3 py-2 text-xs font-black transition-colors ${
-              matchMode === key
-                ? 'bg-primary text-white'
-                : 'text-zinc-400 hover:bg-surface-800 hover:text-zinc-100'
-            }`}
-          >
-            {label}
-            {modeCounts[key] > 0 && <span className="ml-1 opacity-75">{modeCounts[key]}</span>}
-          </button>
-        ))}
-      </div>
-
       {isLoading && <Spinner className="py-12" />}
 
       {!isLoading && partidos.length === 0 && (
@@ -351,14 +319,12 @@ export default function Home() {
 
       {!isLoading && partidos.length > 0 && grupos.length === 0 && (
         <div className="text-center py-12 text-zinc-500">
-          <p className="text-sm font-medium">
-            {matchMode === 'previous'
-              ? 'Todavia no hay partidos anteriores.'
-              : matchMode === 'postponed'
-                ? 'No hay partidos suspendidos.'
-                : 'Todavia no hay proximos partidos cargados.'}
-          </p>
+          <p className="text-sm font-medium">Todavia no hay partidos para mostrar.</p>
         </div>
+      )}
+
+      {!isLoading && grupos.length > 0 && (
+        <p className="px-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Partidos</p>
       )}
 
       {grupos.map((day) => (
