@@ -15,6 +15,8 @@ const QUERY_PREFIXES = [
   ['standings-all'],
   ['scorers-all'],
   ['top-scorers'],
+  ['live-sync-events'],
+  ['match-live-link'],
 ]
 
 export function useRealtimeInvalidation() {
@@ -31,6 +33,8 @@ export function useRealtimeInvalidation() {
       .channel('vmscore-live-data')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'matches' }, refreshAppData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'match_events' }, refreshAppData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'live_sync_events' }, refreshAppData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'match_live_links' }, refreshAppData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'standings' }, refreshAppData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'manual_scorers' }, refreshAppData)
       .subscribe()

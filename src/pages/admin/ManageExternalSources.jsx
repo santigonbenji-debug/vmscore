@@ -21,6 +21,7 @@ import {
   useUpsertExternalSource,
 } from '../../hooks/useExternalSources'
 import { fetchCopaFacilMatches, parseCopaFacilUrl, summarizeExternalTeams } from '../../lib/copaFacil'
+import { fetchLocosVmPublicSnapshot } from '../../lib/locosVm'
 
 const TZ = 'America/Argentina/San_Luis'
 const INPUT = 'w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none bg-surface-800 text-zinc-100 border border-surface-700'
@@ -150,6 +151,9 @@ export default function ManageExternalSources() {
   const [archiveRoundFilter, setArchiveRoundFilter] = useState('all')
   const [archiveDate, setArchiveDate] = useState('')
   const [editingArchive, setEditingArchive] = useState(null)
+  const [locosSnapshot, setLocosSnapshot] = useState(null)
+  const [locosLoading, setLocosLoading] = useState(false)
+  const [locosError, setLocosError] = useState('')
   const [archiveForm, setArchiveForm] = useState({
     scheduledAtLocal: '',
     homeScore: '',
@@ -272,6 +276,18 @@ export default function ManageExternalSources() {
     })
     setSelectedSourceId(source.id)
     setPreviewError('')
+  }
+
+  async function scanLocosVm() {
+    setLocosError('')
+    setLocosLoading(true)
+    try {
+      setLocosSnapshot(await fetchLocosVmPublicSnapshot())
+    } catch (error) {
+      setLocosError(error?.message ?? 'No se pudo leer Locos VM.')
+    } finally {
+      setLocosLoading(false)
+    }
   }
 
   async function loadPreview() {
@@ -745,6 +761,109 @@ export default function ManageExternalSources() {
               </p>
             )}
           </div>
+        </section>
+
+        <section className="rounded-xl border border-surface-800 bg-surface-900 p-4">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-bold text-zinc-100">Explorar Locos VM</h2>
+              <p className="mt-1 text-xs text-zinc-500">
+                Lee solo datos publicos para mostrar que puede aportar esta fuente.
+              </p>
+            </div>
+            <Button size="sm" variant="secondary" onClick={scanLocosVm} disabled={locosLoading}>
+              {locosLoading ? 'Leyendo...' : 'Hacer barrido'}
+            </Button>
+          </div>
+
+          {locosError && (
+            <p className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
+              {locosError}
+            </p>
+          )}
+
+          {locosSnapshot ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+                  <p className="text-[11px] uppercase text-zinc-500">Equipos</p>
+                  <p className="mt-1 text-lg font-black text-zinc-100">{locosSnapshot.counts.teams}</p>
+                </div>
+                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+                  <p className="text-[11px] uppercase text-zinc-500">Partidos</p>
+                  <p className="mt-1 text-lg font-black text-zinc-100">{locosSnapshot.counts.matches}</p>
+                </div>
+                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+                  <p className="text-[11px] uppercase text-zinc-500">Streams</p>
+                  <p className="mt-1 text-lg font-black text-zinc-100">{locosSnapshot.counts.matches_with_stream_url}</p>
+                </div>
+                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+                  <p className="text-[11px] uppercase text-zinc-500">Planes</p>
+                  <p className="mt-1 text-lg font-black text-zinc-100">{locosSnapshot.counts.active_credit_plans}</p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {[
+                  ['Equipos', locosSnapshot.capabilities.teams],
+                  ['Fixture', locosSnapshot.capabilities.fixtures],
+                  ['Resultados', locosSnapshot.capabilities.scores],
+                  ['Sedes', locosSnapshot.capabilities.venues],
+                  ['Streams', locosSnapshot.capabilities.streams],
+                  ['Repeticiones', locosSnapshot.capabilities.vods],
+                  ['Planes', locosSnapshot.capabilities.credit_plans],
+                  ['Vivo real', locosSnapshot.capabilities.live_state],
+                ].map(([label, enabled]) => (
+                  <span
+                    key={label}
+                    className={`rounded-full px-2 py-1 text-[11px] font-bold ${
+                      enabled ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300'
+                    }`}
+                  >
+                    {enabled ? 'Disponible' : 'No visto'} - {label}
+                  </span>
+                ))}
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-3">
+                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+                  <h3 className="text-xs font-bold text-zinc-100">Equipos visibles</h3>
+                  <div className="mt-2 space-y-1.5">
+                    {locosSnapshot.samples.teams.map((team) => (
+                      <p key={team.id} className="truncate text-xs text-zinc-400">
+                        {team.shortName || team.name}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+                  <h3 className="text-xs font-bold text-zinc-100">Partidos visibles</h3>
+                  <div className="mt-2 space-y-1.5">
+                    {locosSnapshot.samples.matches.map((match) => (
+                      <p key={match.id} className="truncate text-xs text-zinc-400">
+                        {(match.homeTeam?.shortName || match.homeTeam?.name || 'Local')} vs {(match.awayTeam?.shortName || match.awayTeam?.name || 'Visitante')}
+                        {' - '}{match.date || 'sin fecha'} - {match.status || 'sin estado'}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+                  <h3 className="text-xs font-bold text-zinc-100">Planes visibles</h3>
+                  <div className="mt-2 space-y-1.5">
+                    {locosSnapshot.samples.credit_plans.map((plan) => (
+                      <p key={plan.id} className="truncate text-xs text-zinc-400">
+                        {plan.name} - {plan.matches} partido{plan.matches === 1 ? '' : 's'}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <p className="rounded-lg border border-surface-800 bg-surface-950 p-3 text-xs text-zinc-500">
+              El barrido mostrara equipos, partidos, sedes, resultados, links publicados y planes de creditos visibles sin iniciar sesion.
+            </p>
+          )}
         </section>
 
         {previewError && (

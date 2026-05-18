@@ -66,6 +66,58 @@ async function fetchFirestoreCollection(collection, pageSize = 100, maxPages = 5
   return rows
 }
 
+export async function fetchLocosVmPublicSnapshot() {
+  const [teams, matches, creditPlans] = await Promise.all([
+    fetchFirestoreCollection('teams', 100, 4),
+    fetchFirestoreCollection('matches', 100, 8),
+    fetchFirestoreCollection('creditPlans', 50, 2),
+  ])
+
+  const activeCreditPlans = creditPlans.filter((plan) => plan.active === true)
+  const finishedMatches = matches.filter((match) => match.status === 'finished')
+  const liveMatches = matches.filter((match) => match.status === 'live')
+  const upcomingMatches = matches.filter((match) => match.status === 'upcoming')
+  const matchesWithStream = matches.filter((match) => match.streamUrl)
+  const matchesWithVod = matches.filter((match) => match.vodUrl)
+  const teamsById = new Map(teams.map((team) => [team.id, team]))
+
+  return {
+    counts: {
+      teams: teams.length,
+      matches: matches.length,
+      active_credit_plans: activeCreditPlans.length,
+      finished_matches: finishedMatches.length,
+      live_matches: liveMatches.length,
+      upcoming_matches: upcomingMatches.length,
+      matches_with_stream_url: matchesWithStream.length,
+      matches_with_vod_url: matchesWithVod.length,
+    },
+    capabilities: {
+      teams: teams.length > 0,
+      fixtures: matches.length > 0,
+      scores: matches.some((match) => match.homeScore != null || match.awayScore != null),
+      venues: matches.some((match) => match.venue),
+      streams: matchesWithStream.length > 0,
+      vods: matchesWithVod.length > 0,
+      credit_plans: creditPlans.length > 0,
+      live_state: liveMatches.length > 0,
+    },
+    samples: {
+      teams: teams.slice(0, 6),
+      matches: matches
+        .slice()
+        .sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')))
+        .slice(0, 6)
+        .map((match) => ({
+          ...match,
+          homeTeam: teamsById.get(match.homeTeamId),
+          awayTeam: teamsById.get(match.awayTeamId),
+        })),
+      credit_plans: activeCreditPlans.slice(0, 6),
+    },
+  }
+}
+
 export async function fetchLocosVmMatch(matchId) {
   const id = parseLocosVmMatchId(matchId)
   if (!id) throw new Error('Falta el ID del partido de Locos VM.')
