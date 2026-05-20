@@ -24,8 +24,28 @@ function hasScore(raw: Record<string, unknown>) {
     Object.prototype.hasOwnProperty.call(details, 'qt_g2')
 }
 
+function isLiveStatus(raw: Record<string, unknown>) {
+  const statusText = String(raw.status ?? raw.state ?? raw.st_text ?? raw.estado ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+  const numericStatus = Number(raw.st)
+
+  return raw.live === true ||
+    raw.in_progress === true ||
+    raw.inProgress === true ||
+    numericStatus === 2 ||
+    statusText === 'live' ||
+    statusText === 'in_progress' ||
+    statusText === 'playing' ||
+    statusText === 'en vivo' ||
+    statusText === 'en_vivo'
+}
+
 function normalizeStatus(raw: Record<string, unknown>) {
   if (raw.finished === true || Number(raw.st) === 3) return 'finished'
+  if (isLiveStatus(raw)) return 'in_progress'
   if (hasScore(raw)) return 'in_progress'
   return 'scheduled'
 }

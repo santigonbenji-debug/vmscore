@@ -26,6 +26,8 @@ const EVENT_LABEL = {
   substitution: 'Cambio',
 }
 
+const GOAL_EVENT_TYPES = new Set(['goal', 'own_goal', 'penalty_goal'])
+
 function LineupColumn({ title, lineups }) {
   const titulares = lineups.filter((lineup) => lineup.role === 'starter')
   const suplentes = lineups.filter((lineup) => lineup.role === 'substitute')
@@ -80,20 +82,23 @@ function EventsTimeline({ events, match }) {
           : (match.away_team_short_name ?? match.away_team_name)
         const logoUrl = isHome ? match.home_team_logo_url : match.away_team_logo_url
         const color = isHome ? match.home_primary_color : match.away_primary_color
-        const isAnonymousGoal = event.event_type === 'goal' && !event.player_name
+        const isGoalEvent = GOAL_EVENT_TYPES.has(event.event_type)
+        const eventTitle = isGoalEvent && !event.player_name
+          ? (EVENT_LABEL[event.event_type] ?? 'Gol')
+          : (event.player_name || 'Jugador sin nombre')
         return (
           <div key={event.id} className="flex items-center gap-3 px-4 py-3 border-b border-surface-800 last:border-0">
             <div className="w-10 text-center text-xs font-bold text-zinc-400 tabular-nums">
               {event.minute != null ? `${event.minute}'` : '-'}
             </div>
-            {isAnonymousGoal ? (
+            {isGoalEvent ? (
               <TeamLogo logoUrl={logoUrl} name={teamName} color={color} />
             ) : (
               <div className={`w-1.5 h-8 rounded-full ${isHome ? 'bg-primary' : 'bg-zinc-500'}`} />
             )}
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-zinc-100 truncate">
-                {isAnonymousGoal ? 'Gol' : (event.player_name || 'Jugador sin nombre')}
+                {eventTitle}
               </p>
               <p className="text-xs text-zinc-500">
                 {EVENT_LABEL[event.event_type] ?? event.event_type} · {teamName}
@@ -279,7 +284,7 @@ export default function MatchDetail() {
                     : (match.away_team_short_name ?? match.away_team_name)
                   const liveLogoUrl = isHome ? match.home_team_logo_url : match.away_team_logo_url
                   const liveColor = isHome ? match.home_primary_color : match.away_primary_color
-                  const isGoal = event.event_type === 'goal'
+                  const isGoal = GOAL_EVENT_TYPES.has(event.event_type)
 
                   return (
                     <div key={event.id} className="flex items-center gap-3 px-4 py-3 border-b border-surface-800 last:border-0">
@@ -293,7 +298,7 @@ export default function MatchDetail() {
                       )}
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-zinc-100 truncate">
-                          {isGoal ? 'Gol' : event.title}
+                          {isGoal ? (EVENT_LABEL[event.event_type] ?? 'Gol') : event.title}
                         </p>
                         <p className="text-xs text-zinc-500">
                           {isGoal

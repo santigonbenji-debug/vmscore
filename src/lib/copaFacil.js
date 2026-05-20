@@ -34,8 +34,28 @@ function parseScore(match) {
   }
 }
 
+function isLiveStatus(match) {
+  const statusText = String(match?.status ?? match?.state ?? match?.st_text ?? match?.estado ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+  const numericStatus = Number(match?.st)
+
+  return match?.live === true ||
+    match?.in_progress === true ||
+    match?.inProgress === true ||
+    numericStatus === 2 ||
+    statusText === 'live' ||
+    statusText === 'in_progress' ||
+    statusText === 'playing' ||
+    statusText === 'en vivo' ||
+    statusText === 'en_vivo'
+}
+
 function parseStatus(match, hasScore, isFinished) {
   if (isFinished) return 'finished'
+  if (isLiveStatus(match)) return 'in_progress'
   if (hasScore) return 'in_progress'
   return 'scheduled'
 }

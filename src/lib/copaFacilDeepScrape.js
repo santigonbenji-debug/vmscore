@@ -38,8 +38,31 @@ function parseScore(match) {
   return {
     homeScore: numberOrNull(dt.qt_g1) ?? 0,
     awayScore: numberOrNull(dt.qt_g2) ?? 0,
-    isFinished: true,
+    isFinished: Boolean(match?.finished) || Number(match?.st) === 3,
   }
+}
+
+function isFinishedStatus(match) {
+  return Boolean(match?.finished) || Number(match?.st) === 3
+}
+
+function isLiveStatus(match) {
+  const statusText = String(match?.status ?? match?.state ?? match?.st_text ?? match?.estado ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+  const numericStatus = Number(match?.st)
+
+  return match?.live === true ||
+    match?.in_progress === true ||
+    match?.inProgress === true ||
+    numericStatus === 2 ||
+    statusText === 'live' ||
+    statusText === 'in_progress' ||
+    statusText === 'playing' ||
+    statusText === 'en vivo' ||
+    statusText === 'en_vivo'
 }
 
 function localIsoFromMillis(value) {
@@ -179,17 +202,22 @@ function extractMatches(rawMatches, eventCode, divisionCode) {
       .filter(([, match]) => match?.evt === eventKey)
       .map(([id, match]) => {
         const { homeScore, awayScore, isFinished } = parseScore(match)
+        const status = isFinishedStatus(match) || isFinished
+          ? 'finished'
+          : isLiveStatus(match)
+            ? 'in_progress'
+            : 'scheduled'
         const rawDate = localIsoFromMillis(match.d_i)
         return {
           external_match_id: id,
           external_home_team_id: match.team1 ?? null,
           external_away_team_id: match.team2 ?? null,
-          scheduled_at: isFinished ? rawDate : null,
+          scheduled_at: status === 'finished' || status === 'in_progress' ? rawDate : null,
           copa_facil_raw_date: rawDate,
-          date_tbd: !isFinished || !rawDate,
+          date_tbd: status === 'scheduled' || !rawDate,
           home_score: homeScore,
           away_score: awayScore,
-          status: isFinished ? 'finished' : 'scheduled',
+          status,
           match_set: match.m_set ?? null,
           stage_id: match.fs ?? null,
           venue_external_id: match.l ?? null,
