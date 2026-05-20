@@ -379,7 +379,7 @@ export default function LoadResult() {
     liveLink?.last_away_score !== null && liveLink?.last_away_score !== undefined
 
   return (
-    <div className="px-4 py-6 space-y-5">
+    <div className="px-4 py-6 pb-[calc(7rem+env(safe-area-inset-bottom))] space-y-5">
       <div>
         <button onClick={() => navigate(-1)}
           className="text-xs text-primary font-medium mb-4 flex items-center gap-1">
