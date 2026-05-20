@@ -833,7 +833,7 @@ export default function ManageExternalSources() {
 
           {locosSnapshot ? (
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
                 <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
                   <p className="text-[11px] uppercase text-zinc-500">Equipos</p>
                   <p className="mt-1 text-lg font-black text-zinc-100">{locosSnapshot.counts.teams}</p>
@@ -850,6 +850,14 @@ export default function ManageExternalSources() {
                   <p className="text-[11px] uppercase text-zinc-500">Planes</p>
                   <p className="mt-1 text-lg font-black text-zinc-100">{locosSnapshot.counts.active_credit_plans}</p>
                 </div>
+                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+                  <p className="text-[11px] uppercase text-zinc-500">Categorias</p>
+                  <p className="mt-1 text-lg font-black text-zinc-100">{locosSnapshot.counts.categories ?? 0}</p>
+                </div>
+                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+                  <p className="text-[11px] uppercase text-zinc-500">Sedes</p>
+                  <p className="mt-1 text-lg font-black text-zinc-100">{locosSnapshot.counts.venues ?? 0}</p>
+                </div>
               </div>
 
               <div className="flex flex-wrap gap-2">
@@ -857,6 +865,8 @@ export default function ManageExternalSources() {
                 <CapabilityPill enabled={locosSnapshot.capabilities.fixtures} label="fixture" />
                 <CapabilityPill enabled={locosSnapshot.capabilities.scores} label="resultados" />
                 <CapabilityPill enabled={locosSnapshot.capabilities.venues} label="sedes" />
+                <CapabilityPill enabled={locosSnapshot.capabilities.categories} label="categorias" />
+                <CapabilityPill enabled={locosSnapshot.capabilities.rounds} label="fechas" />
                 <CapabilityPill enabled={locosSnapshot.capabilities.streams} label="links publicados" tone="warn" />
                 <CapabilityPill enabled={locosSnapshot.capabilities.vods} label="repeticiones" tone="warn" />
                 <CapabilityPill enabled={locosSnapshot.capabilities.credit_plans} label="planes" tone="warn" />
@@ -884,6 +894,66 @@ export default function ManageExternalSources() {
                 </div>
               </div>
 
+              <div className="grid gap-2 md:grid-cols-2">
+                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+                  <h3 className="text-xs font-bold text-zinc-100">Cobertura detectada</h3>
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-zinc-400">
+                    <p>Escudos: <span className="font-bold text-zinc-100">{locosSnapshot.summaries?.field_coverage?.teams_with_logo ?? 0}</span></p>
+                    <p>Con fecha: <span className="font-bold text-zinc-100">{locosSnapshot.summaries?.field_coverage?.matches_with_date ?? 0}</span></p>
+                    <p>Con hora: <span className="font-bold text-zinc-100">{locosSnapshot.summaries?.field_coverage?.matches_with_time ?? 0}</span></p>
+                    <p>Con sede: <span className="font-bold text-zinc-100">{locosSnapshot.summaries?.field_coverage?.matches_with_venue ?? 0}</span></p>
+                    <p>Con categoria: <span className="font-bold text-zinc-100">{locosSnapshot.summaries?.field_coverage?.matches_with_category ?? 0}</span></p>
+                    <p>Con resultado: <span className="font-bold text-zinc-100">{locosSnapshot.summaries?.field_coverage?.matches_with_score ?? 0}</span></p>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+                  <h3 className="text-xs font-bold text-zinc-100">Estados</h3>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {(locosSnapshot.summaries?.statuses ?? []).map((status) => (
+                      <span key={status.key} className="rounded-full bg-surface-800 px-2 py-1 text-[11px] font-bold text-zinc-300">
+                        {status.key}: {status.count}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-3">
+                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+                  <h3 className="text-xs font-bold text-zinc-100">Categorias detectadas</h3>
+                  <div className="mt-2 space-y-2">
+                    {(locosSnapshot.summaries?.categories ?? []).slice(0, 8).map((category) => (
+                      <div key={category.key} className="flex items-center justify-between gap-2 rounded-lg bg-surface-900 px-2 py-1.5 text-xs">
+                        <span className="truncate text-zinc-300">{category.key}</span>
+                        <span className="shrink-0 font-black text-zinc-100">{category.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+                  <h3 className="text-xs font-bold text-zinc-100">Sedes detectadas</h3>
+                  <div className="mt-2 space-y-2">
+                    {(locosSnapshot.summaries?.venues ?? []).slice(0, 8).map((venue) => (
+                      <div key={venue.key} className="flex items-center justify-between gap-2 rounded-lg bg-surface-900 px-2 py-1.5 text-xs">
+                        <span className="truncate text-zinc-300">{venue.key}</span>
+                        <span className="shrink-0 font-black text-zinc-100">{venue.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+                  <h3 className="text-xs font-bold text-zinc-100">Dias con partidos</h3>
+                  <div className="mt-2 space-y-2">
+                    {(locosSnapshot.summaries?.dates ?? []).slice(0, 8).map((date) => (
+                      <div key={date.key} className="flex items-center justify-between gap-2 rounded-lg bg-surface-900 px-2 py-1.5 text-xs">
+                        <span className="truncate text-zinc-300">{date.key}</span>
+                        <span className="shrink-0 font-black text-zinc-100">{date.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
               <div className="grid gap-3 lg:grid-cols-3">
                 <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
                   <h3 className="text-xs font-bold text-zinc-100">Equipos visibles</h3>
@@ -896,12 +966,12 @@ export default function ManageExternalSources() {
                   </div>
                 </div>
                 <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
-                  <h3 className="text-xs font-bold text-zinc-100">Partidos visibles</h3>
+                  <h3 className="text-xs font-bold text-zinc-100">Programados visibles</h3>
                   <div className="mt-2 space-y-1.5">
-                    {locosSnapshot.samples.matches.map((match) => (
+                    {(locosSnapshot.samples.upcoming_matches?.length ? locosSnapshot.samples.upcoming_matches : locosSnapshot.samples.matches).map((match) => (
                       <p key={match.id} className="truncate text-xs text-zinc-400">
                         {(match.homeTeam?.shortName || match.homeTeam?.name || 'Local')} vs {(match.awayTeam?.shortName || match.awayTeam?.name || 'Visitante')}
-                        {' - '}{match.date || 'sin fecha'} - {match.status || 'sin estado'}
+                        {' - '}{match.date || 'sin fecha'} {match.time || ''} - {match.category || match.status || 'sin estado'}
                       </p>
                     ))}
                   </div>

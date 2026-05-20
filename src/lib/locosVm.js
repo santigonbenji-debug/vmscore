@@ -66,6 +66,98 @@ async function fetchFirestoreCollection(collection, pageSize = 100, maxPages = 5
   return rows
 }
 
+function cleanText(value) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim()
+}
+
+function titleCase(value) {
+  return cleanText(value)
+    .toLowerCase()
+    .replace(/(^|\s)\S/g, (letter) => letter.toUpperCase())
+}
+
+const ROUND_WORDS = {
+  primera: 1,
+  segunda: 2,
+  tercera: 3,
+  cuarta: 4,
+  quinta: 5,
+  sexta: 6,
+  septima: 7,
+  octava: 8,
+  novena: 9,
+  decima: 10,
+}
+
+function extractLocosRound(description) {
+  const text = cleanText(description)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+
+  const afterFecha = text.match(/fecha\s*(\d{1,2})/)
+  if (afterFecha) return Number(afterFecha[1])
+
+  const beforeFecha = text.match(/(\d{1,2})(?:ra|da|ta|na|ma|va)?\s*fecha/)
+  if (beforeFecha) return Number(beforeFecha[1])
+
+  const wordFecha = text.match(/\b(primera|segunda|tercera|cuarta|quinta|sexta|septima|octava|novena|decima)\s+fecha\b/)
+  if (wordFecha) return ROUND_WORDS[wordFecha[1]] ?? null
+
+  return null
+}
+
+function extractLocosCategory(description) {
+  const original = cleanText(description)
+  if (!original) return 'Sin categoria'
+
+  const normalized = original
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+
+  const division = normalized.match(/\b(\d{1,2})(?:ra|da|ta|na|ma|va)?\s*division\b/)
+  if (division) return `${division[1]} division`
+
+  const beforeSeparator = original.split(/\s+-\s+|\s+\/\s+/)[0]
+  if (beforeSeparator && beforeSeparator.length <= 40) return titleCase(beforeSeparator)
+
+  const known = normalized.match(/\b(reserva|senior|femenino|juveniles?|inferiores?)\b/)
+  if (known) return titleCase(known[1])
+
+  return 'Sin categoria'
+}
+
+function toLocosDateTime(match) {
+  if (!match?.date) return null
+  const time = match.time && /^\d{1,2}:\d{2}$/.test(String(match.time)) ? String(match.time) : '00:00'
+  return `${match.date}T${time}:00`
+}
+
+function statusLabel(status) {
+  if (status === 'finished') return 'Finalizados'
+  if (status === 'live') return 'En vivo'
+  if (status === 'upcoming') return 'Programados'
+  return status ? titleCase(status) : 'Sin estado'
+}
+
+function increment(map, key, data = {}) {
+  const safeKey = key || 'Sin dato'
+  if (!map.has(safeKey)) map.set(safeKey, { key: safeKey, count: 0 })
+  const current = map.get(safeKey)
+  current.count += 1
+  Object.entries(data).forEach(([dataKey, value]) => {
+    if (dataKey === 'round') current[dataKey] = value
+    else if (typeof value === 'number') current[dataKey] = (current[dataKey] ?? 0) + value
+    else if (value !== undefined && current[dataKey] == null) current[dataKey] = value
+  })
+  return current
+}
+
+function sortSummary(rows) {
+  return [...rows].sort((a, b) => b.count - a.count || String(a.key).localeCompare(String(b.key)))
+}
+
 export async function fetchLocosVmPublicSnapshot() {
   const [teams, matches, creditPlans] = await Promise.all([
     fetchFirestoreCollection('teams', 100, 4),
@@ -80,11 +172,60 @@ export async function fetchLocosVmPublicSnapshot() {
   const matchesWithStream = matches.filter((match) => match.streamUrl)
   const matchesWithVod = matches.filter((match) => match.vodUrl)
   const teamsById = new Map(teams.map((team) => [team.id, team]))
+  const enrichedMatches = matches.map((match) => ({
+    ...match,
+    homeTeam: teamsById.get(match.homeTeamId),
+    awayTeam: teamsById.get(match.awayTeamId),
+    category: extractLocosCategory(match.description),
+    round: extractLocosRound(match.description),
+    scheduledAt: toLocosDateTime(match),
+    hasScore: match.homeScore != null || match.awayScore != null,
+    hasVenue: Boolean(cleanText(match.venue)),
+  }))
+
+  const categories = new Map()
+  const venues = new Map()
+  const statuses = new Map()
+  const dates = new Map()
+  const rounds = new Map()
+
+  enrichedMatches.forEach((match) => {
+    const category = increment(categories, match.category, {
+      finished: match.status === 'finished' ? 1 : 0,
+      upcoming: match.status === 'upcoming' ? 1 : 0,
+      live: match.status === 'live' ? 1 : 0,
+      withScore: match.hasScore ? 1 : 0,
+      withStream: match.streamUrl ? 1 : 0,
+    })
+    if (!category.sample) category.sample = match.description
+
+    increment(venues, cleanText(match.venue) || 'Sin sede', {
+      finished: match.status === 'finished' ? 1 : 0,
+      upcoming: match.status === 'upcoming' ? 1 : 0,
+    })
+    increment(statuses, statusLabel(match.status))
+    if (match.date) increment(dates, match.date, { upcoming: match.status === 'upcoming' ? 1 : 0, finished: match.status === 'finished' ? 1 : 0 })
+    if (match.round != null) increment(rounds, `Fecha ${match.round}`, { round: match.round })
+  })
+
+  const fieldCoverage = {
+    teams_with_logo: teams.filter((team) => team.logoUrl).length,
+    matches_with_date: matches.filter((match) => match.date).length,
+    matches_with_time: matches.filter((match) => match.time).length,
+    matches_with_venue: matches.filter((match) => cleanText(match.venue)).length,
+    matches_with_category: enrichedMatches.filter((match) => match.category !== 'Sin categoria').length,
+    matches_with_round: enrichedMatches.filter((match) => match.round != null).length,
+    matches_with_score: enrichedMatches.filter((match) => match.hasScore).length,
+  }
 
   return {
     counts: {
       teams: teams.length,
       matches: matches.length,
+      categories: categories.size,
+      venues: venues.size,
+      dates: dates.size,
+      rounds: rounds.size,
       active_credit_plans: activeCreditPlans.length,
       finished_matches: finishedMatches.length,
       live_matches: liveMatches.length,
@@ -101,19 +242,40 @@ export async function fetchLocosVmPublicSnapshot() {
       vods: matchesWithVod.length > 0,
       credit_plans: creditPlans.length > 0,
       live_state: liveMatches.length > 0,
+      categories: categories.size > 0,
+      rounds: rounds.size > 0,
+      dates: dates.size > 0,
+    },
+    summaries: {
+      categories: sortSummary(categories.values()),
+      venues: sortSummary(venues.values()),
+      statuses: sortSummary(statuses.values()),
+      dates: [...dates.values()].sort((a, b) => String(b.key).localeCompare(String(a.key))).slice(0, 12),
+      rounds: [...rounds.values()].sort((a, b) => Number(a.round ?? 0) - Number(b.round ?? 0)),
+      field_coverage: fieldCoverage,
     },
     samples: {
       teams: teams.slice(0, 6),
-      matches: matches
+      matches: enrichedMatches
         .slice()
-        .sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')))
+        .sort((a, b) => String(b.scheduledAt ?? b.date ?? '').localeCompare(String(a.scheduledAt ?? a.date ?? '')))
         .slice(0, 6)
-        .map((match) => ({
-          ...match,
-          homeTeam: teamsById.get(match.homeTeamId),
-          awayTeam: teamsById.get(match.awayTeamId),
-        })),
+        .map((match) => match),
+      upcoming_matches: enrichedMatches
+        .filter((match) => match.status === 'upcoming')
+        .sort((a, b) => String(a.scheduledAt ?? a.date ?? '').localeCompare(String(b.scheduledAt ?? b.date ?? '')))
+        .slice(0, 8),
+      finished_matches: enrichedMatches
+        .filter((match) => match.status === 'finished')
+        .sort((a, b) => String(b.scheduledAt ?? b.date ?? '').localeCompare(String(a.scheduledAt ?? a.date ?? '')))
+        .slice(0, 8),
       credit_plans: activeCreditPlans.slice(0, 6),
+    },
+    recommendation: {
+      importable: fieldCoverage.matches_with_date > 0 && teams.length > 0,
+      safest_use: 'Fixture, resultados cerrados, equipos, escudos, sedes y categorias detectadas.',
+      needs_review: 'Las categorias salen de la descripcion del partido; antes de importar hay que mapearlas contra ligas/fases de VMScore.',
+      not_free_access: 'Los links de transmision y planes visibles no implican permiso ni acceso libre al video.',
     },
   }
 }
