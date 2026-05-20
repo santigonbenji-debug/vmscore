@@ -109,7 +109,7 @@ function buildDateGroups(partidos, todayKey) {
       const bUpcoming = bKey >= todayKey
 
       if (aUpcoming !== bUpcoming) return aUpcoming ? -1 : 1
-      return aUpcoming ? a.fecha - b.fecha : b.fecha - a.fecha
+      return b.fecha - a.fecha
     })
 }
 
