@@ -101,13 +101,30 @@ export async function fetchCopaFacilMatches({ eventCode, divisionCode, fresh = t
 export function summarizeExternalTeams(matches) {
   const teams = new Map()
   matches.forEach((match) => {
-    ;[
-      match.external_home_team_id,
-      match.external_away_team_id,
-    ].forEach((teamId) => {
+    ;[{
+      id: match.external_home_team_id,
+      name: match.external_home_team_name,
+      shortName: match.external_home_team_short_name,
+      logoUrl: match.external_home_team_logo_url,
+    }, {
+      id: match.external_away_team_id,
+      name: match.external_away_team_name,
+      shortName: match.external_away_team_short_name,
+      logoUrl: match.external_away_team_logo_url,
+    }].forEach((team) => {
+      const teamId = team.id
       if (!teamId) return
-      const current = teams.get(teamId) ?? { external_team_id: teamId, matches: 0 }
+      const current = teams.get(teamId) ?? {
+        external_team_id: teamId,
+        external_team_name: team.name ?? null,
+        external_team_short_name: team.shortName ?? null,
+        external_team_logo_url: team.logoUrl ?? null,
+        matches: 0,
+      }
       current.matches += 1
+      current.external_team_name ||= team.name ?? null
+      current.external_team_short_name ||= team.shortName ?? null
+      current.external_team_logo_url ||= team.logoUrl ?? null
       teams.set(teamId, current)
     })
   })

@@ -134,6 +134,14 @@ function toLocosDateTime(match) {
   return `${match.date}T${time}:00`
 }
 
+function toLocosScheduledAt(match) {
+  if (!match?.date) return null
+  const time = match.time && /^\d{1,2}:\d{2}$/.test(String(match.time)) ? String(match.time) : '00:00'
+  const normalizedTime = time.length === 4 ? `0${time}` : time
+  const date = new Date(`${match.date}T${normalizedTime}:00-03:00`)
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null
+}
+
 function statusLabel(status) {
   if (status === 'finished') return 'Finalizados'
   if (status === 'live') return 'En vivo'
@@ -271,6 +279,11 @@ export async function fetchLocosVmPublicSnapshot() {
         .slice(0, 8),
       credit_plans: activeCreditPlans.slice(0, 6),
     },
+    data: {
+      teams,
+      matches: enrichedMatches,
+      credit_plans: activeCreditPlans,
+    },
     recommendation: {
       importable: fieldCoverage.matches_with_date > 0 && teams.length > 0,
       safest_use: 'Fixture, resultados cerrados, equipos, escudos, sedes y categorias detectadas.',
@@ -278,6 +291,70 @@ export async function fetchLocosVmPublicSnapshot() {
       not_free_access: 'Los links de transmision y planes visibles no implican permiso ni acceso libre al video.',
     },
   }
+}
+
+export function locosCategoryKey(value) {
+  return cleanText(value || 'all')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'all'
+}
+
+export function locosMatchToExternal(match) {
+  const scheduledAt = toLocosScheduledAt(match)
+  const status = normalizeLocosStatus(match.status)
+  const hasFinishedScore = status === 'finished' && (match.homeScore != null || match.awayScore != null)
+
+  return {
+    external_match_id: match.id,
+    external_home_team_id: match.homeTeamId,
+    external_away_team_id: match.awayTeamId,
+    external_home_team_name: match.homeTeam?.name ?? null,
+    external_home_team_short_name: match.homeTeam?.shortName ?? null,
+    external_home_team_logo_url: match.homeTeam?.logoUrl ?? null,
+    external_away_team_name: match.awayTeam?.name ?? null,
+    external_away_team_short_name: match.awayTeam?.shortName ?? null,
+    external_away_team_logo_url: match.awayTeam?.logoUrl ?? null,
+    scheduled_at: scheduledAt,
+    date_tbd: !scheduledAt,
+    round: match.round ?? null,
+    status,
+    home_score: hasFinishedScore ? Number(match.homeScore ?? 0) : null,
+    away_score: hasFinishedScore ? Number(match.awayScore ?? 0) : null,
+    raw: {
+      ...match,
+      source: 'locos_vm',
+      venue_name: match.venue ?? null,
+      category: match.category ?? null,
+    },
+  }
+}
+
+export function locosSnapshotToExternalMatches(snapshot, { category = 'all' } = {}) {
+  const categoryFilter = locosCategoryKey(category)
+  const matches = [
+    ...(snapshot?.data?.matches ?? []),
+    ...(snapshot?.samples?.matches ?? []),
+    ...(snapshot?.samples?.upcoming_matches ?? []),
+    ...(snapshot?.samples?.finished_matches ?? []),
+  ]
+
+  const byId = new Map()
+  matches.forEach((match) => {
+    if (!match?.id) return
+    const matchCategory = locosCategoryKey(match.category)
+    if (categoryFilter !== 'all' && matchCategory !== categoryFilter) return
+    byId.set(match.id, match)
+  })
+
+  return [...byId.values()]
+    .map(locosMatchToExternal)
+    .sort((a, b) => {
+      if (a.round !== b.round) return Number(a.round ?? 999) - Number(b.round ?? 999)
+      return String(a.scheduled_at ?? '').localeCompare(String(b.scheduled_at ?? ''))
+    })
 }
 
 export async function fetchLocosVmMatch(matchId) {

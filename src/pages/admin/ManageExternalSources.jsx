@@ -21,7 +21,11 @@ import {
   useUpsertExternalSource,
 } from '../../hooks/useExternalSources'
 import { fetchCopaFacilMatches, parseCopaFacilUrl, summarizeExternalTeams } from '../../lib/copaFacil'
-import { fetchLocosVmPublicSnapshot } from '../../lib/locosVm'
+import {
+  fetchLocosVmPublicSnapshot,
+  locosCategoryKey,
+  locosSnapshotToExternalMatches,
+} from '../../lib/locosVm'
 
 const TZ = 'America/Argentina/San_Luis'
 const INPUT = 'w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none bg-surface-800 text-zinc-100 border border-surface-700'
@@ -150,9 +154,15 @@ function findPreviewChanges(previewRows, archiveRows) {
     })
 }
 
+function externalProviderLabel(source) {
+  if (source?.provider === 'locos_vm') return 'Locos VM'
+  return 'Copa Facil'
+}
+
 export default function ManageExternalSources() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [selectedSourceId, setSelectedSourceId] = useState('')
+  const [selectedSourceDraft, setSelectedSourceDraft] = useState(null)
   const [preview, setPreview] = useState([])
   const [previewError, setPreviewError] = useState('')
   const [archiveActionError, setArchiveActionError] = useState('')
@@ -168,6 +178,7 @@ export default function ManageExternalSources() {
   const [locosSnapshot, setLocosSnapshot] = useState(null)
   const [locosLoading, setLocosLoading] = useState(false)
   const [locosError, setLocosError] = useState('')
+  const [locosCategoryFilter, setLocosCategoryFilter] = useState('all')
   const [archiveForm, setArchiveForm] = useState({
     scheduledAtLocal: '',
     homeScore: '',
@@ -182,7 +193,7 @@ export default function ManageExternalSources() {
   const { data: leagues = [] } = useLeagues()
   const { data: phases = [] } = usePhases(form.league_id)
   const { data: sources = [], isLoading: loadingSources } = useExternalSources()
-  const selectedSource = sources.find((source) => source.id === selectedSourceId)
+  const selectedSource = sources.find((source) => source.id === selectedSourceId) ?? selectedSourceDraft
   const selectedLeague = leagues.find((league) => league.id === (selectedSource?.league_id ?? form.league_id))
   const { data: teams = [] } = useTeams({ sportId: selectedLeague?.sport_id })
   const { data: canchas = [] } = useVenues()
@@ -213,6 +224,7 @@ export default function ManageExternalSources() {
   }, [savedMappings])
 
   const externalTeams = useMemo(() => summarizeExternalTeams(preview), [preview])
+  const locosCategories = useMemo(() => locosSnapshot?.summaries?.categories ?? [], [locosSnapshot])
   const teamMap = useMemo(() => new Map(teams.map((team) => [team.id, team])), [teams])
   const mappedCount = externalTeams.filter((team) => localMappings[team.external_team_id]).length
   const archiveCounts = useMemo(() => ({
@@ -257,6 +269,7 @@ export default function ManageExternalSources() {
 
   function fillFromSource(source) {
     setSelectedSourceId(source.id)
+    setSelectedSourceDraft(null)
     setForm({
       league_id: source.league_id,
       phase_id: source.phase_id,
@@ -267,6 +280,7 @@ export default function ManageExternalSources() {
     setPreview([])
     setResult(null)
     setPreviewError('')
+    if (source.provider === 'locos_vm') setLocosCategoryFilter(source.division_code || 'all')
   }
 
   async function saveSource() {
@@ -289,6 +303,7 @@ export default function ManageExternalSources() {
       updated_at: new Date().toISOString(),
     })
     setSelectedSourceId(source.id)
+    setSelectedSourceDraft(source)
     setPreviewError('')
   }
 
@@ -304,6 +319,56 @@ export default function ManageExternalSources() {
     }
   }
 
+  async function saveLocosSource() {
+    if (!form.league_id || !form.phase_id) {
+      setLocosError('Selecciona liga y fase destino antes de guardar Locos VM.')
+      return null
+    }
+
+    const categoryCode = locosCategoryFilter === 'all' ? 'all' : locosCategoryKey(locosCategoryFilter)
+    const categoryLabel = locosCategoryFilter === 'all' ? 'Todos' : locosCategoryFilter
+    const source = await upsertSource.mutateAsync({
+      provider: 'locos_vm',
+      league_id: form.league_id,
+      phase_id: form.phase_id,
+      label: form.label || `Locos VM - ${categoryLabel}`,
+      source_url: 'https://www.locosporelfutbolvm.com/',
+      event_code: form.league_id,
+      division_code: categoryCode,
+      min_round: Number(form.min_round) || 1,
+      sync_enabled: false,
+      updated_at: new Date().toISOString(),
+    })
+    setSelectedSourceId(source.id)
+    setSelectedSourceDraft(source)
+    setPreviewError('')
+    setLocosError('')
+    return source
+  }
+
+  async function loadLocosPreview() {
+    setLocosError('')
+    setPreviewError('')
+    setPreviewLoading(true)
+    setResult(null)
+    try {
+      const snapshot = locosSnapshot ?? await fetchLocosVmPublicSnapshot()
+      setLocosSnapshot(snapshot)
+      const source = selectedSource?.provider === 'locos_vm' ? selectedSource : await saveLocosSource()
+      if (!source) return
+      const matches = locosSnapshotToExternalMatches(snapshot, { category: locosCategoryFilter })
+      setPreview(matches)
+      setLastCheckedAt(new Date())
+      if (matches.length === 0) {
+        setPreviewError('No se encontraron partidos de Locos VM para esa categoria.')
+      }
+    } catch (error) {
+      setLocosError(error?.message ?? 'No se pudo usar Locos VM.')
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
   async function loadPreview() {
     const sourceLike = selectedSource ?? {
       source_url: form.source_url,
@@ -315,11 +380,18 @@ export default function ManageExternalSources() {
     setPreviewError('')
     setResult(null)
     try {
-      const matches = await fetchCopaFacilMatches({
-        eventCode: sourceLike.event_code,
-        divisionCode: sourceLike.division_code,
-        fresh: true,
-      })
+      let matches = []
+      if (sourceLike.provider === 'locos_vm') {
+        const snapshot = locosSnapshot ?? await fetchLocosVmPublicSnapshot()
+        setLocosSnapshot(snapshot)
+        matches = locosSnapshotToExternalMatches(snapshot, { category: sourceLike.division_code || locosCategoryFilter })
+      } else {
+        matches = await fetchCopaFacilMatches({
+          eventCode: sourceLike.event_code,
+          divisionCode: sourceLike.division_code,
+          fresh: true,
+        })
+      }
       setPreview(matches)
       setLastCheckedAt(new Date())
       if (matches.length === 0) {
@@ -442,7 +514,11 @@ export default function ManageExternalSources() {
   }
 
   function previewTeamName(externalId) {
-    return teamName(localMappings[externalId], externalId)
+    const external = externalTeams.find((team) => team.external_team_id === externalId)
+    return teamName(
+      localMappings[externalId],
+      external?.external_team_short_name || external?.external_team_name || externalId
+    )
   }
 
   function previewDateLabel(match) {
@@ -469,7 +545,7 @@ export default function ManageExternalSources() {
       values: {
         review_status: 'confirmed',
         preferred_display: true,
-        admin_notes: 'Conflicto resuelto: se muestra el partido importado desde Copa Facil.',
+        admin_notes: `Conflicto resuelto: se muestra el partido importado desde ${externalProviderLabel(selectedSource)}.`,
       },
     })
   }
@@ -477,7 +553,7 @@ export default function ManageExternalSources() {
   return (
     <div className="px-4 py-6 pb-28">
       <div className="mb-5">
-        <h1 className="text-xl font-bold text-zinc-100">Importar Copa Facil</h1>
+        <h1 className="text-xl font-bold text-zinc-100">Importar datos externos</h1>
         <p className="mt-1 text-xs text-zinc-500">
           Busca novedades, revisa cruces y despues decide que guardar, publicar o computar.
         </p>
@@ -505,10 +581,10 @@ export default function ManageExternalSources() {
                   }`}
                 >
                   <p className="text-sm font-semibold text-zinc-100">
-                    {source.label || source.leagues?.name || 'Copa Facil'}
+                    {source.label || source.leagues?.name || externalProviderLabel(source)}
                   </p>
                   <p className="mt-1 text-xs text-zinc-500">
-                    {source.leagues?.name} · {source.phases?.name} · archivo desde Fecha {source.min_round ?? 1}
+                    {externalProviderLabel(source)} · {source.leagues?.name} · {source.phases?.name} · archivo desde Fecha {source.min_round ?? 1}
                   </p>
                 </button>
               ))}
@@ -532,7 +608,7 @@ export default function ManageExternalSources() {
               <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
                 <p className="text-xs font-bold text-emerald-300">Vincular y sincronizar</p>
                 <p className="mt-1 text-[11px] text-zinc-500">
-                  Los partidos publicados quedan conectados a Copa Facil para detectar goles y final.
+                  Copa Facil puede detectar goles y final. Locos VM queda como archivo publico mientras no entregue vivo real.
                 </p>
               </div>
               <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
@@ -544,7 +620,7 @@ export default function ManageExternalSources() {
               <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
                 <p className="text-xs font-bold text-amber-300">Crear nuevas ligas</p>
                 <p className="mt-1 text-[11px] text-zinc-500">
-                  Si Copa Facil tiene juveniles u otro torneo, primero creas la liga/fase y luego guardas esta fuente.
+                  Si una fuente tiene juveniles u otro torneo, primero creas la liga/fase y luego guardas esta fuente.
                 </p>
               </div>
             </div>
@@ -557,7 +633,7 @@ export default function ManageExternalSources() {
               <div>
                 <h2 className="text-sm font-bold text-zinc-100">Historico externo</h2>
                 <p className="mt-1 text-xs text-zinc-500">
-                  Copa Facil queda aca como registro. Confirmar no modifica la tabla de posiciones.
+                  La fuente externa queda aca como registro. Confirmar no modifica la tabla de posiciones.
                 </p>
               </div>
               {loadingArchive && <Spinner />}
@@ -568,7 +644,7 @@ export default function ManageExternalSources() {
                 <div className="mb-2">
                   <h3 className="text-sm font-bold text-amber-200">Partidos duplicados</h3>
                   <p className="mt-1 text-xs text-amber-100/70">
-                    Hay {conflicts.length} cruce{conflicts.length === 1 ? '' : 's'} que existe{conflicts.length === 1 ? '' : 'n'} en VMScore y Copa Facil.
+                    Hay {conflicts.length} cruce{conflicts.length === 1 ? '' : 's'} que existe{conflicts.length === 1 ? '' : 'n'} en VMScore y {externalProviderLabel(selectedSource)}.
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -578,14 +654,14 @@ export default function ManageExternalSources() {
                         {teamName(conflict.archive.mapped_home_team_id, conflict.archive.external_home_team_id)} vs {teamName(conflict.archive.mapped_away_team_id, conflict.archive.external_away_team_id)}
                       </p>
                       <p className="mt-1 text-[11px] text-zinc-500">
-                        VMScore: {conflict.official.home_score ?? '-'}-{conflict.official.away_score ?? '-'} · Copa Facil: {conflict.archive.home_score ?? '-'}-{conflict.archive.away_score ?? '-'}
+                        VMScore: {conflict.official.home_score ?? '-'}-{conflict.official.away_score ?? '-'} · {externalProviderLabel(selectedSource)}: {conflict.archive.home_score ?? '-'}-{conflict.archive.away_score ?? '-'}
                       </p>
                       <div className="mt-2 grid grid-cols-2 gap-2">
                         <Button size="sm" variant="secondary" onClick={() => keepOfficial(conflict)} disabled={updateArchiveMatch.isPending}>
                           Usar VMScore
                         </Button>
                         <Button size="sm" onClick={() => keepExternal(conflict)} disabled={updateArchiveMatch.isPending}>
-                          Usar Copa Facil
+                          Usar {externalProviderLabel(selectedSource)}
                         </Button>
                       </div>
                     </div>
@@ -711,7 +787,7 @@ export default function ManageExternalSources() {
         )}
 
         <section className="rounded-xl border border-surface-800 bg-surface-900 p-4">
-          <h2 className="mb-3 text-sm font-bold text-zinc-100">2. Buscar datos de Copa Facil</h2>
+          <h2 className="mb-3 text-sm font-bold text-zinc-100">2. Configurar destino y fuentes</h2>
           <div className="space-y-3">
             <div>
               <label className="mb-1 block text-xs font-semibold text-zinc-400">Liga VMScore</label>
@@ -801,12 +877,12 @@ export default function ManageExternalSources() {
                 {upsertSource.isPending ? 'Guardando...' : 'Guardar fuente'}
               </Button>
               <Button variant="secondary" onClick={loadPreview} disabled={previewLoading || (!selectedSource && !form.source_url)}>
-                {previewLoading ? 'Buscando...' : 'Buscar novedades ahora'}
+                {previewLoading ? 'Buscando...' : selectedSource?.provider === 'locos_vm' ? 'Buscar Locos VM ahora' : 'Buscar novedades ahora'}
               </Button>
             </div>
             {lastCheckedAt && (
               <p className="text-[11px] text-zinc-500">
-                Ultima lectura directa de Copa Facil: {format(lastCheckedAt, 'HH:mm:ss')}
+                Ultima lectura directa: {format(lastCheckedAt, 'HH:mm:ss')}
               </p>
             )}
           </div>
@@ -815,7 +891,7 @@ export default function ManageExternalSources() {
         <section className="rounded-xl border border-surface-800 bg-surface-900 p-4">
           <div className="mb-3 flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-sm font-bold text-zinc-100">Explorar Locos VM</h2>
+              <h2 className="text-sm font-bold text-zinc-100">Explorar y usar Locos VM</h2>
               <p className="mt-1 text-xs text-zinc-500">
                 Lee solo datos publicos para mostrar que puede aportar esta fuente.
               </p>
@@ -833,6 +909,38 @@ export default function ManageExternalSources() {
 
           {locosSnapshot ? (
             <div className="space-y-3">
+              <div className="rounded-lg border border-primary/20 bg-primary/10 p-3">
+                <div className="grid gap-2 md:grid-cols-[1fr,auto]">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-zinc-300">Categoria a usar</label>
+                    <select
+                      value={locosCategoryFilter}
+                      onChange={(event) => setLocosCategoryFilter(event.target.value)}
+                      className={INPUT}
+                    >
+                      <option value="all">Todas las categorias detectadas</option>
+                      {locosCategories.map((category) => (
+                        <option key={category.key} value={category.key}>
+                          {category.key} · {category.count} partidos
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-[11px] text-zinc-500">
+                      Usa la liga/fase elegida arriba. Primero queda como historico externo; despues decidis que publicar o computar.
+                    </p>
+                  </div>
+                  <div className="flex items-end">
+                    <Button
+                      onClick={loadLocosPreview}
+                      disabled={previewLoading || upsertSource.isPending || !form.league_id || !form.phase_id}
+                      className="w-full md:w-auto"
+                    >
+                      {previewLoading ? 'Preparando...' : 'Usar datos de Locos VM'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
                 <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
                   <p className="text-[11px] uppercase text-zinc-500">Equipos</p>
@@ -1024,7 +1132,7 @@ export default function ManageExternalSources() {
 
               {previewChanges.length === 0 ? (
                 <p className="rounded-lg border border-surface-800 bg-surface-950/80 p-3 text-xs text-zinc-500">
-                  Si Copa Facil carga un resultado nuevo, toca "Buscar novedades ahora" y va a aparecer aca antes de guardarlo.
+                  Si la fuente carga un resultado nuevo, toca "Buscar novedades ahora" y va a aparecer aca antes de guardarlo.
                 </p>
               ) : (
                 <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
@@ -1086,7 +1194,7 @@ export default function ManageExternalSources() {
                         {localMappings[team.external_team_id] ? previewTeamName(team.external_team_id) : 'Equipo sin vincular'}
                       </p>
                       <p className="truncate text-[11px] text-zinc-600">
-                        Copa Facil: {team.external_team_id} · {team.matches} partidos
+                        Externo: {team.external_team_short_name || team.external_team_name || team.external_team_id} · {team.matches} partidos
                       </p>
                     </div>
                     <select
