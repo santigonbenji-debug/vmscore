@@ -66,6 +66,73 @@ async function fetchFirestoreCollection(collection, pageSize = 100, maxPages = 5
   return rows
 }
 
+async function fetchFirestoreQuery(collection, structuredQuery) {
+  const response = await fetch(`${FIRESTORE_BASE}:runQuery?key=${API_KEY}`, {
+    method: 'POST',
+    cache: 'no-store',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId: collection }],
+        ...structuredQuery,
+      },
+    }),
+  })
+  if (!response.ok) return []
+  const payload = await response.json()
+  return payload
+    .map((row) => firestoreDocToObject(row.document))
+    .filter(Boolean)
+}
+
+function mergeById(...groups) {
+  const map = new Map()
+  groups.flat().forEach((row) => {
+    if (!row?.id) return
+    map.set(row.id, { ...(map.get(row.id) ?? {}), ...row })
+  })
+  return [...map.values()]
+}
+
+function stringFilter(fieldPath, op, value) {
+  return {
+    fieldFilter: {
+      field: { fieldPath },
+      op,
+      value: { stringValue: value },
+    },
+  }
+}
+
+async function fetchLocosVmMatchesDeep() {
+  const currentYear = new Date().getFullYear()
+  const dateStarts = [
+    `${currentYear - 1}-01-01`,
+    `${currentYear}-01-01`,
+    `${currentYear}-03-01`,
+    `${currentYear}-05-01`,
+    `${currentYear}-07-01`,
+    `${currentYear}-09-01`,
+    `${currentYear}-11-01`,
+  ]
+
+  const [listed, ...queried] = await Promise.all([
+    fetchFirestoreCollection('matches', 100, 8),
+    ...['finished', 'upcoming', 'live', 'scheduled'].map((status) => fetchFirestoreQuery('matches', {
+      where: stringFilter('status', 'EQUAL', status),
+      orderBy: [{ field: { fieldPath: 'date' }, direction: 'DESCENDING' }],
+      limit: 300,
+    })),
+    ...dateStarts.map((date) => fetchFirestoreQuery('matches', {
+      where: stringFilter('date', 'GREATER_THAN_OR_EQUAL', date),
+      orderBy: [{ field: { fieldPath: 'date' }, direction: 'ASCENDING' }],
+      limit: 300,
+    })),
+  ])
+
+  return mergeById(listed, ...queried)
+}
+
 function cleanText(value) {
   return String(value ?? '').replace(/\s+/g, ' ').trim()
 }
@@ -169,7 +236,7 @@ function sortSummary(rows) {
 export async function fetchLocosVmPublicSnapshot() {
   const [teams, matches, creditPlans] = await Promise.all([
     fetchFirestoreCollection('teams', 100, 4),
-    fetchFirestoreCollection('matches', 100, 8),
+    fetchLocosVmMatchesDeep(),
     fetchFirestoreCollection('creditPlans', 50, 2),
   ])
 

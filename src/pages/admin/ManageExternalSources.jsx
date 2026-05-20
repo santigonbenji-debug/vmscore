@@ -928,6 +928,9 @@ export default function ManageExternalSources() {
                     <p className="mt-1 text-[11px] text-zinc-500">
                       Usa la liga/fase elegida arriba. Primero queda como historico externo; despues decidis que publicar o computar.
                     </p>
+                    <p className="mt-1 text-[11px] text-amber-200/80">
+                      Lectura profunda: se revisan documentos directos, estados y rangos de fecha. Si una categoria muestra pocos partidos, eso es lo que Locos VM expone publicamente hoy.
+                    </p>
                   </div>
                   <div className="flex items-end">
                     <Button
