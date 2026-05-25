@@ -428,18 +428,18 @@ export function useCreateManualLiveEvent() {
           body: scoreText(match, data.home_score, data.away_score),
         })
         if (eventId) {
-          await supabase
-            .from('live_sync_events')
-            .update({ push_attempted_at: new Date().toISOString(), push_notified_at: new Date().toISOString(), push_error: null })
-            .eq('id', eventId)
+          await supabase.rpc('record_manual_push_delivery', {
+            p_event_id: eventId,
+            p_error: null,
+          })
         }
       } catch (pushError) {
         pushWarning = pushError?.message || 'El aviso no pudo enviarse y queda pendiente de reintento.'
         if (eventId) {
-          await supabase
-            .from('live_sync_events')
-            .update({ push_attempted_at: new Date().toISOString(), push_error: pushWarning })
-            .eq('id', eventId)
+          await supabase.rpc('record_manual_push_delivery', {
+            p_event_id: eventId,
+            p_error: pushWarning,
+          })
         }
       }
 

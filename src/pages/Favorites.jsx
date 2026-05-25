@@ -213,10 +213,11 @@ export default function Favorites() {
 
   const [ahora] = useState(() => Date.now())
   const { proximos, finalizados, enVivo } = useMemo(() => {
+    const publicMatches = partidos.filter((p) => p.scheduled_at && (!p.date_tbd || p.status === 'postponed'))
     const next = []
     const past = []
     const live = []
-    for (const p of partidos) {
+    for (const p of publicMatches) {
       const started = p.status === 'in_progress' || (
         p.status === 'scheduled' &&
         p.scheduled_at &&

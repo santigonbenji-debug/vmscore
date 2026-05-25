@@ -17,7 +17,7 @@ webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey)
 
 const supabase = createClient(supabaseUrl, serviceRoleKey)
 
-async function authorizeSender(req: Request) {
+async function authorizeSender(req: Request, matchId: string) {
   const token = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '').trim()
   if (!token) return false
   if (token === serviceRoleKey) return true
@@ -27,12 +27,24 @@ async function authorizeSender(req: Request) {
 
   const { data: admin } = await supabase
     .from('admin_roles')
-    .select('id')
+    .select('role, organization_id, league_id, team_id')
     .eq('user_id', userData.user.id)
-    .eq('role', 'superadmin')
     .eq('status', 'active')
     .maybeSingle()
-  return Boolean(admin)
+  if (!admin) return false
+  if (admin.role === 'superadmin') return true
+
+  const { data: match } = await supabase
+    .from('v_matches')
+    .select('league_id, organization_id, home_team_id, away_team_id')
+    .eq('id', matchId)
+    .maybeSingle()
+  if (!match) return false
+
+  if (admin.role === 'organization_admin') return admin.organization_id === match.organization_id
+  if (admin.role === 'liga_admin') return admin.league_id === match.league_id
+  if (admin.role === 'club_admin') return admin.team_id === match.home_team_id || admin.team_id === match.away_team_id
+  return false
 }
 
 serve(async (req) => {
@@ -41,15 +53,15 @@ serve(async (req) => {
   }
 
   try {
-    if (!(await authorizeSender(req))) {
+    const { type, matchId, title: customTitle, body: customBody, targetTeamIds } = await req.json()
+    if (!matchId) throw new Error('matchId requerido')
+
+    if (!(await authorizeSender(req, matchId))) {
       return new Response(JSON.stringify({ ok: false, error: 'No autorizado.' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
-
-    const { type, matchId, title: customTitle, body: customBody, targetTeamIds } = await req.json()
-    if (!matchId) throw new Error('matchId requerido')
 
     const { data: match, error: matchError } = await supabase
       .from('v_matches')

@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useMatch, useSaveLiveMatchData, useSaveResult } from '../../hooks/useMatches'
 import { useAuth } from '../../hooks/useAuth'
 import { useTeamPlayers } from '../../hooks/useRosters'
-import { useAddMatchLineupPlayer, useMatchLineups, useRemoveMatchLineupPlayer } from '../../hooks/useLineups'
+import { useAddActiveRosterToMatch, useAddMatchLineupPlayer, useMatchLineups, useRemoveMatchLineupPlayer } from '../../hooks/useLineups'
 import {
   useLiveSyncEvents,
   useMatchLiveLink,
@@ -38,11 +38,19 @@ function teamLabel(match, teamId) {
   return 'Equipo'
 }
 
-function LineupTeam({ title, players, onRemove, canRemove }) {
+function LineupTeam({ title, players, onRemove, onLoadRoster, canRemove, loadingRoster }) {
   return (
     <div className="bg-surface-800/50 rounded-xl p-3 space-y-3">
       <h3 className="font-bold text-xs">{title}</h3>
-      <p className="text-xs font-semibold text-zinc-500">Convocados</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-semibold text-zinc-500">Convocados</p>
+        {onLoadRoster && (
+          <button type="button" onClick={onLoadRoster} disabled={loadingRoster}
+            className="rounded-lg border border-primary/25 bg-primary/10 px-2 py-1 text-[10px] font-bold text-primary disabled:opacity-50">
+            {loadingRoster ? 'Cargando...' : 'Cargar plantel activo'}
+          </button>
+        )}
+      </div>
       {players.length === 0 ? (
         <p className="text-xs text-zinc-600">Sin jugadores convocados</p>
       ) : (
@@ -87,17 +95,20 @@ export default function LoadResult() {
   const [copaFacilMessage, setCopaFacilMessage] = useState('')
   const [manualLiveEvent, setManualLiveEvent] = useState({ teamId: '', minute: '' })
   const [manualLiveMessage, setManualLiveMessage] = useState('')
+  const [lineupMessage, setLineupMessage] = useState('')
 
   const puedeCargarResultado = isSuperAdmin || isOrganizationAdmin || isLigaAdmin
   const puedeSincronizar = isSuperAdmin
+  const puedePublicarEnVivo = isSuperAdmin || isOrganizationAdmin || isLigaAdmin
   const miEquipoId = isClubAdmin ? teamId : null
 
   const { data: lineups = [], isLoading: loadingLineups } = useMatchLineups(matchId)
   const addLineupPlayer = useAddMatchLineupPlayer()
+  const addActiveRoster = useAddActiveRosterToMatch()
   const removeLineupPlayer = useRemoveMatchLineupPlayer()
 
-  const { data: homePlayers = [] } = useTeamPlayers(data?.match?.home_team_id)
-  const { data: awayPlayers = [] } = useTeamPlayers(data?.match?.away_team_id)
+  const { data: homePlayers = [] } = useTeamPlayers(data?.match?.home_team_id, data?.match?.gender)
+  const { data: awayPlayers = [] } = useTeamPlayers(data?.match?.away_team_id, data?.match?.gender)
   const { data: liveLink } = useMatchLiveLink(matchId)
   const { data: copaFacilLiveLink } = useMatchLiveLink(matchId, 'copafacil')
   const { data: liveEvents = [] } = useLiveSyncEvents(matchId)
@@ -212,6 +223,14 @@ export default function LoadResult() {
       sortOrder: lineups.length,
     })
     setLineupForm({ ...LINEUP_FORM, team_id: lineupForm.team_id, role: lineupForm.role })
+  }
+
+  async function cargarPlantelActivo(teamId) {
+    const roster = playersByTeam[teamId] ?? []
+    const result = await addActiveRoster.mutateAsync({ matchId, teamId, players: roster })
+    setLineupMessage(result.added > 0
+      ? `${result.added} convocado${result.added === 1 ? '' : 's'} agregado${result.added === 1 ? '' : 's'}.`
+      : 'El plantel activo ya esta cargado o no tiene jugadores disponibles.')
   }
 
   async function quitarLineupPlayer(player) {
@@ -717,7 +736,7 @@ export default function LoadResult() {
         </div>
       )}
 
-      {puedeSincronizar && (
+      {puedePublicarEnVivo && (
         <div className="bg-surface-900 rounded-xl border border-surface-800 shadow-sm p-5 space-y-4">
           <div>
             <h2 className="font-bold text-sm text-zinc-100">Eventos en vivo manuales</h2>
@@ -799,7 +818,7 @@ export default function LoadResult() {
       <div className="bg-surface-900 rounded-xl border border-surface-800 shadow-sm p-5 space-y-4">
         <div>
           <h2 className="font-bold text-sm text-zinc-100">Convocados</h2>
-          <p className="text-xs text-zinc-500 mt-1">Jugadores convocados para este partido.</p>
+          <p className="text-xs text-zinc-500 mt-1">Carga el plantel activo y ajusta solo las excepciones de este partido.</p>
         </div>
 
         <div className="border border-dashed border-surface-700 rounded-xl p-3 space-y-3">
@@ -863,11 +882,14 @@ export default function LoadResult() {
                 title={teamLabel(match, id)}
                 players={currentLineupPlayers.filter((player) => player.team_id === id)}
                 onRemove={quitarLineupPlayer}
+                onLoadRoster={() => cargarPlantelActivo(id)}
+                loadingRoster={addActiveRoster.isPending}
                 canRemove
               />
             ))}
           </div>
         )}
+        {lineupMessage && <p className="text-xs text-zinc-400">{lineupMessage}</p>}
       </div>
 
       {puedeCargarResultado && (

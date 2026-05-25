@@ -46,16 +46,18 @@ export function useRemoveTeamFromLeague() {
   })
 }
 
-export function useTeamPlayers(teamId) {
+export function useTeamPlayers(teamId, gender) {
   return useQuery({
-    queryKey: ['team-players', teamId],
+    queryKey: ['team-players', teamId, gender],
     queryFn: async () => {
       if (!teamId) return []
-      const { data, error } = await supabase
+      let query = supabase
         .from('players')
         .select('*')
         .eq('team_id', teamId)
         .order('display_name')
+      if (gender) query = query.eq('gender', gender)
+      const { data, error } = await query
       if (error) throw error
       return data ?? []
     },

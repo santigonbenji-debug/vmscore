@@ -4,6 +4,7 @@ import { useMatch } from '../hooks/useMatches'
 import { useMatchLineups } from '../hooks/useLineups'
 import { useLiveSyncEvents, useMatchLiveLink } from '../hooks/useLiveSync'
 import { useNow } from '../hooks/useNow'
+import { MapPin, UserRound } from 'lucide-react'
 import FavoriteButton from '../components/teams/FavoriteButton'
 import TeamLogo from '../components/teams/TeamLogo'
 import Spinner from '../components/ui/Spinner'
@@ -68,8 +69,8 @@ function EventsTimeline({ events, match }) {
         const logoUrl = isHome ? match.home_team_logo_url : match.away_team_logo_url
         const color = isHome ? match.home_primary_color : match.away_primary_color
         const isGoalEvent = GOAL_EVENT_TYPES.has(event.event_type)
-        const eventTitle = isGoalEvent && !event.player_name
-          ? (EVENT_LABEL[event.event_type] ?? 'Gol')
+        const eventTitle = isGoalEvent
+          ? 'Gol'
           : (event.player_name || 'Jugador sin nombre')
         return (
           <div key={event.id} className="flex items-center gap-3 px-4 py-3 border-b border-surface-800 last:border-0">
@@ -120,10 +121,11 @@ export default function MatchDetail() {
   }
 
   const finalizado = match.status === 'finished'
-  const enVivo = match.status === 'in_progress'
-  const comenzadoPorHorario = matchStartedByClock(match, now)
+  const enVivo = match.status === 'in_progress' || (
+    match.status === 'scheduled' && matchStartedByClock(match, now)
+  )
   const visibleLiveEvents = liveEvents.filter((event) => event.status !== 'dismissed')
-  const hasLiveState = liveLink?.last_synced_at && liveLink?.last_status
+  const hasLiveState = liveLink?.last_synced_at && ['in_progress', 'finished'].includes(liveLink?.last_status)
 
   return (
     <div>
@@ -134,7 +136,7 @@ export default function MatchDetail() {
 
         <div className="flex items-center justify-center gap-2 mb-3">
           <Badge variant={enVivo ? 'live' : finalizado ? 'success' : 'default'}>
-            {comenzadoPorHorario ? 'Partido comenzado' : matchStatusDetail(match)}
+            {enVivo ? 'En vivo' : matchStatusDetail(match)}
           </Badge>
           {match.round != null && <span className="text-xs text-zinc-500">Fecha {match.round}</span>}
         </div>
@@ -161,7 +163,7 @@ export default function MatchDetail() {
           <div className="text-center min-w-[5rem]">
             {finalizado || enVivo ? (
               <span className="text-white text-4xl font-extrabold tabular-nums tracking-tight">
-                {match.home_score} <span className="opacity-40">-</span> {match.away_score}
+                {match.home_score ?? 0} <span className="opacity-40">-</span> {match.away_score ?? 0}
               </span>
             ) : match.scheduled_at ? (
               <div>
@@ -248,7 +250,21 @@ export default function MatchDetail() {
               {(!match.scheduled_at || match.status === 'postponed') && (
                 <p>{match.status === 'postponed' ? 'Fecha nueva a definir' : 'Dia y horario a definir'}</p>
               )}
-              {match.venue_name && <p>{match.venue_name}{match.venue_address ? ` · ${match.venue_address}` : ''}</p>}
+              {match.venue_name && (
+                <p className="flex items-start gap-2">
+                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                  <span><span className="text-zinc-500">Ubicacion:</span> {match.venue_name}{match.venue_address ? ` · ${match.venue_address}` : ''}</span>
+                </p>
+              )}
+              {(match.home_technical_director || match.away_technical_director) && (
+                <div className="flex items-start gap-2">
+                  <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                  <div className="space-y-0.5">
+                    {match.home_technical_director && <p><span className="text-zinc-500">DT {match.home_team_short_name ?? match.home_team_name}:</span> {match.home_technical_director}</p>}
+                    {match.away_technical_director && <p><span className="text-zinc-500">DT {match.away_team_short_name ?? match.away_team_name}:</span> {match.away_technical_director}</p>}
+                  </div>
+                </div>
+              )}
               {match.referee_name && <p>Arbitro: {match.referee_name}</p>}
               <p>{match.league_name}{match.season ? ` · ${match.season}` : ''}</p>
             </div>

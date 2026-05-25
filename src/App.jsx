@@ -20,7 +20,6 @@ import ManageVenues    from './pages/admin/ManageVenues'
 import LoadResult      from './pages/admin/LoadResult'
 import MisPartidos     from './pages/admin/MisPartidos'
 import ManageSports    from './pages/admin/ManageSports'
-import ManageRosters   from './pages/admin/ManageRosters'
 import ManageNews      from './pages/admin/ManageNews'
 import ManageStandings from './pages/admin/ManageStandings'
 import ManageScorers   from './pages/admin/ManageScorers'
@@ -65,13 +64,13 @@ export default function App() {
         <Route path="ligas"              element={<ManageLeagues />} />
         <Route path="equipos"            element={<ManageTeams />} />
         <Route path="partidos"           element={<ManageMatches />} />
-        <Route path="arbitros"           element={<ManageReferees />} />
-        <Route path="canchas"            element={<ManageVenues />} />
+        <Route path="arbitros"           element={<SuperAdminRoute><ManageReferees /></SuperAdminRoute>} />
+        <Route path="canchas"            element={<SuperAdminRoute><ManageVenues /></SuperAdminRoute>} />
         <Route path="resultado/:matchId" element={<LoadResult />} />
         <Route path="mis-partidos"       element={<MisPartidos />} />
-        <Route path="deportes"           element={<ManageSports />} />
+        <Route path="deportes"           element={<SuperAdminRoute><ManageSports /></SuperAdminRoute>} />
         <Route path="organizaciones"     element={<SuperAdminRoute><ManageOrganizations /></SuperAdminRoute>} />
-        <Route path="planteles"          element={<ManageRosters />} />
+        <Route path="planteles"          element={<Navigate to="/admin/equipos" replace />} />
         <Route path="noticias"           element={<SuperAdminRoute><ManageNews /></SuperAdminRoute>} />
         <Route path="posiciones"         element={<SuperAdminRoute><ManageStandings /></SuperAdminRoute>} />
         <Route path="goleadores"         element={<SuperAdminRoute><ManageScorers /></SuperAdminRoute>} />

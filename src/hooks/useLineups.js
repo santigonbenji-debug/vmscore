@@ -45,6 +45,43 @@ export function useAddMatchLineupPlayer() {
   })
 }
 
+export function useAddActiveRosterToMatch() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ matchId, teamId, players }) => {
+      const activePlayers = (players ?? []).filter((player) => player.is_active !== false)
+      if (activePlayers.length === 0) return { matchId, added: 0 }
+
+      const { data: existing, error: existingError } = await supabase
+        .from('match_lineups')
+        .select('player_id')
+        .eq('match_id', matchId)
+        .eq('team_id', teamId)
+        .not('player_id', 'is', null)
+      if (existingError) throw existingError
+
+      const existingIds = new Set((existing ?? []).map((row) => row.player_id))
+      const newPlayers = activePlayers.filter((player) => !existingIds.has(player.id))
+      if (newPlayers.length === 0) return { matchId, added: 0 }
+
+      const { error } = await supabase.from('match_lineups').insert(
+        newPlayers.map((player, index) => ({
+          match_id: matchId,
+          team_id: teamId,
+          player_id: player.id,
+          role: 'called_up',
+          shirt_number: player.shirt_number ?? null,
+          position: player.position ?? null,
+          sort_order: index,
+        }))
+      )
+      if (error) throw error
+      return { matchId, added: newPlayers.length }
+    },
+    onSuccess: ({ matchId }) => qc.invalidateQueries({ queryKey: ['match-lineups', matchId] }),
+  })
+}
+
 export function useRemoveMatchLineupPlayer() {
   const qc = useQueryClient()
   return useMutation({

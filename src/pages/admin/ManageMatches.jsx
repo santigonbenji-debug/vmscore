@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useLeagues, usePhases } from '../../hooks/useLeagues'
+import { useLeagueTeams } from '../../hooks/useRosters'
 import {
   useCreateMatch,
   useDeleteMatch,
@@ -8,10 +9,8 @@ import {
   usePostponeMatch,
   useUpdateMatchDetails,
 } from '../../hooks/useMatches'
-import { useTeams } from '../../hooks/useTeams'
 import { useVenues } from '../../hooks/useVenues'
 import { useReferees } from '../../hooks/useReferees'
-import { useSports } from '../../hooks/useSports'
 import { useAuth } from '../../hooks/useAuth'
 import Modal from '../../components/ui/Modal'
 import Button from '../../components/ui/Button'
@@ -38,6 +37,8 @@ const EDIT_FORM_VACIO = {
   referee_id: '',
   status: 'scheduled',
   notes: '',
+  home_technical_director: '',
+  away_technical_director: '',
 }
 
 const STATUS_VARIANT = {
@@ -65,11 +66,7 @@ export default function ManageMatches() {
   const { data: partidos = [], isLoading } = useMatches({ phaseId: faseid || undefined })
   const ligaSeleccionada = ligas.find((liga) => liga.id === ligaId)
   const activeOrganizationId = isSuperAdmin ? ligaSeleccionada?.organization_id : organizationId
-  const { data: sports = [] } = useSports({ organizationId: activeOrganizationId })
-
-  const sportId = sports.find((sport) => sport.slug === ligaSeleccionada?.sports?.slug)?.id
-
-  const { data: equipos = [] } = useTeams({ sportId, organizationId: activeOrganizationId })
+  const { data: equiposInscritos = [] } = useLeagueTeams(ligaId)
   const { data: canchas = [] } = useVenues({ organizationId: activeOrganizationId })
   const { data: arbitros = [] } = useReferees({ organizationId: activeOrganizationId })
 
@@ -135,6 +132,8 @@ export default function ManageMatches() {
       referee_id: partido.referee_id ?? '',
       status: partido.status ?? 'scheduled',
       notes: partido.notes ?? '',
+      home_technical_director: partido.home_technical_director ?? '',
+      away_technical_director: partido.away_technical_director ?? '',
     })
     setModalEditar(true)
   }
@@ -188,6 +187,8 @@ export default function ManageMatches() {
       referee_id: editForm.referee_id || null,
       status: editForm.status,
       notes: editForm.notes || null,
+      home_technical_director: editForm.home_technical_director || null,
+      away_technical_director: editForm.away_technical_director || null,
     })
     setModalEditar(false)
     setEditando(null)
@@ -332,6 +333,13 @@ export default function ManageMatches() {
                   <div className="mt-2 grid gap-1 text-xs text-zinc-500 sm:grid-cols-2">
                     <p className="truncate">Cancha: <span className="text-zinc-300">{partido.venue_name ?? 'Sin asignar'}</span></p>
                     <p className="truncate">Arbitro: <span className="text-zinc-300">{partido.referee_name ?? 'Sin asignar'}</span></p>
+                    {(partido.home_technical_director || partido.away_technical_director) && (
+                      <p className="truncate sm:col-span-2">
+                        DT: <span className="text-zinc-300">{partido.home_technical_director ?? '-'}</span>
+                        {' / '}
+                        <span className="text-zinc-300">{partido.away_technical_director ?? '-'}</span>
+                      </p>
+                    )}
                   </div>
 
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -387,7 +395,7 @@ export default function ManageMatches() {
               </label>
               <select value={form[key]} onChange={(event) => setForm({ ...form, [key]: event.target.value })} className={INPUT}>
                 <option value="">Seleccionar...</option>
-                {equipos.map((equipo) => <option key={equipo.id} value={equipo.id}>{equipo.name}</option>)}
+                {equiposInscritos.map((equipo) => <option key={equipo.team_id} value={equipo.team_id}>{equipo.team_name}</option>)}
               </select>
             </div>
           ))}
@@ -509,6 +517,29 @@ export default function ManageMatches() {
               className={`${INPUT} min-h-20 resize-none`}
               placeholder="Detalle interno o aclaracion..."
             />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-zinc-400">DT local</label>
+              <input
+                type="text"
+                value={editForm.home_technical_director}
+                onChange={(event) => setEditForm({ ...editForm, home_technical_director: event.target.value })}
+                className={INPUT}
+                placeholder="Director tecnico"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-zinc-400">DT visitante</label>
+              <input
+                type="text"
+                value={editForm.away_technical_director}
+                onChange={(event) => setEditForm({ ...editForm, away_technical_director: event.target.value })}
+                className={INPUT}
+                placeholder="Director tecnico"
+              />
+            </div>
           </div>
 
           <Button onClick={guardarEdicion} disabled={actualizarDetalles.isPending || (editForm.status !== 'postponed' && !editForm.scheduledAtLocal)} className="w-full">

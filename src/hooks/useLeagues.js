@@ -67,9 +67,16 @@ export function useCreateLeague() {
       const { data: liga, error } = await supabase
         .from('leagues').insert(formData).select().single()
       if (error) throw error
-      // Crear fase por defecto al crear la liga
+      const phaseByCompetition = {
+        liga: { name: 'Fase Regular', type: 'round_robin' },
+        copa: { name: 'Eliminatorias', type: 'playoffs' },
+        torneo: { name: 'Fase Inicial', type: 'championship' },
+      }
+      const initialPhase = phaseByCompetition[formData.competition_type] ?? phaseByCompetition.liga
+
+      // Cada formato nace con una fase coherente; las llaves automaticas se agregaran aparte.
       const { error: phaseError } = await supabase.from('phases').insert({
-        league_id: liga.id, name: 'Fase Regular', type: 'round_robin', phase_order: 1,
+        league_id: liga.id, name: initialPhase.name, type: initialPhase.type, phase_order: 1,
       })
       if (phaseError) throw phaseError
       return liga

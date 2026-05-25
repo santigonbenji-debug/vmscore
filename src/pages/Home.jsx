@@ -129,7 +129,7 @@ function buildDateGroups(partidos, todayKey) {
       const bUpcoming = bKey >= todayKey
 
       if (aUpcoming !== bUpcoming) return aUpcoming ? -1 : 1
-      return b.fecha - a.fecha
+      return aUpcoming ? a.fecha - b.fecha : b.fecha - a.fecha
     })
 }
 
@@ -335,7 +335,11 @@ export default function Home() {
     )
   }, [favoriteLeagueIds, favoriteOrganizationIds, favorites, matchScope, partidos])
   const filteredMatches = useMemo(() => (
-    scopedMatches.filter((match) => match.status !== 'cancelled' && match.scheduled_at)
+    scopedMatches.filter((match) => (
+      match.status !== 'cancelled' &&
+      match.scheduled_at &&
+      (!match.date_tbd || match.status === 'postponed')
+    ))
   ), [scopedMatches])
   const grupos = useMemo(() => buildOrganizationDateGroups(filteredMatches, todayKey), [filteredMatches, todayKey])
 

@@ -14,6 +14,7 @@ const FORM_VACIO = {
   sport_id: '',
   name: '',
   short_name: '',
+  technical_director: '',
   primary_color: '#E84E1B',
   secondary_color: '#FFFFFF',
 }
@@ -196,6 +197,7 @@ export default function ManageTeams() {
       sport_id: team.sport_id,
       name: team.name,
       short_name: team.short_name ?? '',
+      technical_director: team.technical_director ?? '',
       primary_color: team.primary_color ?? '#E84E1B',
       secondary_color: team.secondary_color ?? '#FFFFFF',
     })
@@ -267,6 +269,7 @@ export default function ManageTeams() {
                   <div className="min-w-0">
                     <p className="font-semibold text-sm truncate">{team.name}</p>
                     <p className="text-xs text-zinc-500">{team.sports?.icon} {team.sports?.name}</p>
+                    {team.technical_director && <p className="text-[11px] text-zinc-400">DT: {team.technical_director}</p>}
                     {team.organizations?.name && <p className="text-[10px] text-zinc-600">{team.organizations.name}</p>}
                   </div>
                 </div>
@@ -323,6 +326,13 @@ export default function ManageTeams() {
             <input type="text" maxLength={12} value={form.short_name} placeholder="Newbery"
               onChange={(event) => setForm({ ...form, short_name: event.target.value })}
               className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-zinc-400 mb-1 block">Director Tecnico (DT)</label>
+            <input type="text" value={form.technical_director} placeholder="Nombre del director tecnico"
+              onChange={(event) => setForm({ ...form, technical_director: event.target.value })}
+              className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none" />
+            <p className="mt-1 text-[10px] text-zinc-500">Se usara por defecto en los partidos nuevos del equipo.</p>
           </div>
           <div className="grid grid-cols-2 gap-4">
             {[['primary_color', 'Color primario'], ['secondary_color', 'Color secundario']].map(([key, label]) => (

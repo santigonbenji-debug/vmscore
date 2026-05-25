@@ -5,7 +5,6 @@ const ACCESOS_SUPER = [
   { to: '/admin/organizaciones', label: 'Organizaciones', icon: 'O', desc: 'Ubicacion, archivo y permisos' },
   { to: '/admin/ligas', label: 'Ligas', icon: 'T', desc: 'Crear y editar torneos' },
   { to: '/admin/equipos', label: 'Equipos', icon: 'E', desc: 'Administrar clubes' },
-  { to: '/admin/planteles', label: 'Planteles', icon: 'P', desc: 'Jugadores y cuerpo tecnico' },
   { to: '/admin/partidos', label: 'Partidos', icon: 'F', desc: 'Cargar fixture' },
   { to: '/admin/importar', label: 'Importar', icon: 'I', desc: 'Copa Facil y fuentes externas' },
   { to: '/admin/scraping', label: 'Scraping', icon: 'S', desc: 'Capturar torneos completos' },
@@ -16,16 +15,13 @@ const ACCESOS_SUPER = [
 ]
 
 const ACCESOS_LIGA = [
-  { to: '/admin/deportes', label: 'Deportes', icon: 'D', desc: 'Disciplinas de la organizacion' },
   { to: '/admin/ligas', label: 'Ligas', icon: 'T', desc: 'Crear ligas para aprobacion' },
-  { to: '/admin/equipos', label: 'Equipos', icon: 'E', desc: 'Clubes con escudo obligatorio' },
-  { to: '/admin/planteles', label: 'Planteles', icon: 'P', desc: 'Equipos y jugadores de la liga' },
-  { to: '/admin/partidos', label: 'Partidos', icon: 'F', desc: 'Ver y gestionar fixture' },
-  { to: '/admin/canchas', label: 'Canchas', icon: 'C', desc: 'Sedes de la organizacion' },
+  { to: '/admin/equipos', label: 'Equipos', icon: 'E', desc: 'Clubes, escudo, DT y plantel' },
+  { to: '/admin/partidos', label: 'Partidos', icon: 'F', desc: 'Fixture, eventos y resultados' },
 ]
 
 const ACCESOS_CLUB = [
-  { to: '/admin/planteles', label: 'Plantel', icon: 'P', desc: 'Administrar jugadores del equipo' },
+  { to: '/admin/equipos', label: 'Equipo', icon: 'E', desc: 'Plantel y datos del club' },
   { to: '/admin/mis-partidos', label: 'Mis Partidos', icon: 'M', desc: 'Cargar eventos de mi equipo' },
 ]
 

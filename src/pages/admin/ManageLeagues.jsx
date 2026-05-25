@@ -23,8 +23,8 @@ const APPROVAL_VARIANT = { draft: 'default', pending_review: 'warning', approved
 
 const COMP_TYPES = [
   { value: 'liga', label: 'Liga', icon: 'T', desc: 'Todos contra todos' },
-  { value: 'copa', label: 'Copa', icon: 'C', desc: 'Eliminacion' },
-  { value: 'torneo', label: 'Torneo', icon: 'F', desc: 'Formato libre' },
+  { value: 'copa', label: 'Copa', icon: 'C', desc: 'Eliminatorias' },
+  { value: 'torneo', label: 'Torneo', icon: 'F', desc: 'Fases libres' },
 ]
 
 const EMPTY_FORM = {
@@ -311,6 +311,9 @@ export default function ManageLeagues() {
                 </button>
               ))}
             </div>
+            {form.competition_type === 'copa' && (
+              <p className="mt-2 text-[10px] text-zinc-500">Se crea una fase de eliminatorias. La generacion automatica de llaves se incorporara como opcion.</p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">

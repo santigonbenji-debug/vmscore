@@ -104,7 +104,10 @@ function PlayerList({ title, players }) {
 }
 
 function MatchesTab({ teamId, matches, isLoading, filter, onFilterChange, filterOptions, onOpenMatch }) {
-  const visible = filter === 'all' ? matches : matches.filter((match) => competitionKey(match) === filter)
+  const confirmed = matches.filter((match) => (
+    match.scheduled_at && (!match.date_tbd || match.status === 'postponed')
+  ))
+  const visible = filter === 'all' ? confirmed : confirmed.filter((match) => competitionKey(match) === filter)
   const grouped = useMemo(() => {
     const out = {}
     visible.forEach((match) => {

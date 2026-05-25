@@ -48,23 +48,21 @@ async function subirLogo(logoFile, sportId, teamId) {
     .upload(path, logoFile, { upsert: true })
   if (error) throw error
   const { data } = supabase.storage.from('team-logos').getPublicUrl(path)
-  return data.publicUrl
+  return { logoUrl: data.publicUrl, path }
 }
 
 export function useCreateTeam() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async ({ logoFile, ...data }) => {
-      // Crear primero para obtener el ID
+      if (!logoFile) throw new Error('El escudo es obligatorio para crear equipos.')
+      const id = crypto.randomUUID()
+      const uploadedLogo = await subirLogo(logoFile, data.sport_id, id)
       const { data: team, error } = await supabase
-        .from('teams').insert(data).select().single()
-      if (error) throw error
-      // Subir logo si se adjuntó
-      if (logoFile) {
-        const logo_url = await subirLogo(logoFile, data.sport_id, team.id)
-        const { error: upErr } = await supabase
-          .from('teams').update({ logo_url }).eq('id', team.id)
-        if (upErr) throw upErr
+        .from('teams').insert({ id, ...data, logo_url: uploadedLogo.logoUrl }).select().single()
+      if (error) {
+        await supabase.storage.from('team-logos').remove([uploadedLogo.path])
+        throw error
       }
       return team
     },
@@ -77,7 +75,8 @@ export function useUpdateTeam() {
   return useMutation({
     mutationFn: async ({ id, logoFile, ...data }) => {
       if (logoFile) {
-        data.logo_url = await subirLogo(logoFile, data.sport_id, id)
+        const uploadedLogo = await subirLogo(logoFile, data.sport_id, id)
+        data.logo_url = uploadedLogo.logoUrl
       }
       const { error } = await supabase.from('teams').update(data).eq('id', id)
       if (error) throw error

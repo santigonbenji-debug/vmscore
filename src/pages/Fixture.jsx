@@ -337,7 +337,6 @@ const STATUS_TABS = [
   { key: 'live', label: 'En vivo' },
   { key: 'scheduled', label: 'Próximos' },
   { key: 'finished', label: 'Finalizados' },
-  { key: 'tbd', label: 'A definir' },
 ]
 
 export default function Fixture() {
@@ -348,52 +347,48 @@ export default function Fixture() {
   const [selectedDay, setSelectedDay] = useState(() => dayKey(zonedNow()))
   const [calOpen, setCalOpen] = useState(false)
 
-  const datedMatches = useMemo(() => partidos.filter((p) => p.scheduled_at), [partidos])
-  const tbdMatches = useMemo(() => partidos.filter((p) => p.date_tbd), [partidos])
+  const datedMatches = useMemo(() => partidos.filter((p) => (
+    p.scheduled_at && (!p.date_tbd || p.status === 'postponed')
+  )), [partidos])
 
   const dayMatches = useMemo(() => (
     datedMatches.filter((p) => dayKey(toZonedTime(new Date(p.scheduled_at), TZ)) === selectedDay)
   ), [datedMatches, selectedDay])
 
   const visibleMatches = useMemo(() => {
-    if (tab === 'tbd') return tbdMatches
     if (tab === 'live') return dayMatches.filter((p) => p.status === 'in_progress' || matchStartedByClock(p, now))
-    if (tab === 'scheduled') return dayMatches.filter((p) => p.status === 'scheduled')
+    if (tab === 'scheduled') return dayMatches.filter((p) => p.status === 'scheduled' && !matchStartedByClock(p, now))
     if (tab === 'finished') return dayMatches.filter((p) => p.status === 'finished')
     return dayMatches
-  }, [dayMatches, now, tab, tbdMatches])
+  }, [dayMatches, now, tab])
 
   const groups = useMemo(() => {
     const out = {}
     for (const p of visibleMatches) {
-      const groupKey = tab === 'tbd'
-        ? `${p.league_id ?? 'sin-liga'}-${p.round ?? 'sin-fecha'}`
-        : `${p.league_id ?? 'sin-liga'}`
+      const groupKey = `${p.league_id ?? 'sin-liga'}`
       if (!out[groupKey]) {
         out[groupKey] = {
           id: groupKey,
           nombre: p.league_name ?? 'Sin liga',
           icono: p.sport_icon,
           genero: p.gender,
-          round: tab === 'tbd' ? p.round : null,
+          round: null,
           partidos: [],
         }
       }
       out[groupKey].partidos.push(p)
     }
     return Object.values(out).sort((a, b) => {
-      if (tab === 'tbd' && a.round !== b.round) return Number(a.round ?? 999) - Number(b.round ?? 999)
       return a.nombre.localeCompare(b.nombre)
     })
-  }, [tab, visibleMatches])
+  }, [visibleMatches])
 
   const counts = useMemo(() => ({
     all: dayMatches.length,
     live: dayMatches.filter((p) => p.status === 'in_progress' || matchStartedByClock(p, now)).length,
-    scheduled: dayMatches.filter((p) => p.status === 'scheduled').length,
+    scheduled: dayMatches.filter((p) => p.status === 'scheduled' && !matchStartedByClock(p, now)).length,
     finished: dayMatches.filter((p) => p.status === 'finished').length,
-    tbd: tbdMatches.length,
-  }), [dayMatches, now, tbdMatches])
+  }), [dayMatches, now])
 
   return (
     <div className="flex flex-col">
@@ -402,16 +397,13 @@ export default function Fixture() {
           <div>
             <h1 className="text-xl font-extrabold text-zinc-100">Fixture</h1>
             <p className="text-xs text-zinc-500">
-              {tab === 'tbd'
-                ? 'Partidos pendientes de fecha y horario'
-                : 'Partidos por día'}
+              Partidos por dia
             </p>
           </div>
           <button
             type="button"
             onClick={() => {
               setSelectedDay(dayKey(zonedNow()))
-              if (tab === 'tbd') setTab('all')
             }}
             className="rounded-full bg-surface-900 border border-surface-800 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:bg-surface-800"
           >
@@ -419,9 +411,7 @@ export default function Fixture() {
           </button>
         </div>
 
-        {tab !== 'tbd' && (
-          <DayStrip selectedDay={selectedDay} onChange={setSelectedDay} onOpenCalendar={() => setCalOpen(true)} />
-        )}
+        <DayStrip selectedDay={selectedDay} onChange={setSelectedDay} onOpenCalendar={() => setCalOpen(true)} />
 
         <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-3 px-3 scrollbar-none">
           {STATUS_TABS.map((item) => (
@@ -450,10 +440,10 @@ export default function Fixture() {
           <div className="text-center py-16 text-zinc-500">
             <p className="text-3xl mb-2">📅</p>
             <p className="font-medium text-sm">
-              {tab === 'tbd' ? 'No hay partidos a definir' : 'No hay partidos para este día'}
+              No hay partidos para este dia
             </p>
             <p className="text-xs text-zinc-600 mt-1">
-              {tab === 'tbd' ? 'Los pendientes aparecerán acá' : 'Probá moverte a otro día del calendario'}
+              Proba moverte a otro dia del calendario
             </p>
           </div>
         )}
