@@ -12,6 +12,7 @@ import { useTeams } from '../../hooks/useTeams'
 import { useVenues } from '../../hooks/useVenues'
 import { useReferees } from '../../hooks/useReferees'
 import { useSports } from '../../hooks/useSports'
+import { useAuth } from '../../hooks/useAuth'
 import Modal from '../../components/ui/Modal'
 import Button from '../../components/ui/Button'
 import Badge from '../../components/ui/Badge'
@@ -48,6 +49,7 @@ const STATUS_VARIANT = {
 }
 
 export default function ManageMatches() {
+  const { isSuperAdmin, organizationId } = useAuth()
   const [ligaId, setLigaId] = useState('')
   const [faseid, setFaseId] = useState('')
   const [fechaFiltro, setFechaFiltro] = useState('all')
@@ -57,17 +59,19 @@ export default function ManageMatches() {
   const [editando, setEditando] = useState(null)
   const [editForm, setEditForm] = useState(EDIT_FORM_VACIO)
 
-  const { data: ligas = [] } = useLeagues()
+  const scopedOrgId = isSuperAdmin ? undefined : organizationId
+  const { data: ligas = [] } = useLeagues({ organizationId: scopedOrgId, approvalStatus: 'approved' })
   const { data: fases = [] } = usePhases(ligaId)
   const { data: partidos = [], isLoading } = useMatches({ phaseId: faseid || undefined })
-  const { data: sports = [] } = useSports()
-
   const ligaSeleccionada = ligas.find((liga) => liga.id === ligaId)
+  const activeOrganizationId = isSuperAdmin ? ligaSeleccionada?.organization_id : organizationId
+  const { data: sports = [] } = useSports({ organizationId: activeOrganizationId })
+
   const sportId = sports.find((sport) => sport.slug === ligaSeleccionada?.sports?.slug)?.id
 
-  const { data: equipos = [] } = useTeams({ sportId })
-  const { data: canchas = [] } = useVenues()
-  const { data: arbitros = [] } = useReferees()
+  const { data: equipos = [] } = useTeams({ sportId, organizationId: activeOrganizationId })
+  const { data: canchas = [] } = useVenues({ organizationId: activeOrganizationId })
+  const { data: arbitros = [] } = useReferees({ organizationId: activeOrganizationId })
 
   const crearPartido = useCreateMatch()
   const borrarPartido = useDeleteMatch()
@@ -172,6 +176,10 @@ export default function ManageMatches() {
 
   async function guardarEdicion() {
     if (!editando) return
+    if (editForm.status !== 'postponed' && !editForm.scheduledAtLocal) {
+      alert('La fecha y hora son obligatorias. Usa Postergado solo si la nueva fecha queda a definir.')
+      return
+    }
     await actualizarDetalles.mutateAsync({
       id: editando.id,
       scheduledAtLocal: editForm.scheduledAtLocal,
@@ -452,7 +460,7 @@ export default function ManageMatches() {
                 onChange={(event) => setEditForm({ ...editForm, scheduledAtLocal: event.target.value })}
                 className={INPUT}
               />
-              <p className="mt-1 text-[10px] text-zinc-500">Vacio: a definir.</p>
+              <p className="mt-1 text-[10px] text-zinc-500">Solo puede quedar vacio si el partido esta postergado.</p>
             </div>
             <div>
               <label className="mb-1 block text-xs font-semibold text-zinc-400">Fecha</label>
@@ -503,7 +511,7 @@ export default function ManageMatches() {
             />
           </div>
 
-          <Button onClick={guardarEdicion} disabled={actualizarDetalles.isPending} className="w-full">
+          <Button onClick={guardarEdicion} disabled={actualizarDetalles.isPending || (editForm.status !== 'postponed' && !editForm.scheduledAtLocal)} className="w-full">
             {actualizarDetalles.isPending ? 'Guardando...' : 'Guardar detalles'}
           </Button>
         </div>

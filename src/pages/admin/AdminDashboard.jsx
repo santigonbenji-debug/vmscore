@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 
 const ACCESOS_SUPER = [
+  { to: '/admin/organizaciones', label: 'Organizaciones', icon: 'O', desc: 'Ubicacion, archivo y permisos' },
   { to: '/admin/ligas', label: 'Ligas', icon: 'T', desc: 'Crear y editar torneos' },
   { to: '/admin/equipos', label: 'Equipos', icon: 'E', desc: 'Administrar clubes' },
   { to: '/admin/planteles', label: 'Planteles', icon: 'P', desc: 'Jugadores y cuerpo tecnico' },
@@ -15,11 +16,12 @@ const ACCESOS_SUPER = [
 ]
 
 const ACCESOS_LIGA = [
+  { to: '/admin/deportes', label: 'Deportes', icon: 'D', desc: 'Disciplinas de la organizacion' },
+  { to: '/admin/ligas', label: 'Ligas', icon: 'T', desc: 'Crear ligas para aprobacion' },
+  { to: '/admin/equipos', label: 'Equipos', icon: 'E', desc: 'Clubes con escudo obligatorio' },
   { to: '/admin/planteles', label: 'Planteles', icon: 'P', desc: 'Equipos y jugadores de la liga' },
   { to: '/admin/partidos', label: 'Partidos', icon: 'F', desc: 'Ver y gestionar fixture' },
-  { to: '/admin/importar', label: 'Importar', icon: 'I', desc: 'Sincronizar Copa Facil' },
-  { to: '/admin/scraping', label: 'Scraping', icon: 'S', desc: 'Capturas profundas' },
-  { to: '/admin/noticias', label: 'Noticias', icon: 'N', desc: 'Publicar novedades' },
+  { to: '/admin/canchas', label: 'Canchas', icon: 'C', desc: 'Sedes de la organizacion' },
 ]
 
 const ACCESOS_CLUB = [
@@ -28,14 +30,15 @@ const ACCESOS_CLUB = [
 ]
 
 export default function AdminDashboard() {
-  const { user, isSuperAdmin, isLigaAdmin, isClubAdmin, signOut } = useAuth()
+  const { user, isSuperAdmin, isOrganizationAdmin, isLigaAdmin, isClubAdmin, organization, signOut } = useAuth()
 
   const accesos = isSuperAdmin ? ACCESOS_SUPER
-    : isLigaAdmin ? ACCESOS_LIGA
+    : (isOrganizationAdmin || isLigaAdmin) ? ACCESOS_LIGA
     : isClubAdmin ? ACCESOS_CLUB
     : []
 
   const labelRol = isSuperAdmin ? 'Super Admin'
+    : isOrganizationAdmin ? 'Admin de Organizacion'
     : isLigaAdmin ? 'Admin de Liga'
     : isClubAdmin ? 'Admin de Club'
     : 'Sin rol'
@@ -46,13 +49,19 @@ export default function AdminDashboard() {
         <div>
           <h1 className="text-xl font-bold text-zinc-100">Panel Admin</h1>
           <p className="text-xs text-zinc-500">{user?.email}</p>
+          {organization && <p className="text-xs text-zinc-500">{organization.city}, {organization.province}</p>}
           <span className="mt-1 inline-block rounded-full border border-primary/30 bg-primary/15 px-2 py-0.5 text-xs font-semibold text-primary">
             {labelRol}
           </span>
         </div>
-        <button onClick={signOut} className="text-xs font-medium text-red-400 hover:text-red-300">
-          Salir
-        </button>
+        <div className="flex flex-col items-end gap-2">
+          <Link to="/admin/reset-password" className="text-xs font-medium text-zinc-400 hover:text-primary">
+            Cambiar clave
+          </Link>
+          <button onClick={signOut} className="text-xs font-medium text-red-400 hover:text-red-300">
+            Salir
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3">

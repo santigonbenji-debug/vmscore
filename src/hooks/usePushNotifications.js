@@ -36,7 +36,7 @@ function serializeSubscription(subscription) {
 }
 
 export function usePushNotifications() {
-  const { favorites } = useFavorites()
+  const { favoriteTeamIds, favoriteLeagueIds, favoriteOrganizationIds } = useFavorites()
   const [enabled, setEnabled] = useState(getStoredPushEnabled)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
@@ -62,13 +62,15 @@ export function usePushNotifications() {
       p_endpoint: payload.endpoint,
       p_p256dh: payload.p256dh,
       p_auth: payload.auth,
-      p_favorite_team_ids: favorites,
+      p_favorite_team_ids: favoriteTeamIds,
+      p_favorite_league_ids: favoriteLeagueIds,
+      p_favorite_organization_ids: favoriteOrganizationIds,
       p_user_agent: navigator.userAgent,
     })
 
     if (error) throw error
     return true
-  }, [favorites])
+  }, [favoriteTeamIds, favoriteLeagueIds, favoriteOrganizationIds])
 
   useEffect(() => {
     if (!supported || !enabled) return

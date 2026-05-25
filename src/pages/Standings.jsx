@@ -132,6 +132,7 @@ export default function Standings() {
 
   const [comp, setComp] = useState('all') // all/liga/copa/torneo
   const [ligaSel, setLigaSel] = useState('') // filtro especifico de liga (opcional)
+  const [organizationSel, setOrganizationSel] = useState('')
 
   // Mapa league_id → liga (con competition_type, sport, etc.)
   const ligaById = useMemo(() => {
@@ -139,6 +140,20 @@ export default function Standings() {
     for (const l of ligas) m[l.id] = l
     return m
   }, [ligas])
+
+  const organizations = useMemo(() => {
+    const map = new Map()
+    for (const row of standings) {
+      if (!row.organization_id) continue
+      map.set(row.organization_id, {
+        id: row.organization_id,
+        name: row.organization_name ?? row.organization_city ?? 'Sin organizacion',
+        city: row.organization_city,
+        province: row.organization_province,
+      })
+    }
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name))
+  }, [standings])
 
   // Goleadores agrupados por phase_id (ya pre-agregados desde v_top_scorers)
   const scorersByPhase = useMemo(() => {
@@ -171,6 +186,7 @@ export default function Standings() {
     const byPhase = {}
     for (const row of standings) {
       const liga = ligaById[row.league_id]
+      if (organizationSel && row.organization_id !== organizationSel) continue
       // Filtro por tipo de competicion
       if (comp !== 'all' && liga?.competition_type !== comp) continue
       // Filtro por liga especifica
@@ -183,6 +199,10 @@ export default function Standings() {
           league_id:  row.league_id,
           league_name: row.league_name,
           gender:     row.gender,
+          organization_id: row.organization_id,
+          organization_name: row.organization_name,
+          organization_city: row.organization_city,
+          organization_province: row.organization_province,
           group_id:   row.group_id,
           group_name: row.group_name,
           competition_type: liga?.competition_type ?? null,
@@ -198,7 +218,7 @@ export default function Standings() {
       ...t,
       rows: [...t.rows].sort((a, b) => (a.position ?? 99) - (b.position ?? 99)),
     }))
-  }, [standings, ligaById, comp, ligaSel])
+  }, [standings, ligaById, comp, ligaSel, organizationSel])
 
   const isLoading = stLoading || scLoading
 
@@ -223,12 +243,36 @@ export default function Standings() {
           ))}
         </div>
 
+        {organizations.length > 1 && (
+          <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-3 px-3 scrollbar-none">
+            <button
+              onClick={() => { setOrganizationSel(''); setLigaSel('') }}
+              className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors ${
+                organizationSel === '' ? 'bg-primary text-white' : 'bg-surface-800 text-zinc-400 hover:bg-surface-700 hover:text-zinc-200'
+              }`}
+            >
+              Todas las localidades
+            </button>
+            {organizations.map((org) => (
+              <button
+                key={org.id}
+                onClick={() => { setOrganizationSel(org.id); setLigaSel('') }}
+                className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors ${
+                  organizationSel === org.id ? 'bg-primary text-white' : 'bg-surface-800 text-zinc-400 hover:bg-surface-700 hover:text-zinc-200'
+                }`}
+              >
+                {org.city ?? org.name}
+              </button>
+            ))}
+          </div>
+        )}
+
         {ligas.length > 0 && (
           <select value={ligaSel} onChange={(e) => setLigaSel(e.target.value)}
             className="w-full rounded-lg px-3 py-2 text-sm">
             <option value="">Todas las competiciones</option>
             {ligas
-              .filter((l) => comp === 'all' || l.competition_type === comp)
+              .filter((l) => (comp === 'all' || l.competition_type === comp) && (!organizationSel || l.organization_id === organizationSel))
               .map((l) => (
                 <option key={l.id} value={l.id}>
                   {l.sports?.icon} {l.name}{l.season ? ` · ${l.season}` : ''}
@@ -271,6 +315,11 @@ export default function Standings() {
               )}
             </div>
 
+            {(t.organization_city || t.organization_province) && (
+              <p className="px-1 text-[10px] font-semibold uppercase text-zinc-500">
+                {[t.organization_city, t.organization_province].filter(Boolean).join(', ')}
+              </p>
+            )}
             <StandingsTable rows={t.rows} onTeamClick={(teamId) => navigate(`/equipo/${teamId}`)} />
             <ScorersList scorers={scorers} />
           </section>

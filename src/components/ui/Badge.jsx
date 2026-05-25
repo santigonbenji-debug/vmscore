@@ -5,7 +5,7 @@ export default function Badge({ children, variant = 'default', className = '' })
     success: 'bg-emerald-500/15 text-emerald-400',
     warning: 'bg-amber-500/15 text-amber-400',
     danger:  'bg-red-500/15 text-red-400',
-    live:    'bg-emerald-500 text-white animate-pulse',
+    live:    'bg-red-500 text-white animate-pulse',
   }
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wide ${v[variant]} ${className}`}>

@@ -1390,7 +1390,7 @@ export default function ManageExternalSources() {
           </div>
 
           <div className="rounded-lg border border-primary/25 bg-primary/10 p-3 text-xs text-primary-light">
-            Publicar crea o actualiza el partido oficial para cargar cancha, formacion y eventos sin tocar la tabla. Computar tabla se usa cuando el resultado ya esta confirmado.
+            Publicar crea o actualiza el partido oficial para cargar cancha, convocados y eventos. Al finalizar, el resultado oficial actualiza la tabla.
           </div>
 
           {archiveActionError && (

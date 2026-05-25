@@ -1,11 +1,19 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 
-export function useVenues() {
+export function useVenues({ organizationId, includeArchived = false } = {}) {
   return useQuery({
-    queryKey: ['venues'],
+    queryKey: ['venues', { organizationId, includeArchived }],
     queryFn: async () => {
-      const { data, error } = await supabase.from('venues').select('*').order('name')
+      let query = supabase
+        .from('venues')
+        .select('*, organizations(id, name, city, province, status)')
+        .order('name')
+
+      if (organizationId) query = query.eq('organization_id', organizationId)
+      if (!includeArchived) query = query.or('is_archived.is.null,is_archived.eq.false')
+
+      const { data, error } = await query
       if (error) throw error
       return data ?? []
     },

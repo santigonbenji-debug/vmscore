@@ -1,87 +1,181 @@
 import { useState } from 'react'
+import { useAuth } from '../../hooks/useAuth'
+import { useOrganizations } from '../../hooks/useOrganizations'
 import { useVenues, useCreateVenue, useUpdateVenue, useDeleteVenue } from '../../hooks/useVenues'
-import Modal   from '../../components/ui/Modal'
-import Button  from '../../components/ui/Button'
+import Modal from '../../components/ui/Modal'
+import Button from '../../components/ui/Button'
 import Spinner from '../../components/ui/Spinner'
 
-const FORM_VACIO = { name: '', address: '', city: 'Villa Mercedes', capacity: '' }
+const EMPTY_FORM = { organization_id: '', name: '', address: '', city: '', capacity: '' }
 
 export default function ManageVenues() {
-  const [modal, setModal]       = useState(false)
-  const [editando, setEditando] = useState(null)
-  const [form, setForm]         = useState(FORM_VACIO)
+  const { isSuperAdmin, organizationId, organization } = useAuth()
+  const [modal, setModal] = useState(false)
+  const [editing, setEditing] = useState(null)
+  const [form, setForm] = useState(EMPTY_FORM)
 
-  const { data: canchas = [], isLoading } = useVenues()
-  const crear  = useCreateVenue()
-  const editar = useUpdateVenue()
-  const borrar = useDeleteVenue()
+  const scopedOrgId = isSuperAdmin ? undefined : organizationId
+  const { data: organizations = [] } = useOrganizations({ includeArchived: isSuperAdmin })
+  const { data: venues = [], isLoading } = useVenues({ organizationId: scopedOrgId })
+  const createVenue = useCreateVenue()
+  const updateVenue = useUpdateVenue()
+  const deleteVenue = useDeleteVenue()
 
-  function abrirCrear() { setEditando(null); setForm(FORM_VACIO); setModal(true) }
-  function abrirEditar(c) {
-    setEditando(c)
-    setForm({ name: c.name, address: c.address ?? '', city: c.city ?? 'Villa Mercedes', capacity: c.capacity ?? '' })
+  function selectedOrganization(id = form.organization_id) {
+    return organizations.find((org) => org.id === id) ?? organization
+  }
+
+  function openCreate() {
+    const org = isSuperAdmin ? null : organization
+    setEditing(null)
+    setForm({
+      ...EMPTY_FORM,
+      organization_id: isSuperAdmin ? '' : organizationId,
+      city: org?.city ?? '',
+    })
     setModal(true)
   }
-  async function guardar() {
-    if (!form.name) return
-    const data = { ...form, capacity: form.capacity ? parseInt(form.capacity) : null }
-    if (editando) await editar.mutateAsync({ id: editando.id, ...data })
-    else          await crear.mutateAsync(data)
+
+  function openEdit(venue) {
+    setEditing(venue)
+    setForm({
+      organization_id: venue.organization_id ?? organizationId ?? '',
+      name: venue.name,
+      address: venue.address ?? '',
+      city: venue.city ?? venue.organizations?.city ?? organization?.city ?? '',
+      capacity: venue.capacity ?? '',
+    })
+    setModal(true)
+  }
+
+  async function save() {
+    if (!form.organization_id || !form.name) return
+    const org = selectedOrganization()
+    const payload = {
+      ...form,
+      city: form.city || org?.city || null,
+      capacity: form.capacity ? parseInt(form.capacity) : null,
+    }
+
+    if (editing) await updateVenue.mutateAsync({ id: editing.id, ...payload })
+    else await createVenue.mutateAsync(payload)
     setModal(false)
   }
-  async function eliminar(c) {
-    if (!window.confirm(`¿Eliminar "${c.name}"?`)) return
-    await borrar.mutateAsync(c.id)
+
+  async function remove(venue) {
+    if (!isSuperAdmin) return
+    if (!window.confirm(`Eliminar "${venue.name}"?`)) return
+    await deleteVenue.mutateAsync(venue.id)
   }
 
-  const guardando = crear.isPending || editar.isPending
+  const saving = createVenue.isPending || updateVenue.isPending
 
   return (
-    <div className="px-4 py-6">
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-xl font-bold text-zinc-100">Canchas</h1>
-        <Button size="sm" onClick={abrirCrear}>+ Nueva Cancha</Button>
+    <div className="px-4 py-6 pb-28">
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-zinc-100">Canchas</h1>
+          <p className="mt-1 text-xs text-zinc-500">
+            {isSuperAdmin ? 'Todas las organizaciones' : `${organization?.city ?? ''}, ${organization?.province ?? ''}`}
+          </p>
+        </div>
+        <Button size="sm" onClick={openCreate}>+ Nueva Cancha</Button>
       </div>
 
-      {isLoading ? <Spinner className="py-12" /> : canchas.length === 0 ? (
-        <p className="text-center text-zinc-500 py-16 text-sm">No hay canchas cargadas</p>
+      {isLoading ? <Spinner className="py-12" /> : venues.length === 0 ? (
+        <p className="py-16 text-center text-sm text-zinc-500">No hay canchas cargadas.</p>
       ) : (
         <div className="space-y-3">
-          {canchas.map((c) => (
-            <div key={c.id} className="bg-surface-900 rounded-xl border border-surface-800 shadow-sm p-4 flex items-center justify-between">
-              <div>
-                <p className="font-semibold text-sm">🏟️ {c.name}</p>
-                <p className="text-xs text-zinc-500">{c.address ? `${c.address} · ` : ''}{c.city}</p>
-                {c.capacity && <p className="text-xs text-zinc-500">Capacidad: {c.capacity}</p>}
+          {venues.map((venue) => (
+            <div key={venue.id} className="flex items-center justify-between rounded-xl border border-surface-800 bg-surface-900 p-4 shadow-sm">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-zinc-100">{venue.name}</p>
+                <p className="text-xs text-zinc-500">{venue.address ? `${venue.address} - ` : ''}{venue.city}</p>
+                {venue.organizations?.name && <p className="text-[10px] text-zinc-600">{venue.organizations.name}</p>}
+                {venue.capacity && <p className="text-xs text-zinc-500">Capacidad: {venue.capacity}</p>}
               </div>
-              <div className="flex gap-3">
-                <button onClick={() => abrirEditar(c)} className="text-xs text-primary font-medium">Editar</button>
-                <button onClick={() => eliminar(c)} className="text-xs text-red-400 font-medium">Borrar</button>
+              <div className="flex shrink-0 gap-3">
+                <button onClick={() => openEdit(venue)} className="text-xs font-medium text-primary">Editar</button>
+                {isSuperAdmin && <button onClick={() => remove(venue)} className="text-xs font-medium text-red-400">Borrar</button>}
               </div>
             </div>
           ))}
         </div>
       )}
 
-      <Modal open={modal} onClose={() => setModal(false)} title={editando ? 'Editar Cancha' : 'Nueva Cancha'}>
+      <Modal open={modal} onClose={() => setModal(false)} title={editing ? 'Editar Cancha' : 'Nueva Cancha'}>
         <div className="space-y-4">
-          {[['name','Nombre *','Parque La Pedrera'],['address','Dirección','Av. España 1200'],
-            ['city','Ciudad','Villa Mercedes']].map(([key, label, ph]) => (
-            <div key={key}>
-              <label className="text-xs font-semibold text-zinc-400 mb-1 block">{label}</label>
-              <input type="text" value={form[key]} placeholder={ph}
-                onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-                className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none" />
+          {isSuperAdmin ? (
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-zinc-400">Organizacion *</label>
+              <select
+                value={form.organization_id}
+                onChange={(event) => {
+                  const org = selectedOrganization(event.target.value)
+                  setForm({ ...form, organization_id: event.target.value, city: org?.city ?? form.city })
+                }}
+                className="w-full rounded-lg border border-surface-700 bg-surface-800 px-3 py-2.5 text-sm text-zinc-100 focus:outline-none"
+              >
+                <option value="">Seleccionar...</option>
+                {organizations.filter((org) => org.status === 'active').map((org) => (
+                  <option key={org.id} value={org.id}>{org.name} - {org.city}, {org.province}</option>
+                ))}
+              </select>
             </div>
-          ))}
+          ) : organization ? (
+            <div className="rounded-xl border border-primary/20 bg-primary/10 p-3">
+              <p className="text-xs font-semibold text-primary">Organizacion</p>
+              <p className="text-sm font-bold text-zinc-100">{organization.name}</p>
+              <p className="text-xs text-zinc-400">{organization.city}, {organization.province}</p>
+            </div>
+          ) : null}
+
           <div>
-            <label className="text-xs font-semibold text-zinc-400 mb-1 block">Capacidad</label>
-            <input type="number" value={form.capacity} placeholder="2000"
-              onChange={(e) => setForm({ ...form, capacity: e.target.value })}
-              className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none" />
+            <label className="mb-1 block text-xs font-semibold text-zinc-400">Nombre *</label>
+            <input
+              type="text"
+              value={form.name}
+              placeholder="Polideportivo Municipal"
+              onChange={(event) => setForm({ ...form, name: event.target.value })}
+              className="w-full rounded-lg border border-surface-700 bg-surface-800 px-3 py-2.5 text-sm text-zinc-100 focus:outline-none"
+            />
           </div>
-          <Button onClick={guardar} disabled={guardando || !form.name} className="w-full">
-            {guardando ? 'Guardando...' : editando ? 'Guardar cambios' : 'Crear Cancha'}
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-zinc-400">Direccion</label>
+            <input
+              type="text"
+              value={form.address}
+              placeholder="Av. Principal 1200"
+              onChange={(event) => setForm({ ...form, address: event.target.value })}
+              className="w-full rounded-lg border border-surface-700 bg-surface-800 px-3 py-2.5 text-sm text-zinc-100 focus:outline-none"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-zinc-400">Ciudad</label>
+              <input
+                type="text"
+                value={form.city}
+                onChange={(event) => setForm({ ...form, city: event.target.value })}
+                className="w-full rounded-lg border border-surface-700 bg-surface-800 px-3 py-2.5 text-sm text-zinc-100 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-zinc-400">Capacidad</label>
+              <input
+                type="number"
+                value={form.capacity}
+                placeholder="2000"
+                onChange={(event) => setForm({ ...form, capacity: event.target.value })}
+                className="w-full rounded-lg border border-surface-700 bg-surface-800 px-3 py-2.5 text-sm text-zinc-100 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <Button onClick={save} disabled={saving || !form.organization_id || !form.name} className="w-full">
+            {saving ? 'Guardando...' : editing ? 'Guardar cambios' : 'Crear Cancha'}
           </Button>
         </div>
       </Modal>

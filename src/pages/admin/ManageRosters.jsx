@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLeagues } from '../../hooks/useLeagues'
 import { useTeams } from '../../hooks/useTeams'
+import { useAuth } from '../../hooks/useAuth'
 import {
   useAddTeamToLeague,
   useCreatePlayer,
@@ -29,6 +30,7 @@ const STAFF_FORM = {
 }
 
 export default function ManageRosters() {
+  const { isSuperAdmin, organizationId } = useAuth()
   const [leagueId, setLeagueId] = useState('')
   const [teamId, setTeamId] = useState('')
   const [teamToAdd, setTeamToAdd] = useState('')
@@ -36,10 +38,12 @@ export default function ManageRosters() {
   const [editingPlayer, setEditingPlayer] = useState(null)
   const [staffForm, setStaffForm] = useState(STAFF_FORM)
 
-  const { data: leagues = [], isLoading: loadingLeagues } = useLeagues()
+  const scopedOrgId = isSuperAdmin ? undefined : organizationId
+  const { data: leagues = [], isLoading: loadingLeagues } = useLeagues({ organizationId: scopedOrgId })
   const selectedLeague = leagues.find((league) => league.id === leagueId)
   const { data: leagueTeams = [], isLoading: loadingLeagueTeams } = useLeagueTeams(leagueId)
-  const { data: allTeams = [] } = useTeams({ sportId: selectedLeague?.sport_id })
+  const selectedOrganizationId = isSuperAdmin ? selectedLeague?.organization_id : organizationId
+  const { data: allTeams = [] } = useTeams({ sportId: selectedLeague?.sport_id, organizationId: selectedOrganizationId })
   const { data: players = [], isLoading: loadingPlayers } = useTeamPlayers(teamId)
   const { data: staff = [] } = useTeamStaff(teamId)
 

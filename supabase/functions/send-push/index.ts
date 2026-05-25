@@ -17,12 +17,37 @@ webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey)
 
 const supabase = createClient(supabaseUrl, serviceRoleKey)
 
+async function authorizeSender(req: Request) {
+  const token = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '').trim()
+  if (!token) return false
+  if (token === serviceRoleKey) return true
+
+  const { data: userData, error: userError } = await supabase.auth.getUser(token)
+  if (userError || !userData.user) return false
+
+  const { data: admin } = await supabase
+    .from('admin_roles')
+    .select('id')
+    .eq('user_id', userData.user.id)
+    .eq('role', 'superadmin')
+    .eq('status', 'active')
+    .maybeSingle()
+  return Boolean(admin)
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
+    if (!(await authorizeSender(req))) {
+      return new Response(JSON.stringify({ ok: false, error: 'No autorizado.' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     const { type, matchId, title: customTitle, body: customBody, targetTeamIds } = await req.json()
     if (!matchId) throw new Error('matchId requerido')
 
@@ -39,10 +64,15 @@ serve(async (req) => {
       ? targetTeamIds.filter((teamId) => allowedTeamIds.includes(teamId))
       : []
     const teamIds = requestedTeamIds.length > 0 ? requestedTeamIds : allowedTeamIds
+
+    const filters = [`favorite_team_ids.ov.{${teamIds.join(',')}}`]
+    if (match.league_id) filters.push(`favorite_league_ids.cs.{${match.league_id}}`)
+    if (match.organization_id) filters.push(`favorite_organization_ids.cs.{${match.organization_id}}`)
+
     const { data: subscriptions, error: subError } = await supabase
       .from('push_subscriptions')
       .select('*')
-      .overlaps('favorite_team_ids', teamIds)
+      .or(filters.join(','))
 
     if (subError) throw subError
 
@@ -84,11 +114,21 @@ serve(async (req) => {
       await supabase.from('push_subscriptions').delete().in('endpoint', expired)
     }
 
+    const failures = results
+      .filter((result) => result.status === 'rejected' && ![404, 410].includes(result.reason?.statusCode))
+      .map((result) => result.reason?.message ?? 'No se pudo entregar la notificacion.')
+    const sent = results.filter((result) => result.status === 'fulfilled').length
+    const ok = failures.length === 0
+
     return new Response(JSON.stringify({
-      ok: true,
-      sent: results.filter((result) => result.status === 'fulfilled').length,
-      failed: results.filter((result) => result.status === 'rejected').length,
+      ok,
+      recipients: subscriptions?.length ?? 0,
+      sent,
+      expired: expired.length,
+      failed: failures.length,
+      errors: failures.slice(0, 3),
     }), {
+      status: ok ? 200 : 502,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (error) {

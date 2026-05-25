@@ -116,9 +116,9 @@ function removeDuplicateMatches(matches) {
 
 function MatchRow({ p, onClick, now }) {
   const finalizado = p.status === 'finished'
-  const enVivo = p.status === 'in_progress'
   const suspendido = p.status === 'postponed'
   const comenzadoPorHorario = matchStartedByClock(p, now)
+  const enVivo = p.status === 'in_progress' || (!finalizado && !suspendido && comenzadoPorHorario)
   const hora = p.scheduled_at
     ? format(toZonedTime(new Date(p.scheduled_at), TZ), 'HH:mm')
     : 'A def.'
@@ -140,13 +140,11 @@ function MatchRow({ p, onClick, now }) {
     >
       <div className="w-12 shrink-0 text-center">
         {enVivo ? (
-          <span className="text-emerald-400 text-[11px] font-bold tracking-wide animate-pulse">VIVO</span>
+          <span className="text-red-400 text-[11px] font-bold tracking-wide animate-pulse">VIVO</span>
         ) : finalizado ? (
           <span className="text-[11px] text-zinc-500 font-semibold">FT</span>
         ) : suspendido ? (
           <span className="text-[10px] text-amber-300 font-bold leading-tight">SUSP.</span>
-        ) : comenzadoPorHorario ? (
-          <span className="text-[10px] text-amber-300 font-bold leading-tight">COMENZADO</span>
         ) : (
           <span className="text-xs text-zinc-300 font-medium">{hora}</span>
         )}
@@ -165,8 +163,8 @@ function MatchRow({ p, onClick, now }) {
             {p.home_team_short_name ?? p.home_team_name}
           </span>
           {(finalizado || enVivo) && (
-            <span className={`text-sm font-bold tabular-nums shrink-0 ${homeWon ? 'text-zinc-100' : finalizado ? 'text-zinc-500' : 'text-emerald-400'}`}>
-              {p.home_score}
+            <span className={`text-sm font-bold tabular-nums shrink-0 ${homeWon ? 'text-zinc-100' : finalizado ? 'text-zinc-500' : 'text-red-400'}`}>
+              {p.home_score ?? 0}
             </span>
           )}
         </div>
@@ -178,8 +176,8 @@ function MatchRow({ p, onClick, now }) {
             {p.away_team_short_name ?? p.away_team_name}
           </span>
           {(finalizado || enVivo) && (
-            <span className={`text-sm font-bold tabular-nums shrink-0 ${awayWon ? 'text-zinc-100' : finalizado ? 'text-zinc-500' : 'text-emerald-400'}`}>
-              {p.away_score}
+            <span className={`text-sm font-bold tabular-nums shrink-0 ${awayWon ? 'text-zinc-100' : finalizado ? 'text-zinc-500' : 'text-red-400'}`}>
+              {p.away_score ?? 0}
             </span>
           )}
         </div>
@@ -359,11 +357,11 @@ export default function Fixture() {
 
   const visibleMatches = useMemo(() => {
     if (tab === 'tbd') return tbdMatches
-    if (tab === 'live') return dayMatches.filter((p) => p.status === 'in_progress')
+    if (tab === 'live') return dayMatches.filter((p) => p.status === 'in_progress' || matchStartedByClock(p, now))
     if (tab === 'scheduled') return dayMatches.filter((p) => p.status === 'scheduled')
     if (tab === 'finished') return dayMatches.filter((p) => p.status === 'finished')
     return dayMatches
-  }, [dayMatches, tab, tbdMatches])
+  }, [dayMatches, now, tab, tbdMatches])
 
   const groups = useMemo(() => {
     const out = {}
@@ -391,11 +389,11 @@ export default function Fixture() {
 
   const counts = useMemo(() => ({
     all: dayMatches.length,
-    live: dayMatches.filter((p) => p.status === 'in_progress').length,
+    live: dayMatches.filter((p) => p.status === 'in_progress' || matchStartedByClock(p, now)).length,
     scheduled: dayMatches.filter((p) => p.status === 'scheduled').length,
     finished: dayMatches.filter((p) => p.status === 'finished').length,
     tbd: tbdMatches.length,
-  }), [dayMatches, tbdMatches])
+  }), [dayMatches, now, tbdMatches])
 
   return (
     <div className="flex flex-col">

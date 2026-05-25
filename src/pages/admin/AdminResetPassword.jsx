@@ -16,7 +16,7 @@ function getAuthError() {
 
 export default function AdminResetPassword() {
   const navigate = useNavigate()
-  const { updatePassword } = useAuth()
+  const { user, updatePassword } = useAuth()
   const authError = useMemo(() => getAuthError(), [])
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -28,8 +28,8 @@ export default function AdminResetPassword() {
     e.preventDefault()
     setError('')
 
-    if (password.length < 10) {
-      setError('Usa una contrasena de al menos 10 caracteres.')
+    if (password.length < 12) {
+      setError('Usa una contrasena de al menos 12 caracteres.')
       return
     }
 
@@ -48,7 +48,7 @@ export default function AdminResetPassword() {
     }
 
     setDone(true)
-    setTimeout(() => navigate('/admin/login'), 1800)
+    setTimeout(() => navigate(user ? '/admin' : '/admin/login'), 1800)
   }
 
   return (

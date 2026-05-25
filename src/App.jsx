@@ -26,11 +26,19 @@ import ManageStandings from './pages/admin/ManageStandings'
 import ManageScorers   from './pages/admin/ManageScorers'
 import ManageExternalSources from './pages/admin/ManageExternalSources'
 import ManageDeepScraping from './pages/admin/ManageDeepScraping'
+import ManageOrganizations from './pages/admin/ManageOrganizations'
 
 function ProtectedRoute({ children }) {
   const { isAdmin, loading } = useAuth()
   if (loading) return null
   if (!isAdmin) return <Navigate to="/admin/login" replace />
+  return children
+}
+
+function SuperAdminRoute({ children }) {
+  const { isSuperAdmin, loading } = useAuth()
+  if (loading) return null
+  if (!isSuperAdmin) return <Navigate to="/admin" replace />
   return children
 }
 
@@ -62,12 +70,13 @@ export default function App() {
         <Route path="resultado/:matchId" element={<LoadResult />} />
         <Route path="mis-partidos"       element={<MisPartidos />} />
         <Route path="deportes"           element={<ManageSports />} />
+        <Route path="organizaciones"     element={<SuperAdminRoute><ManageOrganizations /></SuperAdminRoute>} />
         <Route path="planteles"          element={<ManageRosters />} />
-        <Route path="noticias"           element={<ManageNews />} />
-        <Route path="posiciones"         element={<ManageStandings />} />
-        <Route path="goleadores"         element={<ManageScorers />} />
-        <Route path="importar"           element={<ManageExternalSources />} />
-        <Route path="scraping"           element={<ManageDeepScraping />} />
+        <Route path="noticias"           element={<SuperAdminRoute><ManageNews /></SuperAdminRoute>} />
+        <Route path="posiciones"         element={<SuperAdminRoute><ManageStandings /></SuperAdminRoute>} />
+        <Route path="goleadores"         element={<SuperAdminRoute><ManageScorers /></SuperAdminRoute>} />
+        <Route path="importar"           element={<SuperAdminRoute><ManageExternalSources /></SuperAdminRoute>} />
+        <Route path="scraping"           element={<SuperAdminRoute><ManageDeepScraping /></SuperAdminRoute>} />
       </Route>
     </Routes>
   )

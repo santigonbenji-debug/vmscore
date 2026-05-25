@@ -47,6 +47,26 @@ function formatRoundLabel(rounds = []) {
   return `Fechas ${rounds.join(', ')}`
 }
 
+function ScopeFavoriteButton({ active, label, onClick }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={(event) => {
+        event.stopPropagation()
+        onClick()
+      }}
+      className={`grid h-7 w-7 shrink-0 place-items-center rounded-full border text-sm font-black transition-colors ${
+        active
+          ? 'border-amber-400/50 bg-amber-400/15 text-amber-300'
+          : 'border-surface-700 bg-surface-900 text-zinc-500 hover:border-amber-400/40 hover:text-amber-300'
+      }`}
+    >
+      {active ? '★' : '☆'}
+    </button>
+  )
+}
+
 function buildDateGroups(partidos, todayKey) {
   const groups = {}
   const visibles = partidos.filter((match) => match.status !== 'cancelled')
@@ -113,11 +133,63 @@ function buildDateGroups(partidos, todayKey) {
     })
 }
 
+function buildOrganizationDateGroups(partidos, todayKey) {
+  const groups = {}
+  const baseGroups = buildDateGroups(partidos, todayKey)
+
+  for (const day of baseGroups) {
+    const organizations = {}
+
+    for (const league of day.leagues) {
+      for (const match of league.partidos) {
+        const organizationKey = match.organization_id ?? 'sin-organizacion'
+        if (!organizations[organizationKey]) {
+          organizations[organizationKey] = {
+            id: organizationKey,
+            name: match.organization_name ?? match.organization_city ?? 'Sin organizacion',
+            city: match.organization_city,
+            province: match.organization_province,
+            leagues: {},
+          }
+        }
+
+        if (!organizations[organizationKey].leagues[league.id]) {
+          organizations[organizationKey].leagues[league.id] = {
+            ...league,
+            rounds: new Set(),
+            partidos: [],
+          }
+        }
+
+        if (match.round != null) organizations[organizationKey].leagues[league.id].rounds.add(match.round)
+        organizations[organizationKey].leagues[league.id].partidos.push(match)
+      }
+    }
+
+    groups[day.key] = {
+      ...day,
+      organizations: Object.values(organizations)
+        .map((organization) => ({
+          ...organization,
+          leagues: Object.values(organization.leagues)
+            .map((league) => ({
+              ...league,
+              rounds: [...league.rounds].sort((a, b) => Number(a) - Number(b)),
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name)),
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    }
+  }
+
+  return Object.values(groups)
+}
+
 function MatchRow({ match, onClick, favoriteIds = [], now }) {
   const finalizado = match.status === 'finished'
-  const enVivo = match.status === 'in_progress'
   const suspendido = match.status === 'postponed'
   const comenzadoPorHorario = matchStartedByClock(match, now)
+  const enVivo = match.status === 'in_progress' || (!finalizado && !suspendido && comenzadoPorHorario)
   const hora = match.scheduled_at
     ? format(toZonedTime(new Date(match.scheduled_at), TZ), 'HH:mm')
     : 'A def.'
@@ -139,13 +211,11 @@ function MatchRow({ match, onClick, favoriteIds = [], now }) {
     >
       <div className="text-xs text-zinc-500 w-12 text-center shrink-0">
         {enVivo ? (
-          <span className="text-emerald-400 font-bold animate-pulse">VIVO</span>
+          <span className="text-red-400 font-bold animate-pulse">VIVO</span>
         ) : finalizado ? (
           'FT'
         ) : suspendido ? (
           <span className="text-amber-300 font-bold leading-tight">SUSP.</span>
-        ) : comenzadoPorHorario ? (
-          <span className="text-amber-300 font-bold leading-tight">COMENZADO</span>
         ) : (
           hora
         )}
@@ -163,9 +233,9 @@ function MatchRow({ match, onClick, favoriteIds = [], now }) {
           <span className={`text-sm truncate ${homeWon ? 'font-bold text-zinc-100' : 'text-zinc-300'}`}>
             {match.home_team_short_name ?? match.home_team_name}
           </span>
-          {finalizado && (
-            <span className={`ml-auto text-sm ${homeWon ? 'font-bold text-zinc-100' : 'text-zinc-400'}`}>
-              {match.home_score}
+          {(finalizado || enVivo) && (
+            <span className={`ml-auto text-sm font-bold tabular-nums ${homeWon ? 'text-zinc-100' : finalizado ? 'text-zinc-400' : 'text-red-400'}`}>
+              {match.home_score ?? 0}
             </span>
           )}
         </div>
@@ -176,9 +246,9 @@ function MatchRow({ match, onClick, favoriteIds = [], now }) {
           <span className={`text-sm truncate ${awayWon ? 'font-bold text-zinc-100' : 'text-zinc-300'}`}>
             {match.away_team_short_name ?? match.away_team_name}
           </span>
-          {finalizado && (
-            <span className={`ml-auto text-sm ${awayWon ? 'font-bold text-zinc-100' : 'text-zinc-400'}`}>
-              {match.away_score}
+          {(finalizado || enVivo) && (
+            <span className={`ml-auto text-sm font-bold tabular-nums ${awayWon ? 'text-zinc-100' : finalizado ? 'text-zinc-400' : 'text-red-400'}`}>
+              {match.away_score ?? 0}
             </span>
           )}
         </div>
@@ -239,20 +309,35 @@ function NewsCarousel({ items, isAdmin, onCreateClick }) {
 export default function Home() {
   const navigate = useNavigate()
   const { isSuperAdmin } = useAuth()
-  const { favorites } = useFavorites()
+  const {
+    favorites,
+    favoriteLeagueIds,
+    favoriteOrganizationIds,
+    isLeagueFavorite,
+    isOrganizationFavorite,
+    toggleLeagueFavorite,
+    toggleOrganizationFavorite,
+  } = useFavorites()
   const now = useNow()
   const [matchScope, setMatchScope] = useState('all')
   const { data: partidos = [], isLoading } = useHomeMatches()
   const { data: news = [] } = useNews({ limit: 10 })
   const todayKey = format(toZonedTime(new Date(), TZ), 'yyyy-MM-dd')
   const scopedMatches = useMemo(() => {
-    if (matchScope !== 'favorites' || favorites.length === 0) return partidos
-    return partidos.filter((match) => favorites.includes(match.home_team_id) || favorites.includes(match.away_team_id))
-  }, [favorites, matchScope, partidos])
+    if (matchScope !== 'favorites') return partidos
+    const hasFavorites = favorites.length > 0 || favoriteLeagueIds.length > 0 || favoriteOrganizationIds.length > 0
+    if (!hasFavorites) return partidos
+    return partidos.filter((match) =>
+      favorites.includes(match.home_team_id) ||
+      favorites.includes(match.away_team_id) ||
+      favoriteLeagueIds.includes(match.league_id) ||
+      favoriteOrganizationIds.includes(match.organization_id)
+    )
+  }, [favoriteLeagueIds, favoriteOrganizationIds, favorites, matchScope, partidos])
   const filteredMatches = useMemo(() => (
     scopedMatches.filter((match) => match.status !== 'cancelled' && match.scheduled_at)
   ), [scopedMatches])
-  const grupos = useMemo(() => buildDateGroups(filteredMatches, todayKey), [filteredMatches, todayKey])
+  const grupos = useMemo(() => buildOrganizationDateGroups(filteredMatches, todayKey), [filteredMatches, todayKey])
 
   return (
     <div className="px-3 py-3 space-y-4 pb-28">
@@ -275,7 +360,7 @@ export default function Home() {
 
       <NewsCarousel items={news} isAdmin={isSuperAdmin} onCreateClick={() => navigate('/admin/noticias')} />
 
-      {favorites.length === 0 && (
+      {favorites.length === 0 && favoriteLeagueIds.length === 0 && favoriteOrganizationIds.length === 0 && (
         <button
           type="button"
           onClick={() => navigate('/favoritos')}
@@ -286,7 +371,7 @@ export default function Home() {
         </button>
       )}
 
-      {favorites.length > 0 && (
+      {(favorites.length > 0 || favoriteLeagueIds.length > 0 || favoriteOrganizationIds.length > 0) && (
         <div className="grid grid-cols-2 rounded-xl border border-surface-800 bg-surface-900 p-1">
           {[
             ['all', 'Todos'],
@@ -350,24 +435,49 @@ export default function Home() {
             </div>
           </div>
 
-          {day.leagues.map((league) => (
-            <div key={league.id} className="mb-3">
-              <div className="flex items-center justify-between gap-2 px-1 py-1.5">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-base">{league.icon}</span>
-                  <p className="text-xs font-semibold text-zinc-300 truncate">{league.name}</p>
+          {day.organizations.map((organization) => (
+            <div key={organization.id} className="mb-4">
+              <div className="mb-1.5 flex items-center justify-between gap-2 px-1">
+                <div className="min-w-0">
+                  <p className="truncate text-[11px] font-black uppercase tracking-wide text-zinc-300">{organization.name}</p>
+                  <p className="truncate text-[10px] text-zinc-500">{[organization.city, organization.province].filter(Boolean).join(', ')}</p>
                 </div>
-                {formatRoundLabel(league.rounds) && (
-                  <div className="shrink-0 rounded-full bg-surface-800 px-2.5 py-1 text-xs font-bold text-primary">
-                    {formatRoundLabel(league.rounds)}
-                  </div>
+                {organization.id !== 'sin-organizacion' && (
+                  <ScopeFavoriteButton
+                    active={isOrganizationFavorite(organization.id)}
+                    label={`Favorito ${organization.name}`}
+                    onClick={() => toggleOrganizationFavorite(organization.id)}
+                  />
                 )}
               </div>
-              <div className="bg-surface-900 rounded-xl border border-surface-800 shadow-sm overflow-hidden">
-                {league.partidos.map((p) => (
-                  <MatchRow key={p.id} match={p} favoriteIds={favorites} now={now} onClick={() => navigate(`/partido/${p.id}`)} />
-                ))}
-              </div>
+
+              {organization.leagues.map((league) => (
+                <div key={league.id} className="mb-3">
+                  <div className="flex items-center justify-between gap-2 px-1 py-1.5">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {league.id !== 'sin-liga' && (
+                        <ScopeFavoriteButton
+                          active={isLeagueFavorite(league.id)}
+                          label={`Favorita ${league.name}`}
+                          onClick={() => toggleLeagueFavorite(league.id)}
+                        />
+                      )}
+                      <span className="text-base">{league.icon}</span>
+                      <p className="text-xs font-semibold text-zinc-300 truncate">{league.name}</p>
+                    </div>
+                    {formatRoundLabel(league.rounds) && (
+                      <div className="shrink-0 rounded-full bg-surface-800 px-2.5 py-1 text-xs font-bold text-primary">
+                        {formatRoundLabel(league.rounds)}
+                      </div>
+                    )}
+                  </div>
+                  <div className="bg-surface-900 rounded-xl border border-surface-800 shadow-sm overflow-hidden">
+                    {league.partidos.map((p) => (
+                      <MatchRow key={p.id} match={p} favoriteIds={favorites} now={now} onClick={() => navigate(`/partido/${p.id}`)} />
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           ))}
         </section>

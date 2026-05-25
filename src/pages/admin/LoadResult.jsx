@@ -30,7 +30,7 @@ const TIPOS_EVENTO = [
 ]
 
 const EVENTO_VACIO = { team_id: '', player_id: '', player_name: '', event_type: 'goal', minute: '' }
-const LINEUP_FORM = { team_id: '', player_id: '', manual_player_name: '', role: 'starter', shirt_number: '', position: '' }
+const LINEUP_FORM = { team_id: '', player_id: '', manual_player_name: '', role: 'called_up', shirt_number: '', position: '' }
 
 function teamLabel(match, teamId) {
   if (teamId === match.home_team_id) return match.home_team_short_name ?? match.home_team_name ?? 'Local'
@@ -39,36 +39,29 @@ function teamLabel(match, teamId) {
 }
 
 function LineupTeam({ title, players, onRemove, canRemove }) {
-  const starters = players.filter((player) => player.role === 'starter')
-  const substitutes = players.filter((player) => player.role === 'substitute')
-
   return (
     <div className="bg-surface-800/50 rounded-xl p-3 space-y-3">
       <h3 className="font-bold text-xs">{title}</h3>
-      {[['Titulares', starters], ['Suplentes', substitutes]].map(([label, rows]) => (
-        <div key={label}>
-          <p className="text-xs font-semibold text-zinc-500 mb-1">{label}</p>
-          {rows.length === 0 ? (
-            <p className="text-xs text-zinc-600">Sin jugadores cargados</p>
-          ) : (
-            <div className="space-y-1">
-              {rows.map((player) => (
-                <div key={player.id} className="flex items-center justify-between gap-2 text-xs bg-surface-900 rounded-lg px-2 py-1.5">
-                  <span className="truncate">
-                    {player.shirt_number ? `#${player.shirt_number} ` : ''}{player.player_name}
-                    {player.position ? ` - ${player.position}` : ''}
-                  </span>
-                  {canRemove && (
-                    <button onClick={() => onRemove(player)} className="text-red-400 font-medium shrink-0">
-                      Quitar
-                    </button>
-                  )}
-                </div>
-              ))}
+      <p className="text-xs font-semibold text-zinc-500">Convocados</p>
+      {players.length === 0 ? (
+        <p className="text-xs text-zinc-600">Sin jugadores convocados</p>
+      ) : (
+        <div className="space-y-1">
+          {players.map((player) => (
+            <div key={player.id} className="flex items-center justify-between gap-2 text-xs bg-surface-900 rounded-lg px-2 py-1.5">
+              <span className="truncate">
+                {player.shirt_number ? `#${player.shirt_number} ` : ''}{player.player_name}
+                {player.position ? ` - ${player.position}` : ''}
+              </span>
+              {canRemove && (
+                <button onClick={() => onRemove(player)} className="text-red-400 font-medium shrink-0">
+                  Quitar
+                </button>
+              )}
             </div>
-          )}
+          ))}
         </div>
-      ))}
+      )}
     </div>
   )
 }
@@ -76,7 +69,7 @@ function LineupTeam({ title, players, onRemove, canRemove }) {
 export default function LoadResult() {
   const { matchId } = useParams()
   const navigate = useNavigate()
-  const { isSuperAdmin, isLigaAdmin, isClubAdmin, teamId } = useAuth()
+  const { isSuperAdmin, isOrganizationAdmin, isLigaAdmin, isClubAdmin, teamId } = useAuth()
   const { data, isLoading } = useMatch(matchId)
   const guardarEnVivoMutation = useSaveLiveMatchData()
   const guardarResultado = useSaveResult()
@@ -95,7 +88,8 @@ export default function LoadResult() {
   const [manualLiveEvent, setManualLiveEvent] = useState({ teamId: '', minute: '' })
   const [manualLiveMessage, setManualLiveMessage] = useState('')
 
-  const puedeCargarResultado = isSuperAdmin || isLigaAdmin
+  const puedeCargarResultado = isSuperAdmin || isOrganizationAdmin || isLigaAdmin
+  const puedeSincronizar = isSuperAdmin
   const miEquipoId = isClubAdmin ? teamId : null
 
   const { data: lineups = [], isLoading: loadingLineups } = useMatchLineups(matchId)
@@ -256,7 +250,7 @@ export default function LoadResult() {
   async function sincronizarLocosVm() {
     if (!match || !liveLink) return
     await syncLocosVm.mutateAsync({ match, link: liveLink })
-    setLocosMessage('Novedades buscadas en Locos VM.')
+    setLocosMessage('Datos recibidos de Locos VM aplicados al partido.')
   }
 
   async function buscarPartidosLocosVm() {
@@ -312,19 +306,23 @@ export default function LoadResult() {
 
   async function publicarGolEnVivo() {
     if (!match || !manualLiveEvent.teamId) return
-    await createManualLiveEvent.mutateAsync({
+    const result = await createManualLiveEvent.mutateAsync({
       match,
       teamId: manualLiveEvent.teamId,
       minute: manualLiveEvent.minute,
     })
-    setManualLiveMessage(`Gol publicado para ${teamLabel(match, manualLiveEvent.teamId)}.`)
+    setManualLiveMessage(
+      result.pushWarning
+        ? `Gol publicado para ${teamLabel(match, manualLiveEvent.teamId)}. La alerta no pudo entregarse todavia y queda pendiente de reintento.`
+        : `Gol publicado para ${teamLabel(match, manualLiveEvent.teamId)} y alerta enviada.`
+    )
     setManualLiveEvent((current) => ({ ...current, minute: '' }))
   }
 
   async function sincronizarCopaFacil() {
     if (!match) return
     await syncCopaFacilLive.mutateAsync({ matchId: match.id })
-    setCopaFacilMessage('Novedades buscadas en Copa Facil.')
+    setCopaFacilMessage('Datos recibidos de Copa Facil aplicados al partido.')
   }
 
   async function buscarPartidosCopaFacil() {
@@ -399,17 +397,17 @@ export default function LoadResult() {
               : (match.away_team_short_name ?? match.away_team_name)}
           </p>
           <p className="text-xs text-blue-500">
-            Solo podes cargar formacion y eventos de tu equipo. El resultado final lo confirma el organizador.
+            Solo podes cargar convocados y eventos de tu equipo. El resultado final lo confirma el organizador.
           </p>
         </div>
       )}
 
-      {puedeCargarResultado && (
+      {puedeSincronizar && (
         <div className="bg-surface-900 rounded-xl border border-surface-800 shadow-sm p-5 space-y-4">
           <div>
-            <h2 className="font-bold text-sm text-zinc-100">Vivo asistido Locos VM</h2>
+            <h2 className="font-bold text-sm text-zinc-100">Sincronizacion Locos VM</h2>
             <p className="text-xs text-zinc-500 mt-1">
-              Lee inicio, minuto, goles y final. Nada se computa hasta guardar el resultado.
+              Si la fuente entrega datos, se aplican al marcador automaticamente. Copa Facil es la fuente recomendada.
             </p>
           </div>
 
@@ -578,12 +576,12 @@ export default function LoadResult() {
         </div>
       )}
 
-      {puedeCargarResultado && (
+      {puedeSincronizar && (
         <div className="bg-surface-900 rounded-xl border border-surface-800 shadow-sm p-5 space-y-4">
           <div>
-            <h2 className="font-bold text-sm text-zinc-100">Vivo asistido Copa Facil</h2>
+            <h2 className="font-bold text-sm text-zinc-100">Sincronizacion Copa Facil</h2>
             <p className="text-xs text-zinc-500 mt-1">
-              Si el partido viene de Copa Facil, queda vinculado automaticamente. Podes buscar goles, inicio y final sin tocar la tabla.
+              Al vincularlo, Copa Facil actualiza marcador, inicio y final automaticamente. No necesita aprobacion manual.
             </p>
           </div>
 
@@ -617,14 +615,14 @@ export default function LoadResult() {
                     onClick={sincronizarCopaFacil}
                     disabled={syncCopaFacilLive.isPending}
                   >
-                    {syncCopaFacilLive.isPending ? 'Leyendo...' : 'Buscar novedades'}
+                    {syncCopaFacilLive.isPending ? 'Sincronizando...' : 'Sincronizar ahora'}
                   </Button>
                 </div>
               </div>
 
               {syncCopaFacilLive.data && (
                 <p className="rounded-xl border border-primary/20 bg-primary/10 px-3 py-2 text-xs text-zinc-200">
-                  Lectura de Copa Facil realizada.
+                  Datos de Copa Facil sincronizados en el partido.
                 </p>
               )}
             </>
@@ -719,12 +717,12 @@ export default function LoadResult() {
         </div>
       )}
 
-      {puedeCargarResultado && (
+      {puedeSincronizar && (
         <div className="bg-surface-900 rounded-xl border border-surface-800 shadow-sm p-5 space-y-4">
           <div>
             <h2 className="font-bold text-sm text-zinc-100">Eventos en vivo manuales</h2>
             <p className="text-xs text-zinc-500 mt-1">
-              Publica un gol como novedad en vivo y avisa solo a quienes siguen a ese equipo. No modifica el resultado ni la tabla.
+              Publica el gol, incrementa el marcador en vivo y envia push a quienes siguen cualquiera de los equipos.
             </p>
           </div>
 
@@ -800,8 +798,8 @@ export default function LoadResult() {
 
       <div className="bg-surface-900 rounded-xl border border-surface-800 shadow-sm p-5 space-y-4">
         <div>
-          <h2 className="font-bold text-sm text-zinc-100">Formacion</h2>
-          <p className="text-xs text-zinc-500 mt-1">Titulares y suplentes de este partido.</p>
+          <h2 className="font-bold text-sm text-zinc-100">Convocados</h2>
+          <p className="text-xs text-zinc-500 mt-1">Jugadores convocados para este partido.</p>
         </div>
 
         <div className="border border-dashed border-surface-700 rounded-xl p-3 space-y-3">
@@ -814,12 +812,9 @@ export default function LoadResult() {
                 <option key={id} value={id}>{teamLabel(match, id)}</option>
               ))}
             </select>
-            <select value={lineupForm.role}
-              onChange={(event) => setLineupForm({ ...lineupForm, role: event.target.value })}
-              className="border border-surface-700 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30">
-              <option value="starter">Titular</option>
-              <option value="substitute">Suplente</option>
-            </select>
+            <div className="flex items-center rounded-lg border border-surface-700 px-3 py-2 text-xs font-semibold text-zinc-300">
+              Convocado
+            </div>
           </div>
 
           <select value={lineupForm.player_id}
@@ -856,7 +851,7 @@ export default function LoadResult() {
           <Button size="sm" variant="outline" onClick={agregarLineupPlayer}
             disabled={!lineupForm.team_id || (!lineupForm.player_id && !lineupForm.manual_player_name) || addLineupPlayer.isPending}
             className="w-full">
-            + Agregar a formacion
+            + Agregar convocado
           </Button>
         </div>
 

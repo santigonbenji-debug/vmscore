@@ -6,19 +6,24 @@ export function useAuth() {
   const [role, setRole]         = useState(null)
   const [leagueId, setLeagueId] = useState(null)
   const [teamId, setTeamId]     = useState(null)
+  const [organizationId, setOrganizationId] = useState(null)
+  const [organization, setOrganization] = useState(null)
   const [loading, setLoading]   = useState(true)
 
   const fetchRole = useCallback(async (userId) => {
     const { data } = await supabase
       .from('admin_roles')
-      .select('role, league_id, team_id')
+      .select('role, league_id, team_id, organization_id, status, organizations(id, name, slug, city, province, status)')
       .eq('user_id', userId)
+      .eq('status', 'active')
       .limit(1)
 
     const r = Array.isArray(data) ? data[0] : null
     setRole(r?.role ?? null)
     setLeagueId(r?.league_id ?? null)
     setTeamId(r?.team_id ?? null)
+    setOrganizationId(r?.organization_id ?? null)
+    setOrganization(r?.organizations ?? null)
     setLoading(false)
   }, [])
 
@@ -35,7 +40,7 @@ export function useAuth() {
         if (session?.user) fetchRole(session.user.id)
         else {
           setRole(null); setLeagueId(null)
-          setTeamId(null); setLoading(false)
+          setTeamId(null); setOrganizationId(null); setOrganization(null); setLoading(false)
         }
       }
     )
@@ -64,8 +69,11 @@ export function useAuth() {
     role,
     leagueId,
     teamId,
+    organizationId,
+    organization,
     isAdmin:      !!role,
     isSuperAdmin: role === 'superadmin',
+    isOrganizationAdmin: role === 'organization_admin',
     isLigaAdmin:  role === 'liga_admin',
     isClubAdmin:  role === 'club_admin',
     loading,

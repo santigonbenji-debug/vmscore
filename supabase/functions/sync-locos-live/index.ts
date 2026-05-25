@@ -89,6 +89,7 @@ function goalEvents({ match, link, previousHome, previousAway, nextHome, nextAwa
       event_type: 'goal',
       team_id: match.home_team_id,
       team_side: 'home',
+      goal_number: score,
       minute,
       home_score: score,
       away_score: nextAway,
@@ -106,6 +107,7 @@ function goalEvents({ match, link, previousHome, previousAway, nextHome, nextAwa
       event_type: 'goal',
       team_id: match.away_team_id,
       team_side: 'away',
+      goal_number: score,
       minute,
       home_score: nextHome,
       away_score: score,
@@ -142,9 +144,11 @@ async function syncLink(link: Record<string, unknown>) {
   const second = numberOrNull(raw.second)
   const nextHome = numberOrNull(raw.homeScore)
   const nextAway = numberOrNull(raw.awayScore)
-  const previousHome = numberOrNull(link.last_home_score) ?? numberOrNull(match.home_score) ?? 0
-  const previousAway = numberOrNull(link.last_away_score) ?? numberOrNull(match.away_score) ?? 0
+  const previousHome = Math.max(numberOrNull(link.last_home_score) ?? 0, numberOrNull(match.home_score) ?? 0)
+  const previousAway = Math.max(numberOrNull(link.last_away_score) ?? 0, numberOrNull(match.away_score) ?? 0)
   const now = new Date().toISOString()
+  const publishedHome = status === 'finished' ? nextHome : nextHome === null ? numberOrNull(match.home_score) : Math.max(nextHome, previousHome)
+  const publishedAway = status === 'finished' ? nextAway : nextAway === null ? numberOrNull(match.away_score) : Math.max(nextAway, previousAway)
 
   const events: Record<string, unknown>[] = []
   const startedNow = !link.last_start_notified_at && status === 'in_progress'
@@ -162,6 +166,7 @@ async function syncLink(link: Record<string, unknown>) {
       home_score: nextHome,
       away_score: nextAway,
       title: 'Inicio del partido',
+      status: 'applied',
       raw,
     })
   }
@@ -183,15 +188,19 @@ async function syncLink(link: Record<string, unknown>) {
       home_score: nextHome,
       away_score: nextAway,
       title: `Finalizo: ${scoreText(match, nextHome, nextAway)}`,
+      status: 'applied',
       raw,
     })
   }
 
+  let insertedEvents: Record<string, unknown>[] = []
   if (events.length > 0) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('live_sync_events')
-      .upsert(events, { onConflict: 'match_id,provider,event_key', ignoreDuplicates: true })
+      .upsert(events.map((event) => ({ ...event, status: 'applied' })), { ignoreDuplicates: true })
+      .select()
     if (error) throw error
+    insertedEvents = data ?? []
   }
 
   const { error: updateError } = await supabase
@@ -202,8 +211,8 @@ async function syncLink(link: Record<string, unknown>) {
       last_period: raw.period ?? null,
       last_minute: minute,
       last_second: second,
-      last_home_score: nextHome,
-      last_away_score: nextAway,
+      last_home_score: publishedHome,
+      last_away_score: publishedAway,
       last_synced_at: now,
       last_start_notified_at: startedNow ? now : link.last_start_notified_at,
       last_finish_notified_at: finishedNow ? now : link.last_finish_notified_at,
@@ -212,8 +221,23 @@ async function syncLink(link: Record<string, unknown>) {
     .eq('id', link.id)
   if (updateError) throw updateError
 
-  if (startedNow) await sendPush(match, 'match_started', 'Inicio del partido', `${teamName(match, 'home')} vs ${teamName(match, 'away')}`)
-  for (const goal of detectedGoals) {
+  if (publishedHome !== null && publishedAway !== null && match.status !== 'postponed' && match.status !== 'cancelled') {
+    const { error: matchUpdateError } = await supabase
+      .from('matches')
+      .update({
+        status: status === 'finished' ? 'finished' : 'in_progress',
+        home_score: publishedHome,
+        away_score: publishedAway,
+        updated_at: now,
+      })
+      .eq('id', match.id)
+    if (matchUpdateError) throw matchUpdateError
+  }
+
+  if (insertedEvents.some((event) => event.event_type === 'start')) {
+    await sendPush(match, 'match_started', 'Inicio del partido', `${teamName(match, 'home')} vs ${teamName(match, 'away')}`)
+  }
+  for (const goal of insertedEvents.filter((event) => event.event_type === 'goal')) {
     await sendPush(
       match,
       'match_goal',
@@ -221,9 +245,11 @@ async function syncLink(link: Record<string, unknown>) {
       scoreText(match, numberOrNull(goal.home_score), numberOrNull(goal.away_score)),
     )
   }
-  if (finishedNow) await sendPush(match, 'match_finished_live', 'Finalizo el partido', scoreText(match, nextHome, nextAway))
+  if (insertedEvents.some((event) => event.event_type === 'finish')) {
+    await sendPush(match, 'match_finished_live', 'Finalizo el partido', scoreText(match, publishedHome, publishedAway))
+  }
 
-  return { id: link.id, events: events.length, status }
+  return { id: link.id, events: insertedEvents.length, status, home_score: publishedHome, away_score: publishedAway }
 }
 
 serve(async (req) => {

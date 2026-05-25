@@ -52,10 +52,14 @@ serve(async (req) => {
       const teamIds = [match.home_team_id, match.away_team_id].filter(Boolean)
       if (teamIds.length === 0) continue
 
+      const filters = [`favorite_team_ids.ov.{${teamIds.join(',')}}`]
+      if (match.league_id) filters.push(`favorite_league_ids.cs.{${match.league_id}}`)
+      if (match.organization_id) filters.push(`favorite_organization_ids.cs.{${match.organization_id}}`)
+
       const { data: subscriptions, error: subError } = await supabase
         .from('push_subscriptions')
         .select('*')
-        .overlaps('favorite_team_ids', teamIds)
+        .or(filters.join(','))
 
       if (subError) throw subError
 

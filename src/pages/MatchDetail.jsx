@@ -13,7 +13,7 @@ import { formatFechaLarga, formatHora, matchStartedByClock, matchStatusDetail } 
 const TABS = [
   { key: 'info', label: 'Info' },
   { key: 'eventos', label: 'Eventos' },
-  { key: 'formacion', label: 'Formacion' },
+  { key: 'formacion', label: 'Convocados' },
 ]
 
 const EVENT_LABEL = {
@@ -29,35 +29,20 @@ const EVENT_LABEL = {
 const GOAL_EVENT_TYPES = new Set(['goal', 'own_goal', 'penalty_goal'])
 
 function LineupColumn({ title, lineups }) {
-  const titulares = lineups.filter((lineup) => lineup.role === 'starter')
-  const suplentes = lineups.filter((lineup) => lineup.role === 'substitute')
-
   return (
     <div className="bg-surface-900 rounded-xl border border-surface-800 p-3">
       <p className="text-xs font-semibold text-zinc-400 uppercase mb-2">{title}</p>
-      <ul className="space-y-1 mb-3">
-        {titulares.map((lineup) => (
+      <ul className="space-y-1">
+        {lineups.map((lineup) => (
           <li key={lineup.id} className="text-sm text-zinc-100 flex justify-between gap-2">
             <span className="truncate">{lineup.shirt_number ? `#${lineup.shirt_number} ` : ''}{lineup.player_name}</span>
             {lineup.position && <span className="text-xs text-zinc-500 shrink-0">{lineup.position}</span>}
           </li>
         ))}
-        {titulares.length === 0 && (
-          <li className="text-xs text-zinc-500 italic">Sin titulares cargados</li>
+        {lineups.length === 0 && (
+          <li className="text-xs text-zinc-500 italic">Sin convocados cargados</li>
         )}
       </ul>
-      {suplentes.length > 0 && (
-        <>
-          <p className="text-[10px] font-semibold text-zinc-500 uppercase mb-1">Suplentes</p>
-          <ul className="space-y-1">
-            {suplentes.map((lineup) => (
-              <li key={lineup.id} className="text-xs text-zinc-400 truncate">
-                {lineup.shirt_number ? `#${lineup.shirt_number} ` : ''}{lineup.player_name}
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
     </div>
   )
 }
@@ -324,7 +309,7 @@ export default function MatchDetail() {
         {tab === 'formacion' && (
           lineups.length === 0 ? (
             <div className="bg-surface-900 rounded-xl border border-surface-800 p-4">
-              <p className="text-sm text-zinc-500 text-center py-6">Aun no se cargo la formacion.</p>
+              <p className="text-sm text-zinc-500 text-center py-6">Aun no se cargaron convocados.</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3">

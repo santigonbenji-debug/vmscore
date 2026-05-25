@@ -3,16 +3,19 @@ import { supabase } from '../lib/supabase'
 
 // --- QUERIES ---
 
-export function useLeagues({ sportSlug, gender, status } = {}) {
+export function useLeagues({ sportSlug, gender, status, organizationId, includeArchived = false, approvalStatus } = {}) {
   return useQuery({
-    queryKey: ['leagues', sportSlug, gender, status],
+    queryKey: ['leagues', sportSlug, gender, status, organizationId, includeArchived, approvalStatus],
     queryFn: async () => {
       let q = supabase
         .from('leagues')
-        .select('*, sports(id, name, slug, icon)')
+        .select('*, sports(id, name, slug, icon), organizations(id, name, slug, city, province, status)')
         .order('created_at', { ascending: false })
       if (gender) q = q.eq('gender', gender)
       if (status) q = q.eq('status', status)
+      if (organizationId) q = q.eq('organization_id', organizationId)
+      if (!includeArchived) q = q.eq('is_archived', false)
+      if (approvalStatus) q = q.eq('approval_status', approvalStatus)
       const { data, error } = await q
       if (error) throw error
       if (sportSlug) return (data ?? []).filter((l) => l.sports?.slug === sportSlug)
@@ -27,7 +30,7 @@ export function useLeague(leagueId) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('leagues')
-        .select('*, sports(id, name, slug, icon), phases(id, name, type, phase_order, groups(id, name))')
+        .select('*, sports(id, name, slug, icon), organizations(id, name, slug, city, province, status), phases(id, name, type, phase_order, groups(id, name))')
         .eq('id', leagueId)
         .single()
       if (error) throw error

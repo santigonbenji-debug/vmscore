@@ -2,11 +2,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 
 // Los deportes son datos estáticos — 10 minutos de caché
-export function useSports() {
+export function useSports({ organizationId, includeArchived = false } = {}) {
   return useQuery({
-    queryKey: ['sports'],
+    queryKey: ['sports', organizationId, includeArchived],
     queryFn: async () => {
-      const { data, error } = await supabase.from('sports').select('*').order('name')
+      let query = supabase.from('sports').select('*, organizations(id, name, city, province)').order('name')
+      if (organizationId) query = query.eq('organization_id', organizationId)
+      if (!includeArchived) query = query.eq('is_archived', false)
+      const { data, error } = await query
       if (error) throw error
       return data ?? []
     },

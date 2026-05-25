@@ -24,6 +24,17 @@ function hasScore(raw: Record<string, unknown>) {
     Object.prototype.hasOwnProperty.call(details, 'qt_g2')
 }
 
+function scoresFromRaw(raw: Record<string, unknown>) {
+  const details = (raw.dt ?? {}) as Record<string, unknown>
+  if (!hasScore(raw)) return { home: null, away: null }
+
+  // Copa Facil omite en algunos partidos la clave del equipo que tiene cero.
+  return {
+    home: numberOrNull(details.qt_g1) ?? 0,
+    away: numberOrNull(details.qt_g2) ?? 0,
+  }
+}
+
 function isLiveStatus(raw: Record<string, unknown>) {
   const statusText = String(raw.status ?? raw.state ?? raw.st_text ?? raw.estado ?? '')
     .toLowerCase()
@@ -43,10 +54,30 @@ function isLiveStatus(raw: Record<string, unknown>) {
     statusText === 'en_vivo'
 }
 
-function normalizeStatus(raw: Record<string, unknown>) {
-  if (raw.finished === true || Number(raw.st) === 3) return 'finished'
+function startedBySchedule(match: Record<string, unknown>) {
+  if (!match.scheduled_at || match.status !== 'scheduled') return false
+  return new Date(String(match.scheduled_at)).getTime() <= Date.now()
+}
+
+function normalizeStatus(raw: Record<string, unknown>, match: Record<string, unknown>) {
+  const statusText = String(raw.status ?? raw.state ?? raw.st_text ?? raw.estado ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+
+  if (
+    raw.finished === true ||
+    Number(raw.st) === 3 ||
+    statusText === 'finished' ||
+    statusText === 'finalizado' ||
+    statusText === 'finalizada' ||
+    statusText === 'ft' ||
+    statusText === 'final'
+  ) return 'finished'
   if (isLiveStatus(raw)) return 'in_progress'
   if (hasScore(raw)) return 'in_progress'
+  if (startedBySchedule(match)) return 'in_progress'
   return 'scheduled'
 }
 
@@ -60,7 +91,7 @@ function scoreText(match: Record<string, unknown>, homeScore: number | null, awa
 }
 
 async function sendPush(match: Record<string, unknown>, type: string, title: string, body: string, targetTeamIds?: string[]) {
-  await fetch(`${supabaseUrl}/functions/v1/send-push`, {
+  const response = await fetch(`${supabaseUrl}/functions/v1/send-push`, {
     method: 'POST',
     headers: {
       apikey: serviceRoleKey,
@@ -68,7 +99,65 @@ async function sendPush(match: Record<string, unknown>, type: string, title: str
       'content-type': 'application/json',
     },
     body: JSON.stringify({ type, matchId: match.id, title, body, targetTeamIds }),
-  }).catch(() => null)
+  })
+  const result = await response.json().catch(() => ({ ok: false, error: `HTTP ${response.status}` }))
+  if (!response.ok || result.ok !== true) {
+    throw new Error(result.error || result.errors?.join('; ') || `Push HTTP ${response.status}`)
+  }
+  return result
+}
+
+async function deliverPendingPushes(match: Record<string, unknown>, link: Record<string, unknown>) {
+  const { data: pending, error } = await supabase
+    .from('live_sync_events')
+    .select('*')
+    .eq('match_id', match.id)
+    .is('push_notified_at', null)
+    .in('event_type', ['start', 'goal', 'finish'])
+    .order('created_at', { ascending: true })
+  if (error) throw error
+
+  const deliveries = []
+  for (const event of pending ?? []) {
+    try {
+      let delivery
+      if (event.event_type === 'start') {
+        delivery = await sendPush(match, 'match_started', 'Inicio del partido', `${teamName(match, 'home')} vs ${teamName(match, 'away')}`)
+      } else if (event.event_type === 'goal') {
+        delivery = await sendPush(
+          match,
+          'match_goal',
+          String(event.title),
+          scoreText(match, numberOrNull(event.home_score), numberOrNull(event.away_score)),
+        )
+      } else {
+        delivery = await sendPush(match, 'match_finished_live', 'Finalizo el partido', scoreText(match, numberOrNull(event.home_score), numberOrNull(event.away_score)))
+      }
+
+      const deliveredAt = new Date().toISOString()
+      await supabase
+        .from('live_sync_events')
+        .update({ push_attempted_at: deliveredAt, push_notified_at: deliveredAt, push_error: null })
+        .eq('id', event.id)
+
+      if (event.event_type === 'start') {
+        await supabase.from('match_live_links').update({ last_start_notified_at: deliveredAt }).eq('id', link.id)
+      }
+      if (event.event_type === 'finish') {
+        await supabase.from('match_live_links').update({ last_finish_notified_at: deliveredAt }).eq('id', link.id)
+      }
+      deliveries.push({ event: event.event_type, ok: true, recipients: delivery.recipients ?? 0, sent: delivery.sent ?? 0 })
+    } catch (pushError) {
+      const attemptedAt = new Date().toISOString()
+      const message = pushError?.message ?? 'No se pudo enviar push'
+      await supabase
+        .from('live_sync_events')
+        .update({ push_attempted_at: attemptedAt, push_error: message })
+        .eq('id', event.id)
+      deliveries.push({ event: event.event_type, ok: false, error: message })
+    }
+  }
+  return deliveries
 }
 
 function buildGoalEvents({
@@ -100,9 +189,11 @@ function buildGoalEvents({
       event_type: 'goal',
       team_id: match.home_team_id,
       team_side: 'home',
+      goal_number: score,
       home_score: score,
       away_score: nextAway,
       title: `Gol de ${teamName(match, 'home')}`,
+      status: 'applied',
       raw,
     })
   }
@@ -117,9 +208,11 @@ function buildGoalEvents({
       event_type: 'goal',
       team_id: match.away_team_id,
       team_side: 'away',
+      goal_number: score,
       home_score: nextHome,
       away_score: score,
       title: `Gol de ${teamName(match, 'away')}`,
+      status: 'applied',
       raw,
     })
   }
@@ -167,13 +260,29 @@ async function syncMatch(match: Record<string, unknown>, source: Record<string, 
   }
 
   const link = await ensureLink(match, currentLink)
-  const status = normalizeStatus(raw)
-  const details = (raw.dt ?? {}) as Record<string, unknown>
-  const nextHome = numberOrNull(details.qt_g1)
-  const nextAway = numberOrNull(details.qt_g2)
-  const previousHome = numberOrNull(link.last_home_score) ?? numberOrNull(match.home_score) ?? 0
-  const previousAway = numberOrNull(link.last_away_score) ?? numberOrNull(match.away_score) ?? 0
+  const status = normalizeStatus(raw, match)
+  const sourceScores = scoresFromRaw(raw)
+  const nextHome = sourceScores.home
+  const nextAway = sourceScores.away
+  const linkHome = numberOrNull(link.last_home_score)
+  const linkAway = numberOrNull(link.last_away_score)
+  const matchHome = numberOrNull(match.home_score)
+  const matchAway = numberOrNull(match.away_score)
+  const previousHome = Math.max(linkHome ?? 0, matchHome ?? 0)
+  const previousAway = Math.max(linkAway ?? 0, matchAway ?? 0)
+  const hadPreviousScore = linkHome !== null && linkAway !== null || matchHome !== null && matchAway !== null
+  const wasLiveBefore = link.last_status === 'in_progress' || match.status === 'in_progress'
   const now = new Date().toISOString()
+  const publishedHome = status === 'finished'
+    ? nextHome
+    : status === 'in_progress' && nextHome === null
+      ? matchHome ?? linkHome ?? 0
+      : nextHome === null ? matchHome : Math.max(nextHome, previousHome)
+  const publishedAway = status === 'finished'
+    ? nextAway
+    : status === 'in_progress' && nextAway === null
+      ? matchAway ?? linkAway ?? 0
+      : nextAway === null ? matchAway : Math.max(nextAway, previousAway)
 
   const events: Record<string, unknown>[] = []
   const startedNow = !link.last_start_notified_at && status === 'in_progress'
@@ -190,11 +299,16 @@ async function syncMatch(match: Record<string, unknown>, source: Record<string, 
       home_score: nextHome,
       away_score: nextAway,
       title: 'Inicio del partido',
+      status: 'applied',
       raw,
     })
   }
 
-  const goalEvents = nextHome !== null && nextAway !== null
+  const shouldEmitGoalEvents = nextHome !== null && nextAway !== null && (
+    status === 'in_progress' ||
+    (status === 'finished' && wasLiveBefore && hadPreviousScore)
+  )
+  const goalEvents = shouldEmitGoalEvents
     ? buildGoalEvents({ match, link, previousHome, previousAway, nextHome, nextAway, raw })
     : []
   events.push(...goalEvents)
@@ -210,15 +324,19 @@ async function syncMatch(match: Record<string, unknown>, source: Record<string, 
       home_score: nextHome,
       away_score: nextAway,
       title: `Finalizo: ${scoreText(match, nextHome, nextAway)}`,
+      status: 'applied',
       raw,
     })
   }
 
+  let insertedEvents: Record<string, unknown>[] = []
   if (events.length > 0) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('live_sync_events')
-      .upsert(events, { onConflict: 'match_id,provider,event_key', ignoreDuplicates: true })
+      .upsert(events, { ignoreDuplicates: true })
+      .select()
     if (error) throw error
+    insertedEvents = data ?? []
   }
 
   const { error: linkError } = await supabase
@@ -226,46 +344,43 @@ async function syncMatch(match: Record<string, unknown>, source: Record<string, 
     .update({
       last_external_state: raw,
       last_status: status,
-      last_home_score: nextHome,
-      last_away_score: nextAway,
+      last_home_score: publishedHome,
+      last_away_score: publishedAway,
       last_synced_at: now,
-      last_start_notified_at: startedNow ? now : link.last_start_notified_at,
-      last_finish_notified_at: finishedNow ? now : link.last_finish_notified_at,
       updated_at: now,
     })
     .eq('id', link.id)
   if (linkError) throw linkError
 
-  if (status === 'in_progress' && nextHome !== null && nextAway !== null && match.status !== 'postponed' && match.status !== 'cancelled') {
-    await supabase
-      .from('matches')
-      .update({
-        status: 'in_progress',
-        home_score: nextHome,
-        away_score: nextAway,
-        updated_at: now,
-      })
-      .eq('id', match.id)
+  if (match.status !== 'postponed' && match.status !== 'cancelled') {
+    if (status === 'in_progress') {
+      await supabase
+        .from('matches')
+        .update({
+          status: 'in_progress',
+          home_score: publishedHome,
+          away_score: publishedAway,
+          updated_at: now,
+        })
+        .eq('id', match.id)
+    }
+
+    if (status === 'finished' && publishedHome !== null && publishedAway !== null) {
+      await supabase
+        .from('matches')
+        .update({
+          status: 'finished',
+          home_score: publishedHome,
+          away_score: publishedAway,
+          updated_at: now,
+        })
+        .eq('id', match.id)
+    }
   }
 
-  if (startedNow) {
-    await sendPush(match, 'match_started', 'Inicio del partido', `${teamName(match, 'home')} vs ${teamName(match, 'away')}`)
-  }
-  for (const goal of goalEvents) {
-    const scoringTeamId = String(goal.team_id)
-    await sendPush(
-      match,
-      'match_goal',
-      String(goal.title),
-      scoreText(match, numberOrNull(goal.home_score), numberOrNull(goal.away_score)),
-      [scoringTeamId],
-    )
-  }
-  if (finishedNow) {
-    await sendPush(match, 'match_finished_live', 'Finalizo el partido', scoreText(match, nextHome, nextAway))
-  }
+  const deliveries = await deliverPendingPushes(match, link)
 
-  return { id: match.id, events: events.length, status }
+  return { id: match.id, events: insertedEvents.length, deliveries, status, home_score: publishedHome, away_score: publishedAway }
 }
 
 serve(async (req) => {

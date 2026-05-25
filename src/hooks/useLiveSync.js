@@ -29,6 +29,7 @@ function buildGoalEvents({ match, link, previousHome, previousAway, nextHome, ne
       event_type: 'goal',
       team_id: match.home_team_id,
       team_side: 'home',
+      goal_number: score,
       minute,
       home_score: score,
       away_score: nextAway,
@@ -48,6 +49,7 @@ function buildGoalEvents({ match, link, previousHome, previousAway, nextHome, ne
       event_type: 'goal',
       team_id: match.away_team_id,
       team_side: 'away',
+      goal_number: score,
       minute,
       home_score: nextHome,
       away_score: score,
@@ -73,20 +75,19 @@ async function notifyLiveSync({ match, type, title, body }) {
   }
 }
 
-async function notifyTeamLiveEvent({ match, teamId, title, body }) {
-  try {
-    await supabase.functions.invoke('send-push', {
-      body: {
-        type: 'match_goal',
-        matchId: match.id,
-        title,
-        body,
-        targetTeamIds: [teamId],
-      },
-    })
-  } catch (error) {
-    console.warn('No se pudo enviar notificacion de evento en vivo', error)
+async function notifyTeamLiveEvent({ match, title, body }) {
+  const { data, error } = await supabase.functions.invoke('send-push', {
+    body: {
+      type: 'match_goal',
+      matchId: match.id,
+      title,
+      body,
+    },
+  })
+  if (error || data?.ok !== true) {
+    throw new Error(data?.errors?.join('; ') || error?.message || 'No se pudo enviar la notificacion push.')
   }
+  return data
 }
 
 export function useMatchLiveLink(matchId, provider = 'locos_vm') {
@@ -286,6 +287,7 @@ export function useSyncLocosVmLive() {
           home_score: nextHome,
           away_score: nextAway,
           title: 'Inicio del partido',
+          status: 'applied',
           raw: rawState,
         })
       }
@@ -302,15 +304,19 @@ export function useSyncLocosVmLive() {
           home_score: nextHome,
           away_score: nextAway,
           title: `Finalizo: ${teamName(match, 'home')} ${nextHome ?? '-'} - ${nextAway ?? '-'} ${teamName(match, 'away')}`,
+          status: 'applied',
           raw: rawState,
         })
       }
 
+      let insertedEvents = []
       if (liveEvents.length > 0) {
-        const { error: eventError } = await supabase
+        const { data, error: eventError } = await supabase
           .from('live_sync_events')
-          .upsert(liveEvents, { onConflict: 'match_id,provider,event_key', ignoreDuplicates: true })
+          .upsert(liveEvents.map((event) => ({ ...event, status: 'applied' })), { ignoreDuplicates: true })
+          .select()
         if (eventError) throw eventError
+        insertedEvents = data ?? []
       }
 
       const { data: updatedLink, error: linkError } = await supabase
@@ -333,7 +339,20 @@ export function useSyncLocosVmLive() {
         .single()
       if (linkError) throw linkError
 
-      if (startedNow) {
+      if (nextHome !== null && nextAway !== null && match.status !== 'postponed' && match.status !== 'cancelled') {
+        const { error: matchError } = await supabase
+          .from('matches')
+          .update({
+            status: state.status === 'finished' ? 'finished' : 'in_progress',
+            home_score: nextHome,
+            away_score: nextAway,
+            updated_at: now,
+          })
+          .eq('id', match.id)
+        if (matchError) throw matchError
+      }
+
+      if (insertedEvents.some((event) => event.event_type === 'start')) {
         notifyLiveSync({
           match,
           type: 'match_started',
@@ -341,7 +360,7 @@ export function useSyncLocosVmLive() {
           body: `${teamName(match, 'home')} vs ${teamName(match, 'away')}`,
         })
       }
-      for (const goalEvent of goalEvents) {
+      for (const goalEvent of insertedEvents.filter((event) => event.event_type === 'goal')) {
         notifyLiveSync({
           match,
           type: 'match_goal',
@@ -349,7 +368,7 @@ export function useSyncLocosVmLive() {
           body: scoreText(match, goalEvent.home_score, goalEvent.away_score),
         })
       }
-      if (finishedNow) {
+      if (insertedEvents.some((event) => event.event_type === 'finish')) {
         notifyLiveSync({
           match,
           type: 'match_finished_live',
@@ -393,35 +412,45 @@ export function useCreateManualLiveEvent() {
 
       const isHome = teamId === match.home_team_id
       const title = `Gol de ${teamName(match, isHome ? 'home' : 'away')}`
-      const { data, error } = await supabase
-        .from('live_sync_events')
-        .insert({
-          match_id: match.id,
-          provider: 'manual',
-          event_key: `manual-goal-${teamId}-${Date.now()}`,
-          event_type: 'goal',
-          team_id: teamId,
-          team_side: isHome ? 'home' : 'away',
-          minute: minute === '' || minute === null || minute === undefined ? null : Number(minute),
-          title,
-          status: 'applied',
-          raw: { source: 'manual' },
-        })
-        .select()
-        .single()
+      const { data, error } = await supabase.rpc('record_manual_live_goal', {
+        p_match_id: match.id,
+        p_team_id: teamId,
+        p_minute: minute === '' || minute === null || minute === undefined ? null : Number(minute),
+      })
       if (error) throw error
 
-      await notifyTeamLiveEvent({
-        match,
-        teamId,
-        title,
-        body: `${teamName(match, isHome ? 'home' : 'away')} marco gol.`,
-      })
+      let pushWarning = ''
+      const eventId = data?.event?.id
+      try {
+        await notifyTeamLiveEvent({
+          match,
+          title,
+          body: scoreText(match, data.home_score, data.away_score),
+        })
+        if (eventId) {
+          await supabase
+            .from('live_sync_events')
+            .update({ push_attempted_at: new Date().toISOString(), push_notified_at: new Date().toISOString(), push_error: null })
+            .eq('id', eventId)
+        }
+      } catch (pushError) {
+        pushWarning = pushError?.message || 'El aviso no pudo enviarse y queda pendiente de reintento.'
+        if (eventId) {
+          await supabase
+            .from('live_sync_events')
+            .update({ push_attempted_at: new Date().toISOString(), push_error: pushWarning })
+            .eq('id', eventId)
+        }
+      }
 
-      return data
+      return { ...data, pushWarning }
     },
     onSuccess: (_, { match }) => {
       qc.invalidateQueries({ queryKey: ['live-sync-events', match.id] })
+      qc.invalidateQueries({ queryKey: ['match', match.id] })
+      qc.invalidateQueries({ queryKey: ['matches'] })
+      qc.invalidateQueries({ queryKey: ['matches-home'] })
+      qc.invalidateQueries({ queryKey: ['home-matches'] })
     },
   })
 }

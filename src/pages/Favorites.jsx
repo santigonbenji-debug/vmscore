@@ -6,6 +6,8 @@ import { useFavorites } from '../hooks/useFavorites'
 import { usePushNotifications } from '../hooks/usePushNotifications'
 import { useNow } from '../hooks/useNow'
 import { useTeams }     from '../hooks/useTeams'
+import { useLeagues } from '../hooks/useLeagues'
+import { useOrganizations } from '../hooks/useOrganizations'
 import { toZonedTime } from 'date-fns-tz'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -16,28 +18,36 @@ import { matchStartedByClock, matchStatusDetail } from '../lib/helpers'
 
 const TZ = 'America/Argentina/San_Luis'
 
-function useAllMatchesByTeams(teamIds) {
+function useAllFavoriteMatches({ teamIds, leagueIds, organizationIds }) {
   return useQuery({
-    queryKey: ['fav-matches', [...teamIds].sort()],
+    queryKey: ['fav-matches', [...teamIds].sort(), [...leagueIds].sort(), [...organizationIds].sort()],
     queryFn: async () => {
-      if (!teamIds.length) return []
+      if (!teamIds.length && !leagueIds.length && !organizationIds.length) return []
+      const filters = []
+      if (teamIds.length) {
+        filters.push(`home_team_id.in.(${teamIds.join(',')})`)
+        filters.push(`away_team_id.in.(${teamIds.join(',')})`)
+      }
+      if (leagueIds.length) filters.push(`league_id.in.(${leagueIds.join(',')})`)
+      if (organizationIds.length) filters.push(`organization_id.in.(${organizationIds.join(',')})`)
+
       const { data, error } = await supabase
         .from('v_matches')
         .select('*')
-        .or(`home_team_id.in.(${teamIds.join(',')}),away_team_id.in.(${teamIds.join(',')})`)
+        .or(filters.join(','))
         .order('scheduled_at', { ascending: false })
       if (error) throw error
       return data ?? []
     },
-    enabled: teamIds.length > 0,
+    enabled: teamIds.length > 0 || leagueIds.length > 0 || organizationIds.length > 0,
   })
 }
 
 function MatchRow({ p, onClick, favoriteIds, now }) {
   const finalizado = p.status === 'finished'
-  const enVivo     = p.status === 'in_progress'
   const suspendido = p.status === 'postponed'
   const comenzadoPorHorario = matchStartedByClock(p, now)
+  const enVivo = p.status === 'in_progress' || (!finalizado && !suspendido && comenzadoPorHorario)
   const hora = p.scheduled_at
     ? format(toZonedTime(new Date(p.scheduled_at), TZ), 'HH:mm')
     : 'A def.'
@@ -51,13 +61,11 @@ function MatchRow({ p, onClick, favoriteIds, now }) {
       className="flex items-center gap-2 px-3 py-2.5 hover:bg-surface-800/60 cursor-pointer transition-colors border-b border-surface-800 last:border-0">
       <div className="w-12 shrink-0 text-center">
         {enVivo
-          ? <span className="text-emerald-400 text-[11px] font-bold tracking-wide animate-pulse">VIVO</span>
+          ? <span className="text-red-400 text-[11px] font-bold tracking-wide animate-pulse">VIVO</span>
           : finalizado
             ? <span className="text-[11px] text-zinc-500 font-semibold">FT</span>
             : suspendido
               ? <span className="text-[10px] text-amber-300 font-bold leading-tight">SUSP.</span>
-            : comenzadoPorHorario
-              ? <span className="text-[10px] text-amber-300 font-bold leading-tight">COMENZADO</span>
             : <span className="text-xs text-zinc-300 font-medium">{hora}</span>}
       </div>
       <div className="flex-1 min-w-0 space-y-1">
@@ -73,8 +81,8 @@ function MatchRow({ p, onClick, favoriteIds, now }) {
           </span>
           {localFav && <span className="text-amber-400 text-[10px] shrink-0">★</span>}
           {(finalizado || enVivo) && (
-            <span className={`text-sm font-bold tabular-nums shrink-0 ${homeWon ? 'text-zinc-100' : finalizado ? 'text-zinc-500' : 'text-emerald-400'}`}>
-              {p.home_score}
+            <span className={`text-sm font-bold tabular-nums shrink-0 ${homeWon ? 'text-zinc-100' : finalizado ? 'text-zinc-500' : 'text-red-400'}`}>
+              {p.home_score ?? 0}
             </span>
           )}
         </div>
@@ -85,8 +93,8 @@ function MatchRow({ p, onClick, favoriteIds, now }) {
           </span>
           {visiFav && <span className="text-amber-400 text-[10px] shrink-0">★</span>}
           {(finalizado || enVivo) && (
-            <span className={`text-sm font-bold tabular-nums shrink-0 ${awayWon ? 'text-zinc-100' : finalizado ? 'text-zinc-500' : 'text-emerald-400'}`}>
-              {p.away_score}
+            <span className={`text-sm font-bold tabular-nums shrink-0 ${awayWon ? 'text-zinc-100' : finalizado ? 'text-zinc-500' : 'text-red-400'}`}>
+              {p.away_score ?? 0}
             </span>
           )}
         </div>
@@ -159,10 +167,20 @@ function AlertsCard({ supported, enabled, loading, message, error, onEnable }) {
 
 export default function Favorites() {
   const navigate  = useNavigate()
-  const { favorites } = useFavorites()
+  const {
+    favorites,
+    favoriteLeagueIds,
+    favoriteOrganizationIds,
+    isLeagueFavorite,
+    isOrganizationFavorite,
+    toggleLeagueFavorite,
+    toggleOrganizationFavorite,
+  } = useFavorites()
   const push = usePushNotifications()
   const now = useNow()
   const { data: equipos = [], isLoading: loadingEquipos } = useTeams()
+  const { data: ligas = [] } = useLeagues()
+  const { data: organizaciones = [] } = useOrganizations()
 
   const [tab, setTab]       = useState('matches')
   const [search, setSearch] = useState('')
@@ -170,6 +188,14 @@ export default function Favorites() {
   const equiposFav = useMemo(
     () => equipos.filter((e) => favorites.includes(e.id)),
     [equipos, favorites]
+  )
+  const ligasFav = useMemo(
+    () => ligas.filter((league) => favoriteLeagueIds.includes(league.id)),
+    [favoriteLeagueIds, ligas]
+  )
+  const organizacionesFav = useMemo(
+    () => organizaciones.filter((organization) => favoriteOrganizationIds.includes(organization.id)),
+    [favoriteOrganizationIds, organizaciones]
   )
 
   const equiposBuscar = useMemo(() => {
@@ -179,7 +205,11 @@ export default function Favorites() {
       .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
   }, [equipos, search])
 
-  const { data: partidos = [], isLoading: loadingPartidos } = useAllMatchesByTeams(favorites)
+  const { data: partidos = [], isLoading: loadingPartidos } = useAllFavoriteMatches({
+    teamIds: favorites,
+    leagueIds: favoriteLeagueIds,
+    organizationIds: favoriteOrganizationIds,
+  })
 
   const [ahora] = useState(() => Date.now())
   const { proximos, finalizados, enVivo } = useMemo(() => {
@@ -187,7 +217,12 @@ export default function Favorites() {
     const past = []
     const live = []
     for (const p of partidos) {
-      if (p.status === 'in_progress') live.push(p)
+      const started = p.status === 'in_progress' || (
+        p.status === 'scheduled' &&
+        p.scheduled_at &&
+        new Date(p.scheduled_at).getTime() <= now
+      )
+      if (started) live.push(p)
       else if (p.status === 'postponed') next.push(p)
       else if (p.status === 'finished' || (p.scheduled_at && new Date(p.scheduled_at).getTime() < ahora - 6 * 3600 * 1000)) past.push(p)
       else next.push(p)
@@ -195,9 +230,9 @@ export default function Favorites() {
     next.sort((a, b) => (new Date(a.scheduled_at ?? 0)) - (new Date(b.scheduled_at ?? 0)))
     past.sort((a, b) => (new Date(b.scheduled_at ?? 0)) - (new Date(a.scheduled_at ?? 0)))
     return { proximos: next, finalizados: past, enVivo: live }
-  }, [partidos, ahora])
+  }, [partidos, ahora, now])
 
-  if (!loadingEquipos && favorites.length === 0) {
+  if (!loadingEquipos && favorites.length === 0 && favoriteLeagueIds.length === 0 && favoriteOrganizationIds.length === 0) {
     return (
       <div className="px-4 py-6 pb-28">
         <h1 className="text-2xl font-extrabold mb-2 text-zinc-100">Favoritos</h1>
@@ -267,6 +302,60 @@ export default function Favorites() {
 
       {tab === 'matches' && (
         <>
+          {(organizacionesFav.length > 0 || ligasFav.length > 0) && (
+            <section className="mb-5 space-y-3">
+              {organizacionesFav.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-zinc-400 mb-2 px-1">
+                    Localidades favoritas · {organizacionesFav.length}
+                  </p>
+                  <div className="flex gap-2 overflow-x-auto pb-1 -mx-3 px-3 scrollbar-none">
+                    {organizacionesFav.map((organization) => (
+                      <button
+                        key={organization.id}
+                        type="button"
+                        onClick={() => toggleOrganizationFavorite(organization.id)}
+                        className={`shrink-0 rounded-xl border px-3 py-2 text-left min-w-[160px] transition-colors ${
+                          isOrganizationFavorite(organization.id)
+                            ? 'border-amber-400/40 bg-amber-400/10'
+                            : 'border-surface-800 bg-surface-900'
+                        }`}
+                      >
+                        <p className="text-xs font-black text-zinc-100">{organization.name}</p>
+                        <p className="text-[10px] text-zinc-500">{organization.city}, {organization.province}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {ligasFav.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-zinc-400 mb-2 px-1">
+                    Ligas favoritas · {ligasFav.length}
+                  </p>
+                  <div className="flex gap-2 overflow-x-auto pb-1 -mx-3 px-3 scrollbar-none">
+                    {ligasFav.map((league) => (
+                      <button
+                        key={league.id}
+                        type="button"
+                        onClick={() => toggleLeagueFavorite(league.id)}
+                        className={`shrink-0 rounded-xl border px-3 py-2 text-left min-w-[180px] transition-colors ${
+                          isLeagueFavorite(league.id)
+                            ? 'border-amber-400/40 bg-amber-400/10'
+                            : 'border-surface-800 bg-surface-900'
+                        }`}
+                      >
+                        <p className="text-xs font-black text-zinc-100">{league.name}</p>
+                        <p className="text-[10px] text-zinc-500">{league.organizations?.city ?? ''}{league.gender ? ` · ${league.gender}` : ''}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
+
           {equiposFav.length > 0 && (
             <section className="mb-5">
               <p className="text-xs font-bold uppercase tracking-wide text-zinc-400 mb-2 px-1">
@@ -290,7 +379,7 @@ export default function Favorites() {
             </section>
           )}
 
-          {equiposFav.length > 0 && (
+          {(equiposFav.length > 0 || ligasFav.length > 0 || organizacionesFav.length > 0) && (
             <AlertsCard
               supported={push.supported}
               enabled={push.enabled}
@@ -305,11 +394,11 @@ export default function Favorites() {
 
           {enVivo.length > 0 && (
             <section className="mb-5">
-              <p className="text-xs font-bold uppercase tracking-wide text-emerald-400 mb-2 px-1 flex items-center gap-2">
-                <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
+              <p className="text-xs font-bold uppercase tracking-wide text-red-400 mb-2 px-1 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 bg-red-400 rounded-full animate-pulse" />
                 En vivo · {enVivo.length}
               </p>
-              <div className="bg-surface-900 rounded-xl border border-emerald-500/30 overflow-hidden">
+              <div className="bg-surface-900 rounded-xl border border-red-500/30 overflow-hidden">
                 {enVivo.map((p) => (
                   <MatchRow key={p.id} p={p} favoriteIds={favorites}
                     now={now}

@@ -1,37 +1,53 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useSports }        from '../../hooks/useSports'
-import { useLeagues, useCreateLeague, useUpdateLeague, useDeleteLeague } from '../../hooks/useLeagues'
-import Modal   from '../../components/ui/Modal'
-import Button  from '../../components/ui/Button'
-import Badge   from '../../components/ui/Badge'
-import Spinner from '../../components/ui/Spinner'
+import { useAuth } from '../../hooks/useAuth'
+import { useSports } from '../../hooks/useSports'
 import { useTeams } from '../../hooks/useTeams'
+import { useLeagues, useCreateLeague, useUpdateLeague, useDeleteLeague } from '../../hooks/useLeagues'
+import {
+  useApproveLeague,
+  useArchiveLeague,
+  useOrganizations,
+  useUnarchiveLeague,
+} from '../../hooks/useOrganizations'
+import Modal from '../../components/ui/Modal'
+import Button from '../../components/ui/Button'
+import Badge from '../../components/ui/Badge'
+import Spinner from '../../components/ui/Spinner'
 
-const STATUS_LABEL   = { upcoming: 'Próxima', active: 'Activa', finished: 'Finalizada' }
-const STATUS_VARIANT = { upcoming: 'warning',  active: 'success', finished: 'default' }
-const GENDER_LABEL   = { masculino: 'Masculino', femenino: 'Femenino', mixto: 'Mixto' }
+const STATUS_LABEL = { upcoming: 'Proxima', active: 'Activa', finished: 'Finalizada' }
+const STATUS_VARIANT = { upcoming: 'warning', active: 'success', finished: 'default' }
+const GENDER_LABEL = { masculino: 'Masculino', femenino: 'Femenino', mixto: 'Mixto' }
+const APPROVAL_LABEL = { draft: 'Borrador', pending_review: 'Pendiente', approved: 'Aprobada', rejected: 'Rechazada' }
+const APPROVAL_VARIANT = { draft: 'default', pending_review: 'warning', approved: 'success', rejected: 'danger' }
+
 const COMP_TYPES = [
-  { value: 'liga',   label: 'Liga',   icon: '🏆', desc: 'Todos contra todos' },
-  { value: 'copa',   label: 'Copa',   icon: '🥇', desc: 'Eliminación / Knockout' },
-  { value: 'torneo', label: 'Torneo', icon: '🎯', desc: 'Formato libre / mixto' },
+  { value: 'liga', label: 'Liga', icon: 'T', desc: 'Todos contra todos' },
+  { value: 'copa', label: 'Copa', icon: 'C', desc: 'Eliminacion' },
+  { value: 'torneo', label: 'Torneo', icon: 'F', desc: 'Formato libre' },
 ]
 
-const FORM_VACIO = {
-  sport_id: '', name: '', season: '', year: new Date().getFullYear(),
-  gender: 'masculino', status: 'upcoming', champion_team_id: '',
+const EMPTY_FORM = {
+  organization_id: '',
+  sport_id: '',
+  name: '',
+  season: '',
+  year: new Date().getFullYear(),
+  gender: 'masculino',
+  status: 'upcoming',
+  champion_team_id: '',
   competition_type: 'liga',
 }
 
-const INPUT = "w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none"
+const INPUT = 'w-full rounded-lg border border-surface-700 bg-surface-800 px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-primary/30'
 
-function EquipoSelector({ sportId, value, onChange }) {
-  const { data: equipos = [] } = useTeams({ sportId })
+function ChampionSelector({ sportId, organizationId, value, onChange }) {
+  const { data: teams = [] } = useTeams({ sportId, organizationId })
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} className={INPUT}>
-      <option value="">Sin campeón asignado</option>
-      {equipos.map((e) => (
-        <option key={e.id} value={e.id}>{e.name}</option>
+    <select value={value} onChange={(event) => onChange(event.target.value)} className={INPUT}>
+      <option value="">Sin campeon asignado</option>
+      {teams.map((team) => (
+        <option key={team.id} value={team.id}>{team.name}</option>
       ))}
     </select>
   )
@@ -39,140 +55,259 @@ function EquipoSelector({ sportId, value, onChange }) {
 
 export default function ManageLeagues() {
   const navigate = useNavigate()
-  const [modal, setModal]       = useState(false)
-  const [editando, setEditando] = useState(null)
-  const [form, setForm]         = useState(FORM_VACIO)
-  const [filtro, setFiltro]     = useState('')
+  const { isSuperAdmin, organizationId, organization } = useAuth()
+  const [modal, setModal] = useState(false)
+  const [editing, setEditing] = useState(null)
+  const [form, setForm] = useState(EMPTY_FORM)
+  const [sportFilter, setSportFilter] = useState('')
+  const [showArchived, setShowArchived] = useState(false)
 
-  const { data: sports = [] }                     = useSports()
-  const { data: ligas = [], isLoading }           = useLeagues({ sportSlug: filtro || undefined })
-  const crearLiga   = useCreateLeague()
-  const editarLiga  = useUpdateLeague()
-  const borrarLiga  = useDeleteLeague()
+  const scopedOrgId = isSuperAdmin ? undefined : organizationId
+  const { data: organizations = [] } = useOrganizations({ includeArchived: isSuperAdmin })
+  const { data: sports = [] } = useSports({ organizationId: scopedOrgId })
+  const { data: leagues = [], isLoading } = useLeagues({
+    sportSlug: sportFilter || undefined,
+    organizationId: scopedOrgId,
+    includeArchived: showArchived,
+  })
 
-  function abrirCrear() {
-    setEditando(null); setForm(FORM_VACIO); setModal(true)
-  }
-  function abrirEditar(l) {
-    setEditando(l)
+  const createLeague = useCreateLeague()
+  const updateLeague = useUpdateLeague()
+  const deleteLeague = useDeleteLeague()
+  const approveLeague = useApproveLeague()
+  const archiveLeague = useArchiveLeague()
+  const unarchiveLeague = useUnarchiveLeague()
+
+  function openCreate() {
+    setEditing(null)
     setForm({
-      sport_id: l.sport_id, name: l.name, season: l.season ?? '',
-      year: l.year ?? new Date().getFullYear(), gender: l.gender, status: l.status,
-      champion_team_id: l.champion_team_id ?? '',
-      competition_type: l.competition_type ?? 'liga',
+      ...EMPTY_FORM,
+      organization_id: isSuperAdmin ? '' : organizationId,
     })
     setModal(true)
   }
-  async function guardar() {
-    if (!form.sport_id || !form.name) return
+
+  function openEdit(league) {
+    setEditing(league)
+    setForm({
+      organization_id: league.organization_id,
+      sport_id: league.sport_id,
+      name: league.name,
+      season: league.season ?? '',
+      year: league.year ?? new Date().getFullYear(),
+      gender: league.gender,
+      status: league.status,
+      champion_team_id: league.champion_team_id ?? '',
+      competition_type: league.competition_type ?? 'liga',
+    })
+    setModal(true)
+  }
+
+  async function save() {
+    if (!form.organization_id || !form.sport_id || !form.name) return
+    const selectedOrg = organizations.find((org) => org.id === form.organization_id) ?? organization
+    if (!selectedOrg) return
+
     const payload = {
       ...form,
       champion_team_id: form.champion_team_id || null,
-      season:           form.season || null,
+      season: form.season || null,
+      city: selectedOrg.city,
+      province: selectedOrg.province,
+      country: selectedOrg.country || 'Argentina',
+      approval_status: editing ? editing.approval_status : (isSuperAdmin ? 'approved' : 'pending_review'),
     }
-    if (editando) await editarLiga.mutateAsync({ id: editando.id, ...payload })
-    else          await crearLiga.mutateAsync(payload)
+
+    if (editing) await updateLeague.mutateAsync({ id: editing.id, ...payload })
+    else await createLeague.mutateAsync(payload)
     setModal(false)
   }
-  async function borrar(l) {
-    if (!window.confirm(`¿Eliminar "${l.name}"? Se borrarán todos sus datos.`)) return
-    await borrarLiga.mutateAsync(l.id)
+
+  async function remove(league) {
+    if (!window.confirm(`Eliminar "${league.name}"? Se borraran todos sus datos.`)) return
+    await deleteLeague.mutateAsync(league.id)
   }
 
-  const guardando = crearLiga.isPending || editarLiga.isPending
+  async function archive(league) {
+    const reason = window.prompt(`Motivo para archivar "${league.name}"`, league.archive_reason ?? '')
+    if (reason === null) return
+    await archiveLeague.mutateAsync({ id: league.id, reason })
+  }
+
+  async function unarchive(league) {
+    if (!window.confirm(`Desarchivar "${league.name}"?`)) return
+    await unarchiveLeague.mutateAsync(league.id)
+  }
+
+  const saving = createLeague.isPending || updateLeague.isPending
+  const modalSports = isSuperAdmin && form.organization_id
+    ? sports.filter((sport) => sport.organization_id === form.organization_id)
+    : sports
 
   return (
     <div className="px-4 py-6 pb-28">
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-xl font-bold text-zinc-100">Ligas</h1>
-        <Button size="sm" onClick={abrirCrear}>+ Nueva Liga</Button>
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-zinc-100">Ligas</h1>
+          <p className="mt-1 text-xs text-zinc-500">
+            {isSuperAdmin ? 'Todas las organizaciones' : `${organization?.city ?? ''}, ${organization?.province ?? ''}`}
+          </p>
+        </div>
+        <Button size="sm" onClick={openCreate}>+ Nueva Liga</Button>
       </div>
 
-      <div className="flex gap-2 mb-4 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-none">
-        {[{ slug: '', name: 'Todas', icon: '🏅' }, ...sports].map((s) => (
-          <button key={s.slug} onClick={() => setFiltro(s.slug)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors shrink-0
-              ${filtro === s.slug ? 'bg-primary text-white' : 'bg-surface-800 text-zinc-300 hover:bg-surface-700'}`}>
-            {s.icon} {s.name}
+      {isSuperAdmin && (
+        <button
+          type="button"
+          onClick={() => setShowArchived((value) => !value)}
+          className={`mb-3 rounded-full px-3 py-1.5 text-xs font-semibold ${
+            showArchived ? 'bg-primary text-white' : 'bg-surface-800 text-zinc-300'
+          }`}
+        >
+          {showArchived ? 'Mostrando archivadas' : 'Ver archivadas'}
+        </button>
+      )}
+
+      <div className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4 pb-1 scrollbar-none">
+        {[{ slug: '', name: 'Todas', icon: 'T' }, ...sports].map((sport) => (
+          <button
+            key={sport.slug}
+            onClick={() => setSportFilter(sport.slug)}
+            className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+              sportFilter === sport.slug ? 'bg-primary text-white' : 'bg-surface-800 text-zinc-300 hover:bg-surface-700'
+            }`}
+          >
+            {sport.icon} {sport.name}
           </button>
         ))}
       </div>
 
-      {isLoading ? <Spinner className="py-12" /> : ligas.length === 0 ? (
-        <p className="text-center text-zinc-500 py-16 text-sm">No hay ligas todavía</p>
+      {isLoading ? <Spinner className="py-12" /> : leagues.length === 0 ? (
+        <p className="py-16 text-center text-sm text-zinc-500">No hay ligas todavia.</p>
       ) : (
         <div className="space-y-3">
-          {ligas.map((l) => {
-            const comp = COMP_TYPES.find((c) => c.value === (l.competition_type ?? 'liga'))
+          {leagues.map((league) => {
+            const comp = COMP_TYPES.find((item) => item.value === (league.competition_type ?? 'liga'))
             return (
-              <div key={l.id} className="bg-surface-900 rounded-xl border border-surface-800 shadow-sm p-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span>{l.sports?.icon}</span>
-                      <span className="font-semibold text-sm truncate text-zinc-100">{l.name}</span>
+              <article key={league.id} className="rounded-xl border border-surface-800 bg-surface-900 p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-1 flex items-center gap-2">
+                      <span>{league.sports?.icon}</span>
+                      <span className="truncate text-sm font-semibold text-zinc-100">{league.name}</span>
                     </div>
-                    <p className="text-xs text-zinc-500 mb-2">{l.season} {l.year && `· ${l.year}`}</p>
-                    <div className="flex gap-2 flex-wrap">
-                      <Badge variant={STATUS_VARIANT[l.status]}>{STATUS_LABEL[l.status]}</Badge>
-                      <Badge>{GENDER_LABEL[l.gender]}</Badge>
+                    <p className="mb-2 text-xs text-zinc-500">{league.season} {league.year ? `· ${league.year}` : ''}</p>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant={STATUS_VARIANT[league.status]}>{STATUS_LABEL[league.status]}</Badge>
+                      <Badge>{GENDER_LABEL[league.gender]}</Badge>
+                      <Badge variant={APPROVAL_VARIANT[league.approval_status]}>
+                        {APPROVAL_LABEL[league.approval_status] ?? league.approval_status}
+                      </Badge>
+                      {league.is_archived && <Badge variant="danger">Archivada</Badge>}
                       {comp && <Badge variant="primary">{comp.icon} {comp.label}</Badge>}
                     </div>
+                    <p className="mt-2 text-[10px] text-zinc-500">
+                      {league.organizations?.name ?? 'Sin organizacion'} · {league.city}, {league.province}
+                    </p>
+                    {league.archive_reason && (
+                      <p className="mt-1 text-xs text-amber-300">Motivo: {league.archive_reason}</p>
+                    )}
                   </div>
-                  <div className="flex flex-col gap-1.5 ml-2 shrink-0 items-end">
-                    <button onClick={() => navigate(`/admin/posiciones?liga=${l.id}`)}
-                      className="text-xs text-emerald-400 font-medium hover:text-emerald-300">
-                      📊 Tabla
+                  <div className="ml-2 flex shrink-0 flex-col items-end gap-1.5">
+                    {isSuperAdmin && league.approval_status !== 'approved' && (
+                      <button onClick={() => approveLeague.mutateAsync(league.id)} className="text-xs font-medium text-emerald-400 hover:text-emerald-300">
+                        Aprobar
+                      </button>
+                    )}
+                    {isSuperAdmin && (
+                      league.is_archived ? (
+                        <button onClick={() => unarchive(league)} className="text-xs font-medium text-emerald-400 hover:text-emerald-300">
+                          Desarchivar
+                        </button>
+                      ) : (
+                        <button onClick={() => archive(league)} className="text-xs font-medium text-amber-400 hover:text-amber-300">
+                          Archivar
+                        </button>
+                      )
+                    )}
+                    <button onClick={() => navigate(`/admin/posiciones?liga=${league.id}`)} className="text-xs font-medium text-emerald-400 hover:text-emerald-300">
+                      Tabla
                     </button>
-                    <button onClick={() => navigate(`/admin/goleadores?liga=${l.id}`)}
-                      className="text-xs text-amber-400 font-medium hover:text-amber-300">
-                      ⚽ Goleadores
+                    <button onClick={() => navigate(`/admin/goleadores?liga=${league.id}`)} className="text-xs font-medium text-amber-400 hover:text-amber-300">
+                      Goleadores
                     </button>
-                    <button onClick={() => abrirEditar(l)}
-                      className="text-xs text-primary font-medium hover:text-primary-400">
+                    <button onClick={() => openEdit(league)} className="text-xs font-medium text-primary hover:text-primary-400">
                       Editar
                     </button>
-                    <button onClick={() => borrar(l)}
-                      className="text-xs text-red-400 font-medium hover:text-red-300">
-                      Borrar
-                    </button>
+                    {isSuperAdmin && (
+                      <button onClick={() => remove(league)} className="text-xs font-medium text-red-400 hover:text-red-300">
+                        Borrar
+                      </button>
+                    )}
                   </div>
                 </div>
-              </div>
+              </article>
             )
           })}
         </div>
       )}
 
-      <Modal open={modal} onClose={() => setModal(false)} title={editando ? 'Editar Liga' : 'Nueva Liga'}>
+      <Modal open={modal} onClose={() => setModal(false)} title={editing ? 'Editar Liga' : 'Nueva Liga'}>
         <div className="space-y-4">
+          {isSuperAdmin ? (
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-zinc-400">Organizacion *</label>
+              <select value={form.organization_id} onChange={(event) => setForm({ ...form, organization_id: event.target.value, sport_id: '' })} className={INPUT}>
+                <option value="">Seleccionar...</option>
+                {organizations.filter((org) => org.status === 'active').map((org) => (
+                  <option key={org.id} value={org.id}>{org.name} · {org.city}, {org.province}</option>
+                ))}
+              </select>
+            </div>
+          ) : organization ? (
+            <div className="rounded-xl border border-primary/20 bg-primary/10 p-3">
+              <p className="text-xs font-semibold text-primary">Organizacion</p>
+              <p className="text-sm font-bold text-zinc-100">{organization.name}</p>
+              <p className="text-xs text-zinc-400">{organization.city}, {organization.province}</p>
+            </div>
+          ) : null}
+
           <div>
-            <label className="text-xs font-semibold text-zinc-400 mb-1 block">Deporte *</label>
-            <select value={form.sport_id} onChange={(e) => setForm({ ...form, sport_id: e.target.value })} className={INPUT}>
+            <label className="mb-1 block text-xs font-semibold text-zinc-400">Deporte *</label>
+            <select value={form.sport_id} onChange={(event) => setForm({ ...form, sport_id: event.target.value })} className={INPUT}>
               <option value="">Seleccionar...</option>
-              {sports.map((s) => <option key={s.id} value={s.id}>{s.icon} {s.name}</option>)}
+              {modalSports.map((sport) => <option key={sport.id} value={sport.id}>{sport.icon} {sport.name}</option>)}
             </select>
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-zinc-400 mb-1 block">Nombre *</label>
-            <input type="text" value={form.name} placeholder="Liga Mercedina de Fútbol"
-              onChange={(e) => setForm({ ...form, name: e.target.value })} className={INPUT} />
+            <label className="mb-1 block text-xs font-semibold text-zinc-400">Nombre *</label>
+            <input
+              type="text"
+              value={form.name}
+              placeholder="Liga de Futsal San Juan"
+              onChange={(event) => setForm({ ...form, name: event.target.value })}
+              className={INPUT}
+            />
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-zinc-400 mb-1.5 block">Tipo de competencia *</label>
+            <label className="mb-1.5 block text-xs font-semibold text-zinc-400">Tipo de competencia *</label>
             <div className="grid grid-cols-3 gap-2">
-              {COMP_TYPES.map((c) => (
-                <button key={c.value} type="button"
-                  onClick={() => setForm({ ...form, competition_type: c.value })}
-                  className={`flex flex-col items-center gap-1 p-2 rounded-lg border transition-colors text-center
-                    ${form.competition_type === c.value
-                      ? 'bg-primary/15 border-primary text-primary'
-                      : 'bg-surface-800 border-surface-700 text-zinc-300 hover:border-surface-600'}`}>
-                  <span className="text-lg">{c.icon}</span>
-                  <span className="text-xs font-bold">{c.label}</span>
-                  <span className="text-[9px] opacity-70 leading-tight">{c.desc}</span>
+              {COMP_TYPES.map((comp) => (
+                <button
+                  key={comp.value}
+                  type="button"
+                  onClick={() => setForm({ ...form, competition_type: comp.value })}
+                  className={`rounded-lg border p-2 text-center transition-colors ${
+                    form.competition_type === comp.value
+                      ? 'border-primary bg-primary/15 text-primary'
+                      : 'border-surface-700 bg-surface-800 text-zinc-300 hover:border-surface-600'
+                  }`}
+                >
+                  <span className="block text-xs font-black">{comp.icon}</span>
+                  <span className="block text-xs font-bold">{comp.label}</span>
+                  <span className="block text-[9px] leading-tight opacity-70">{comp.desc}</span>
                 </button>
               ))}
             </div>
@@ -180,30 +315,30 @@ export default function ManageLeagues() {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-semibold text-zinc-400 mb-1 block">Temporada</label>
-              <input type="text" value={form.season} placeholder="Apertura 2025"
-                onChange={(e) => setForm({ ...form, season: e.target.value })} className={INPUT} />
+              <label className="mb-1 block text-xs font-semibold text-zinc-400">Temporada</label>
+              <input type="text" value={form.season} placeholder="Apertura 2026"
+                onChange={(event) => setForm({ ...form, season: event.target.value })} className={INPUT} />
             </div>
             <div>
-              <label className="text-xs font-semibold text-zinc-400 mb-1 block">Año</label>
+              <label className="mb-1 block text-xs font-semibold text-zinc-400">Anio</label>
               <input type="number" value={form.year}
-                onChange={(e) => setForm({ ...form, year: parseInt(e.target.value) })} className={INPUT} />
+                onChange={(event) => setForm({ ...form, year: parseInt(event.target.value) })} className={INPUT} />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-semibold text-zinc-400 mb-1 block">División</label>
-              <select value={form.gender} onChange={(e) => setForm({ ...form, gender: e.target.value })} className={INPUT}>
+              <label className="mb-1 block text-xs font-semibold text-zinc-400">Division</label>
+              <select value={form.gender} onChange={(event) => setForm({ ...form, gender: event.target.value })} className={INPUT}>
                 <option value="masculino">Masculino</option>
                 <option value="femenino">Femenino</option>
                 <option value="mixto">Mixto</option>
               </select>
             </div>
             <div>
-              <label className="text-xs font-semibold text-zinc-400 mb-1 block">Estado</label>
-              <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className={INPUT}>
-                <option value="upcoming">Próxima</option>
+              <label className="mb-1 block text-xs font-semibold text-zinc-400">Estado</label>
+              <select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })} className={INPUT}>
+                <option value="upcoming">Proxima</option>
                 <option value="active">Activa</option>
                 <option value="finished">Finalizada</option>
               </select>
@@ -212,38 +347,27 @@ export default function ManageLeagues() {
 
           {form.status === 'finished' && (
             <div>
-              <label className="text-xs font-semibold text-zinc-400 mb-1 block">
-                🏆 Equipo Campeón
-              </label>
-              <EquipoSelector
-                sportId={sports.find((s) => s.id === form.sport_id)?.id}
+              <label className="mb-1 block text-xs font-semibold text-zinc-400">Equipo campeon</label>
+              <ChampionSelector
+                sportId={form.sport_id}
+                organizationId={form.organization_id}
                 value={form.champion_team_id ?? ''}
-                onChange={(val) => setForm({ ...form, champion_team_id: val })}
+                onChange={(value) => setForm({ ...form, champion_team_id: value })}
               />
             </div>
           )}
 
-          {editando && (
-            <div className="grid grid-cols-2 gap-2">
-              <button type="button"
-                onClick={() => { setModal(false); navigate(`/admin/posiciones?liga=${editando.id}`) }}
-                className="text-xs font-semibold text-emerald-400 border border-emerald-500/40 rounded-lg py-2 hover:bg-emerald-500/10 transition-colors">
-                📊 Tabla
-              </button>
-              <button type="button"
-                onClick={() => { setModal(false); navigate(`/admin/goleadores?liga=${editando.id}`) }}
-                className="text-xs font-semibold text-amber-400 border border-amber-500/40 rounded-lg py-2 hover:bg-amber-500/10 transition-colors">
-                ⚽ Goleadores
-              </button>
+          {!isSuperAdmin && (
+            <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-3">
+              <p className="text-xs leading-relaxed text-amber-200">
+                La liga quedara pendiente hasta que un superadmin la apruebe. La ubicacion queda fija segun tu organizacion.
+              </p>
             </div>
           )}
 
-          <Button onClick={guardar} disabled={guardando || !form.sport_id || !form.name} className="w-full">
-            {guardando ? 'Guardando...' : editando ? 'Guardar cambios' : 'Crear Liga'}
+          <Button onClick={save} disabled={saving || !form.organization_id || !form.sport_id || !form.name} className="w-full">
+            {saving ? 'Guardando...' : editing ? 'Guardar cambios' : isSuperAdmin ? 'Crear Liga' : 'Enviar a aprobacion'}
           </Button>
-          {(crearLiga.isError || editarLiga.isError) && (
-            <p className="text-red-400 text-xs text-center">Error al guardar. Intentá de nuevo.</p>
-          )}
         </div>
       </Modal>
     </div>

@@ -3,12 +3,17 @@ import { supabase } from '../lib/supabase'
 
 // --- QUERIES ---
 
-export function useTeams({ sportId } = {}) {
+export function useTeams({ sportId, organizationId, includeArchived = false } = {}) {
   return useQuery({
-    queryKey: ['teams', sportId],
+    queryKey: ['teams', sportId, organizationId, includeArchived],
     queryFn: async () => {
-      let q = supabase.from('teams').select('*, sports(id, name, slug)').order('name')
+      let q = supabase
+        .from('teams')
+        .select('*, sports(id, name, slug), organizations(id, name, city, province)')
+        .order('name')
       if (sportId) q = q.eq('sport_id', sportId)
+      if (organizationId) q = q.eq('organization_id', organizationId)
+      if (!includeArchived) q = q.eq('is_archived', false)
       const { data, error } = await q
       if (error) throw error
       return data ?? []
@@ -22,7 +27,7 @@ export function useTeam(teamId) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('teams')
-        .select('*, sports(id, name, slug, icon), venues(id, name, address)')
+        .select('*, sports(id, name, slug, icon), organizations(id, name, city, province), venues(id, name, address)')
         .eq('id', teamId)
         .single()
       if (error) throw error
