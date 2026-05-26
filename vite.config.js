@@ -24,19 +24,6 @@ export default defineConfig({
               },
             },
           },
-          {
-            urlPattern: ({ url, request }) =>
-              url.hostname.endsWith('.supabase.co') && request.method === 'GET',
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'vmscore-supabase-read',
-              networkTimeoutSeconds: 4,
-              expiration: {
-                maxEntries: 80,
-                maxAgeSeconds: 60 * 60,
-              },
-            },
-          },
         ],
       },
       manifest: {

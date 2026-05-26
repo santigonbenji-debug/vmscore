@@ -1,3 +1,7 @@
+self.addEventListener('activate', (event) => {
+  event.waitUntil(caches.delete('vmscore-supabase-read'))
+})
+
 self.addEventListener('push', (event) => {
   let payload = {
     title: 'VMScore',
