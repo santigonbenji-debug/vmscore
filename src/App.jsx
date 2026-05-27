@@ -68,7 +68,7 @@ export default function App() {
         <Route path="canchas"            element={<ManageVenues />} />
         <Route path="resultado/:matchId" element={<LoadResult />} />
         <Route path="mis-partidos"       element={<MisPartidos />} />
-        <Route path="deportes"           element={<SuperAdminRoute><ManageSports /></SuperAdminRoute>} />
+        <Route path="deportes"           element={<ManageSports />} />
         <Route path="organizaciones"     element={<SuperAdminRoute><ManageOrganizations /></SuperAdminRoute>} />
         <Route path="planteles"          element={<Navigate to="/admin/equipos" replace />} />
         <Route path="noticias"           element={<SuperAdminRoute><ManageNews /></SuperAdminRoute>} />
