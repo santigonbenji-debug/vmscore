@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Trophy } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useSports } from '../../hooks/useSports'
 import { useTeams } from '../../hooks/useTeams'
@@ -269,7 +270,20 @@ export default function ManageLeagues() {
         </div>
       )}
 
-      <Modal open={modal} onClose={() => setModal(false)} title={editing ? 'Editar competencia' : 'Nueva competencia'}>
+      <Modal
+        open={modal}
+        onClose={() => setModal(false)}
+        title={editing ? 'Editar competencia' : 'Nueva competencia'}
+        eyebrow="Competicion"
+        description="Defini organizacion, deporte y formato. Despues se administran equipos, fases y cruces desde su panel."
+        icon={<Trophy className="h-5 w-5" />}
+        size="lg"
+        guide={[
+          { title: 'Base', text: 'Organizacion, deporte y nombre.' },
+          { title: 'Formato', text: 'Liga, copa, torneo o campeonato.' },
+          { title: 'Gestion', text: 'Luego cargas equipos y partidos.' },
+        ]}
+      >
         <div className="space-y-4">
           {isSuperAdmin ? (
             <div>

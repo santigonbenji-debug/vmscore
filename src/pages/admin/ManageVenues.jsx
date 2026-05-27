@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { MapPin } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useOrganizations } from '../../hooks/useOrganizations'
 import { useVenues, useCreateVenue, useUpdateVenue, useDeleteVenue } from '../../hooks/useVenues'
@@ -103,7 +104,19 @@ export default function ManageVenues() {
         </div>
       )}
 
-      <Modal open={modal} onClose={() => setModal(false)} title={editing ? 'Editar Cancha' : 'Nueva Cancha'}>
+      <Modal
+        open={modal}
+        onClose={() => setModal(false)}
+        title={editing ? 'Editar cancha' : 'Nueva cancha'}
+        eyebrow="Sede"
+        description="Carga una cancha para asignarla a partidos. La ciudad se toma de la organizacion si no la editas."
+        icon={<MapPin className="h-5 w-5" />}
+        guide={[
+          { title: 'Organizacion', text: 'Limita quien puede usarla.' },
+          { title: 'Ubicacion', text: 'Nombre, direccion y ciudad.' },
+          { title: 'Partidos', text: 'Luego se elige desde fixture.' },
+        ]}
+      >
         <div className="space-y-4">
           {isSuperAdmin ? (
             <div>

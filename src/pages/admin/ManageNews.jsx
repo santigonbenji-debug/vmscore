@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Newspaper } from 'lucide-react'
 import { useAllNews, useCreateNews, useUpdateNews, useDeleteNews } from '../../hooks/useNews'
 import { useTeams } from '../../hooks/useTeams'
 import { useLeagues } from '../../hooks/useLeagues'
@@ -164,7 +165,20 @@ export default function ManageNews() {
         </div>
       )}
 
-      <Modal open={modal} onClose={() => setModal(false)} title={editando ? 'Editar Noticia' : 'Nueva Noticia'}>
+      <Modal
+        open={modal}
+        onClose={() => setModal(false)}
+        title={editando ? 'Editar noticia' : 'Nueva noticia'}
+        eyebrow="Noticia"
+        description="Publica una novedad para Home. Puede quedar programada y asociada a una liga o equipo."
+        icon={<Newspaper className="h-5 w-5" />}
+        size="lg"
+        guide={[
+          { title: 'Contenido', text: 'Titulo, cuerpo e imagen.' },
+          { title: 'Relacion', text: 'Equipo o liga opcional.' },
+          { title: 'Publicacion', text: 'Ahora o programada.' },
+        ]}
+      >
         <div className="space-y-4">
           <div>
             <label className="text-xs font-semibold text-zinc-400 mb-1 block">Título *</label>

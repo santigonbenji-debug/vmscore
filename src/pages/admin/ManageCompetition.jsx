@@ -297,7 +297,19 @@ export default function ManageCompetition() {
         </div>
       </StepCard>
 
-      <Modal open={phaseModal} onClose={() => setPhaseModal(false)} title={editingPhase ? 'Editar fase' : 'Nueva fase'}>
+      <Modal
+        open={phaseModal}
+        onClose={() => setPhaseModal(false)}
+        title={editingPhase ? 'Editar fase' : 'Nueva fase'}
+        eyebrow="Ronda"
+        description="Define una etapa de la competencia. En copas se usa para ordenar cuartos, semifinal y final."
+        icon={<GitBranch className="h-5 w-5" />}
+        guide={[
+          { title: 'Nombre', text: 'Ronda o etapa.' },
+          { title: 'Tipo', text: 'Tabla, grupos o eliminatoria.' },
+          { title: 'Orden', text: 'Como aparece en el panel.' },
+        ]}
+      >
         <div className="space-y-4">
           <div>
             <label className="mb-1 block text-xs font-semibold text-zinc-400">Nombre *</label>

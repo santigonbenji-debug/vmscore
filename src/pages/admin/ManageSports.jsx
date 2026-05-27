@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Activity } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useOrganizations } from '../../hooks/useOrganizations'
 import { useSports, useCreateSport, useUpdateSport, useDeleteSport } from '../../hooks/useSports'
@@ -100,7 +101,19 @@ export default function ManageSports() {
         </div>
       )}
 
-      <Modal open={modal} onClose={() => setModal(false)} title={editing ? 'Editar Deporte' : 'Nuevo Deporte'}>
+      <Modal
+        open={modal}
+        onClose={() => setModal(false)}
+        title={editing ? 'Editar deporte' : 'Nuevo deporte'}
+        eyebrow="Deporte"
+        description="Crea una disciplina dentro de la organizacion para separar equipos, competencias y planteles."
+        icon={<Activity className="h-5 w-5" />}
+        guide={[
+          { title: 'Organizacion', text: 'Define donde vive.' },
+          { title: 'Icono', text: 'Se ve en filtros y tablas.' },
+          { title: 'Slug', text: 'Identificador interno limpio.' },
+        ]}
+      >
         <div className="space-y-4">
           {!isSuperAdmin && organization && (
             <div className="rounded-xl border border-primary/20 bg-primary/10 p-3">

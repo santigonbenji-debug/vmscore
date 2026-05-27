@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { CalendarPlus, SlidersHorizontal } from 'lucide-react'
 import { useLeagues, usePhases } from '../../hooks/useLeagues'
 import { useLeagueTeams } from '../../hooks/useRosters'
 import {
@@ -393,7 +394,20 @@ export default function ManageMatches() {
         </div>
       )}
 
-      <Modal open={modal} onClose={() => setModal(false)} title="Nuevo Partido">
+      <Modal
+        open={modal}
+        onClose={() => setModal(false)}
+        title="Nuevo partido"
+        eyebrow={isKnockout ? 'Cruce' : 'Fixture'}
+        description="Carga un partido oficial con equipos inscriptos, fecha, horario y sede. Si el cruce ya existe, la app lo detecta."
+        icon={<CalendarPlus className="h-5 w-5" />}
+        size="lg"
+        guide={[
+          { title: 'Fase', text: 'Ronda o fecha donde va.' },
+          { title: 'Equipos', text: 'Solo inscriptos en la competencia.' },
+          { title: 'Detalles', text: 'Horario, cancha y arbitro.' },
+        ]}
+      >
         <div className="space-y-4">
           <div>
             <label className="mb-1 block text-xs font-semibold text-zinc-400">Fase *</label>
@@ -466,7 +480,20 @@ export default function ManageMatches() {
         </div>
       </Modal>
 
-      <Modal open={modalEditar} onClose={() => setModalEditar(false)} title="Editar partido">
+      <Modal
+        open={modalEditar}
+        onClose={() => setModalEditar(false)}
+        title="Editar partido"
+        eyebrow="Detalles"
+        description="Ajusta fecha, sede, estado y datos visibles del encuentro sin tocar eventos ni tabla automaticamente."
+        icon={<SlidersHorizontal className="h-5 w-5" />}
+        size="lg"
+        guide={[
+          { title: 'Fecha', text: 'Programado o a definir.' },
+          { title: 'Estado', text: 'En vivo, finalizado o postergado.' },
+          { title: 'Contexto', text: 'Cancha, arbitro, DT y notas.' },
+        ]}
+      >
         <div className="space-y-4">
           {editando && (
             <div className="rounded-lg border border-surface-800 bg-surface-900 p-3 text-sm font-bold text-zinc-100">

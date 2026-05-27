@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { fromZonedTime, toZonedTime } from 'date-fns-tz'
+import { DatabaseZap } from 'lucide-react'
 import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
 import Spinner from '../../components/ui/Spinner'
@@ -1278,6 +1279,15 @@ export default function ManageExternalSources() {
         open={!!editingArchive}
         onClose={() => setEditingArchive(null)}
         title="Editar historico"
+        eyebrow="Importacion"
+        description="Revisa un partido importado antes de publicarlo, confirmarlo o computarlo en la tabla oficial."
+        icon={<DatabaseZap className="h-5 w-5" />}
+        size="lg"
+        guide={[
+          { title: 'Datos', text: 'Dia, cancha y arbitro.' },
+          { title: 'Publicar', text: 'Lo lleva al fixture oficial.' },
+          { title: 'Tabla', text: 'Computa solo cuando corresponde.' },
+        ]}
       >
         <div className="space-y-3">
           <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">

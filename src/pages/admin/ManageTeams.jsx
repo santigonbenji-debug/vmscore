@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Shield } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useOrganizations } from '../../hooks/useOrganizations'
 import { useSports } from '../../hooks/useSports'
@@ -299,7 +300,20 @@ export default function ManageTeams() {
         </div>
       )}
 
-      <Modal open={modal} onClose={() => setModal(false)} title={editando ? 'Editar Equipo' : 'Nuevo Equipo'}>
+      <Modal
+        open={modal}
+        onClose={() => setModal(false)}
+        title={editando ? 'Editar equipo' : 'Nuevo equipo'}
+        eyebrow="Equipo"
+        description="Crea el equipo dentro de una competencia aprobada. El escudo es obligatorio para mantener la app prolija."
+        icon={<Shield className="h-5 w-5" />}
+        size="lg"
+        guide={[
+          { title: 'Competencia', text: 'Elegi donde participa.' },
+          { title: 'Identidad', text: 'Nombre, escudo, colores y DT.' },
+          { title: 'Plantel', text: 'Edita jugadores desde el mismo equipo.' },
+        ]}
+      >
         <div className="space-y-4">
           {isSuperAdmin ? (
             <div>

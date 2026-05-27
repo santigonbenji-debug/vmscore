@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Building2, KeyRound } from 'lucide-react'
 import {
   useArchiveOrganization,
   useCreateOrganization,
@@ -193,7 +194,20 @@ export default function ManageOrganizations() {
         </div>
       )}
 
-      <Modal open={modal} onClose={() => setModal(false)} title={editing ? 'Editar organizacion' : 'Nueva organizacion'}>
+      <Modal
+        open={modal}
+        onClose={() => setModal(false)}
+        title={editing ? 'Editar organizacion' : 'Nueva organizacion'}
+        eyebrow="Organizacion"
+        description="Define la ubicacion y el alcance de trabajo. Esa ubicacion funciona como limite para sus competencias y equipos."
+        icon={<Building2 className="h-5 w-5" />}
+        size="lg"
+        guide={[
+          { title: 'Identidad', text: 'Nombre y logo de la entidad.' },
+          { title: 'Ubicacion', text: 'Ciudad y provincia obligatorias.' },
+          { title: 'Control', text: 'Luego podes archivar o bloquear.' },
+        ]}
+      >
         <div className="space-y-4">
           <div>
             <label className="mb-1 block text-xs font-semibold text-zinc-400">Nombre *</label>
@@ -255,7 +269,19 @@ export default function ManageOrganizations() {
         </div>
       </Modal>
 
-      <Modal open={accessModal} onClose={() => setAccessModal(false)} title="Crear acceso de organizacion">
+      <Modal
+        open={accessModal}
+        onClose={() => setAccessModal(false)}
+        title="Crear acceso de organizacion"
+        eyebrow="Acceso"
+        description="Genera un usuario limitado a esta organizacion. No podra usar importaciones, scraping ni herramientas reservadas."
+        icon={<KeyRound className="h-5 w-5" />}
+        guide={[
+          { title: 'Email', text: 'Usuario para ingresar.' },
+          { title: 'Clave', text: 'Temporal y fuerte.' },
+          { title: 'Permisos', text: 'Solo su organizacion.' },
+        ]}
+      >
         <div className="space-y-4">
           <div className="rounded-lg border border-surface-700 bg-surface-800/60 p-3">
             <p className="text-sm font-bold text-zinc-100">{accessForm.organizationName}</p>

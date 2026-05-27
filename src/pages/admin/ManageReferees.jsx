@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { UserCheck } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useOrganizations } from '../../hooks/useOrganizations'
 import { useReferees, useCreateReferee, useUpdateReferee, useDeleteReferee } from '../../hooks/useReferees'
@@ -84,7 +85,19 @@ export default function ManageReferees() {
         </div>
       )}
 
-      <Modal open={modal} onClose={() => setModal(false)} title={editing ? 'Editar Arbitro' : 'Nuevo Arbitro'}>
+      <Modal
+        open={modal}
+        onClose={() => setModal(false)}
+        title={editing ? 'Editar arbitro' : 'Nuevo arbitro'}
+        eyebrow="Arbitro"
+        description="Registra arbitros para asignarlos a partidos desde el fixture administrativo."
+        icon={<UserCheck className="h-5 w-5" />}
+        guide={[
+          { title: 'Organizacion', text: 'Disponible para su zona.' },
+          { title: 'Nombre', text: 'Dato visible en detalles.' },
+          { title: 'Contacto', text: 'Opcional para gestion interna.' },
+        ]}
+      >
         <div className="space-y-4">
           {isSuperAdmin ? (
             <div>
