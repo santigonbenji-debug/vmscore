@@ -2,10 +2,10 @@ import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useMatch, useSaveLiveMatchData, useSaveResult } from '../../hooks/useMatches'
 import { useAuth } from '../../hooks/useAuth'
+import { useNow } from '../../hooks/useNow'
 import { useTeamPlayers } from '../../hooks/useRosters'
 import { useAddActiveRosterToMatch, useAddMatchLineupPlayer, useMatchLineups, useRemoveMatchLineupPlayer } from '../../hooks/useLineups'
 import {
-  useLiveSyncEvents,
   useMatchLiveLink,
   useCreateManualLiveEvent,
   useSaveCopaFacilMatchLink,
@@ -14,10 +14,10 @@ import {
   useSearchCopaFacilMatches,
   useSearchLocosVmMatches,
   useSyncLocosVmLive,
-  useUpdateLiveSyncEvent,
 } from '../../hooks/useLiveSync'
 import Button from '../../components/ui/Button'
 import Spinner from '../../components/ui/Spinner'
+import { isLocosHalftime, locosMinuteLabel } from '../../lib/helpers'
 
 const TIPOS_EVENTO = [
   { value: 'goal', label: 'Gol' },
@@ -77,6 +77,7 @@ function LineupTeam({ title, players, onRemove, onLoadRoster, canRemove, loading
 export default function LoadResult() {
   const { matchId } = useParams()
   const navigate = useNavigate()
+  const now = useNow()
   const { isSuperAdmin, isOrganizationAdmin, isLigaAdmin, isClubAdmin, teamId } = useAuth()
   const { data, isLoading } = useMatch(matchId)
   const guardarEnVivoMutation = useSaveLiveMatchData()
@@ -111,13 +112,11 @@ export default function LoadResult() {
   const { data: awayPlayers = [] } = useTeamPlayers(data?.match?.away_team_id, data?.match?.gender)
   const { data: liveLink } = useMatchLiveLink(matchId)
   const { data: copaFacilLiveLink } = useMatchLiveLink(matchId, 'copafacil')
-  const { data: liveEvents = [] } = useLiveSyncEvents(matchId)
   const saveLiveLink = useSaveMatchLiveLink()
   const searchLocosVm = useSearchLocosVmMatches()
   const searchCopaFacil = useSearchCopaFacilMatches()
   const saveCopaFacilLink = useSaveCopaFacilMatchLink()
   const syncLocosVm = useSyncLocosVmLive()
-  const updateLiveEvent = useUpdateLiveSyncEvent()
   const createManualLiveEvent = useCreateManualLiveEvent()
   const syncCopaFacilLive = useSyncCopaFacilLive()
 
@@ -289,40 +288,6 @@ export default function LoadResult() {
     setLocosMessage('Partido vinculado. La sincronizacion queda guardada para futuras lecturas.')
   }
 
-  function aplicarMarcadorVivo() {
-    if (!liveLink) return
-    if (liveLink.last_home_score !== null && liveLink.last_home_score !== undefined) {
-      setHomeScore(String(liveLink.last_home_score))
-    }
-    if (liveLink.last_away_score !== null && liveLink.last_away_score !== undefined) {
-      setAwayScore(String(liveLink.last_away_score))
-    }
-  }
-
-  async function aplicarEventoVivo(event) {
-    if (event.event_type === 'goal' && event.team_id) {
-      setEvents((current) => [...current, {
-        team_id: event.team_id,
-        player_id: '',
-        player_name: 'Jugador por confirmar',
-        event_type: 'goal',
-        minute: event.minute ?? '',
-        notes: event.title,
-      }])
-    }
-
-    if (event.event_type === 'finish') {
-      if (event.home_score !== null && event.home_score !== undefined) setHomeScore(String(event.home_score))
-      if (event.away_score !== null && event.away_score !== undefined) setAwayScore(String(event.away_score))
-    }
-
-    await updateLiveEvent.mutateAsync({ id: event.id, matchId, status: 'applied' })
-  }
-
-  async function descartarEventoVivo(event) {
-    await updateLiveEvent.mutateAsync({ id: event.id, matchId, status: 'dismissed' })
-  }
-
   async function publicarGolEnVivo() {
     if (!match || !manualLiveEvent.teamId) return
     const result = await createManualLiveEvent.mutateAsync({
@@ -391,7 +356,6 @@ export default function LoadResult() {
 
   const guardando = guardarResultado.isPending || guardarEnVivoMutation.isPending
   const currentLineupPlayers = lineups.filter((player) => !miEquipoId || player.team_id === miEquipoId)
-  const pendingLiveEvents = liveEvents.filter((event) => event.status === 'pending')
   const liveScoreReady = liveLink?.last_home_score !== null && liveLink?.last_home_score !== undefined &&
     liveLink?.last_away_score !== null && liveLink?.last_away_score !== undefined
 
@@ -529,15 +493,23 @@ export default function LoadResult() {
                     {liveScoreReady
                       ? `${liveLink.last_home_score} - ${liveLink.last_away_score}`
                       : 'Marcador sin leer'}
-                    {liveLink.last_minute !== null && liveLink.last_minute !== undefined ? ` · ${liveLink.last_minute}'` : ''}
+                    {locosMinuteLabel(liveLink, now)
+                      ? ` · ${locosMinuteLabel(liveLink, now)}`
+                      : liveLink.last_minute !== null && liveLink.last_minute !== undefined ? ` · ${liveLink.last_minute}'` : ''}
                   </p>
                   <p className="text-xs text-zinc-500">
-                    {liveLink.last_status ? `Estado: ${liveLink.last_status}` : 'Todavia no se sincronizo.'}
+                    {isLocosHalftime(liveLink)
+                      ? 'Estado: Final 1T'
+                      : liveLink.last_status === 'in_progress'
+                        ? 'Estado: En vivo'
+                        : liveLink.last_status === 'finished'
+                          ? 'Estado: Finalizado'
+                          : liveLink.last_status ? `Estado: ${liveLink.last_status}` : 'Todavia no se sincronizo.'}
                   </p>
                 </div>
-                <Button size="sm" variant="outline" onClick={aplicarMarcadorVivo} disabled={!liveScoreReady}>
-                  Usar marcador
-                </Button>
+                <span className="rounded-lg border border-emerald-500/30 px-3 py-2 text-xs font-bold text-emerald-300">
+                  Automatico
+                </span>
               </div>
             </div>
           )}
@@ -546,45 +518,6 @@ export default function LoadResult() {
             <p className="rounded-xl border border-primary/20 bg-primary/10 px-3 py-2 text-xs text-zinc-200">
               {locosMessage}
             </p>
-          )}
-
-          {pendingLiveEvents.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">
-                Novedades pendientes
-              </p>
-              {pendingLiveEvents.map((event) => (
-                <div key={event.id} className="rounded-xl border border-primary/25 bg-primary/5 p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-bold text-zinc-100">{event.title}</p>
-                      <p className="text-xs text-zinc-500 mt-1">
-                        {event.minute !== null && event.minute !== undefined ? `${event.minute}' · ` : ''}
-                        {event.home_score !== null && event.home_score !== undefined && event.away_score !== null && event.away_score !== undefined
-                          ? `${event.home_score} - ${event.away_score}`
-                          : 'Sin marcador'}
-                      </p>
-                    </div>
-                    <div className="flex gap-2 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => aplicarEventoVivo(event)}
-                        className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-white"
-                      >
-                        Aplicar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => descartarEventoVivo(event)}
-                        className="rounded-lg bg-surface-800 px-3 py-1.5 text-xs font-bold text-zinc-300"
-                      >
-                        Descartar
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
           )}
 
           {syncLocosVm.isError && (

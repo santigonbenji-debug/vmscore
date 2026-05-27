@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { useAuth } from '../../hooks/useAuth'
 import { useOrganizations } from '../../hooks/useOrganizations'
 import { useSports } from '../../hooks/useSports'
+import { useLeagues } from '../../hooks/useLeagues'
 import { useTeams, useCreateTeam, useUpdateTeam, useDeleteTeam } from '../../hooks/useTeams'
-import { useTeamPlayers, useCreatePlayer, useUpdatePlayer, useDeletePlayer } from '../../hooks/useRosters'
+import { useAddTeamToLeague, useTeamPlayers, useCreatePlayer, useUpdatePlayer, useDeletePlayer } from '../../hooks/useRosters'
 import Modal from '../../components/ui/Modal'
 import Button from '../../components/ui/Button'
 import Spinner from '../../components/ui/Spinner'
@@ -12,6 +13,7 @@ import TeamLogo from '../../components/teams/TeamLogo'
 const FORM_VACIO = {
   organization_id: '',
   sport_id: '',
+  league_id: '',
   name: '',
   short_name: '',
   technical_director: '',
@@ -176,12 +178,14 @@ export default function ManageTeams() {
   const scopedOrgId = isSuperAdmin ? undefined : organizationId
   const { data: organizations = [] } = useOrganizations({ includeArchived: isSuperAdmin })
   const { data: sports = [] } = useSports({ organizationId: scopedOrgId })
+  const { data: leagues = [] } = useLeagues({ organizationId: scopedOrgId, approvalStatus: 'approved' })
   const sportId = sports.find((sport) => sport.slug === filtro)?.id
   const { data: equipos = [], isLoading } = useTeams({ sportId, organizationId: scopedOrgId })
 
   const crearEquipo = useCreateTeam()
   const editarEquipo = useUpdateTeam()
   const borrarEquipo = useDeleteTeam()
+  const addTeamToLeague = useAddTeamToLeague()
 
   function abrirCrear() {
     setEditando(null)
@@ -195,6 +199,7 @@ export default function ManageTeams() {
     setForm({
       organization_id: team.organization_id ?? organizationId ?? '',
       sport_id: team.sport_id,
+      league_id: '',
       name: team.name,
       short_name: team.short_name ?? '',
       technical_director: team.technical_director ?? '',
@@ -206,17 +211,25 @@ export default function ManageTeams() {
   }
 
   async function guardar() {
-    if (!form.organization_id || !form.sport_id || !form.name) return
+    if (!form.organization_id || !form.sport_id || !form.league_id || !form.name) return
     if (!editando && !logoFile) {
       alert('El escudo es obligatorio para crear equipos.')
       return
     }
+    const { league_id: leagueId, ...teamForm } = form
     const payload = {
-      ...form,
+      ...teamForm,
       logoFile,
     }
-    if (editando) await editarEquipo.mutateAsync({ id: editando.id, ...payload })
-    else await crearEquipo.mutateAsync(payload)
+    let teamId
+    if (editando) {
+      await editarEquipo.mutateAsync({ id: editando.id, ...payload })
+      teamId = editando.id
+    } else {
+      const team = await crearEquipo.mutateAsync(payload)
+      teamId = team.id
+    }
+    await addTeamToLeague.mutateAsync({ leagueId, teamId })
     setModal(false)
   }
 
@@ -225,10 +238,13 @@ export default function ManageTeams() {
     await borrarEquipo.mutateAsync(team.id)
   }
 
-  const guardando = crearEquipo.isPending || editarEquipo.isPending
+  const guardando = crearEquipo.isPending || editarEquipo.isPending || addTeamToLeague.isPending
   const modalSports = isSuperAdmin && form.organization_id
     ? sports.filter((sport) => sport.organization_id === form.organization_id)
     : sports
+  const modalLeagues = leagues.filter((league) => (
+    league.organization_id === form.organization_id && league.sport_id === form.sport_id
+  ))
 
   return (
     <div className="px-4 py-6">
@@ -290,7 +306,7 @@ export default function ManageTeams() {
               <label className="text-xs font-semibold text-zinc-400 mb-1 block">Organizacion *</label>
               <select
                 value={form.organization_id}
-                onChange={(event) => setForm({ ...form, organization_id: event.target.value, sport_id: '' })}
+                onChange={(event) => setForm({ ...form, organization_id: event.target.value, sport_id: '', league_id: '' })}
                 className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none"
               >
                 <option value="">Seleccionar...</option>
@@ -309,11 +325,26 @@ export default function ManageTeams() {
 
           <div>
             <label className="text-xs font-semibold text-zinc-400 mb-1 block">Deporte *</label>
-            <select value={form.sport_id} onChange={(event) => setForm({ ...form, sport_id: event.target.value })}
+            <select value={form.sport_id} onChange={(event) => setForm({ ...form, sport_id: event.target.value, league_id: '' })}
               className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none">
               <option value="">Seleccionar...</option>
               {modalSports.map((sport) => <option key={sport.id} value={sport.id}>{sport.icon} {sport.name}</option>)}
             </select>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-zinc-400 mb-1 block">Liga donde compite *</label>
+            <select value={form.league_id} onChange={(event) => setForm({ ...form, league_id: event.target.value })}
+              disabled={!form.sport_id}
+              className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none disabled:opacity-50">
+              <option value="">{form.sport_id ? 'Seleccionar liga aprobada...' : 'Selecciona primero el deporte'}</option>
+              {modalLeagues.map((league) => <option key={league.id} value={league.id}>{league.name}{league.season ? ` - ${league.season}` : ''}</option>)}
+            </select>
+            {form.sport_id && modalLeagues.length === 0 && (
+              <p className="mt-1 text-[10px] text-amber-300">Primero debe existir una liga aprobada para este deporte y organizacion.</p>
+            )}
+            {editando && (
+              <p className="mt-1 text-[10px] text-zinc-500">Guardar inscribe al equipo en la liga seleccionada sin quitarlo de otras competencias.</p>
+            )}
           </div>
           <div>
             <label className="text-xs font-semibold text-zinc-400 mb-1 block">Nombre completo *</label>
@@ -359,8 +390,8 @@ export default function ManageTeams() {
             )}
           </div>
 
-          <Button onClick={guardar} disabled={guardando || !form.organization_id || !form.sport_id || !form.name || (!editando && !logoFile)} className="w-full">
-            {guardando ? 'Guardando...' : editando ? 'Guardar equipo' : 'Crear Equipo'}
+          <Button onClick={guardar} disabled={guardando || !form.organization_id || !form.sport_id || !form.league_id || !form.name || (!editando && !logoFile)} className="w-full">
+            {guardando ? 'Guardando...' : editando ? 'Guardar e inscribir equipo' : 'Crear e inscribir Equipo'}
           </Button>
 
           {editando && <PlayersEditor teamId={editando.id} />}

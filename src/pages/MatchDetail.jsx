@@ -4,12 +4,12 @@ import { useMatch } from '../hooks/useMatches'
 import { useMatchLineups } from '../hooks/useLineups'
 import { useLiveSyncEvents, useMatchLiveLink } from '../hooks/useLiveSync'
 import { useNow } from '../hooks/useNow'
-import { MapPin, UserRound } from 'lucide-react'
+import { CalendarDays, Clock3, MapPin, Trophy, UserRound } from 'lucide-react'
 import FavoriteButton from '../components/teams/FavoriteButton'
 import TeamLogo from '../components/teams/TeamLogo'
 import Spinner from '../components/ui/Spinner'
 import Badge from '../components/ui/Badge'
-import { formatFechaLarga, formatHora, matchStartedByClock, matchStatusDetail } from '../lib/helpers'
+import { formatFechaLarga, formatHora, isLocosHalftime, locosMinuteLabel, matchStartedByClock, matchStatusDetail } from '../lib/helpers'
 
 const TABS = [
   { key: 'info', label: 'Info' },
@@ -28,6 +28,15 @@ const EVENT_LABEL = {
 }
 
 const GOAL_EVENT_TYPES = new Set(['goal', 'own_goal', 'penalty_goal'])
+
+function InfoRow({ icon: Icon, label, children }) {
+  return (
+    <div className="flex items-start gap-2">
+      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+      <p><span className="text-zinc-500">{label}:</span> {children}</p>
+    </div>
+  )
+}
 
 function LineupColumn({ title, lineups }) {
   return (
@@ -121,11 +130,12 @@ export default function MatchDetail() {
   }
 
   const finalizado = match.status === 'finished'
-  const enVivo = match.status === 'in_progress' || (
+  const finalPrimeraParte = isLocosHalftime(liveLink)
+  const enVivo = !finalPrimeraParte && (match.status === 'in_progress' || (
     match.status === 'scheduled' && matchStartedByClock(match, now)
-  )
+  ))
   const visibleLiveEvents = liveEvents.filter((event) => event.status !== 'dismissed')
-  const hasLiveState = liveLink?.last_synced_at && ['in_progress', 'finished'].includes(liveLink?.last_status)
+  const hasLiveState = liveLink?.last_synced_at && ['in_progress', 'paused', 'finished'].includes(liveLink?.last_status)
 
   return (
     <div>
@@ -136,7 +146,7 @@ export default function MatchDetail() {
 
         <div className="flex items-center justify-center gap-2 mb-3">
           <Badge variant={enVivo ? 'live' : finalizado ? 'success' : 'default'}>
-            {enVivo ? 'En vivo' : matchStatusDetail(match)}
+            {finalPrimeraParte ? 'Final 1T' : enVivo ? 'En vivo' : matchStatusDetail(match)}
           </Badge>
           {match.round != null && <span className="text-xs text-zinc-500">Fecha {match.round}</span>}
         </div>
@@ -161,7 +171,7 @@ export default function MatchDetail() {
           </div>
 
           <div className="text-center min-w-[5rem]">
-            {finalizado || enVivo ? (
+            {finalizado || enVivo || finalPrimeraParte ? (
               <span className="text-white text-4xl font-extrabold tabular-nums tracking-tight">
                 {match.home_score ?? 0} <span className="opacity-40">-</span> {match.away_score ?? 0}
               </span>
@@ -223,17 +233,17 @@ export default function MatchDetail() {
           <div className="bg-surface-900 rounded-xl border border-primary/30 p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold text-primary uppercase tracking-wide">Vivo asistido</p>
+                <p className="text-xs font-semibold text-primary uppercase tracking-wide">Marcador en vivo</p>
                 <p className="text-2xl font-extrabold text-zinc-100 mt-1">
                   {liveLink.last_home_score ?? '-'} - {liveLink.last_away_score ?? '-'}
                 </p>
               </div>
               <div className="text-right">
                 <Badge variant={liveLink.last_status === 'in_progress' ? 'live' : liveLink.last_status === 'finished' ? 'success' : 'default'}>
-                  {liveLink.last_status === 'in_progress' ? 'En vivo' : liveLink.last_status === 'finished' ? 'Finalizado' : 'Leido'}
+                  {finalPrimeraParte ? 'Final 1T' : liveLink.last_status === 'in_progress' ? 'En vivo' : liveLink.last_status === 'finished' ? 'Finalizado' : 'Actualizado'}
                 </Badge>
                 <p className="text-xs text-zinc-500 mt-2">
-                  {liveLink.last_minute !== null && liveLink.last_minute !== undefined ? `${liveLink.last_minute}'` : 'Minuto a leer'}
+                  {locosMinuteLabel(liveLink, now) ?? (liveLink.last_minute !== null && liveLink.last_minute !== undefined ? `${liveLink.last_minute}'` : 'Minuto a definir')}
                 </p>
               </div>
             </div>
@@ -243,18 +253,18 @@ export default function MatchDetail() {
         {tab === 'info' && (
           <div className="bg-surface-900 rounded-xl border border-surface-800 p-4">
             <h2 className="font-bold text-sm mb-3 text-zinc-100">Info del partido</h2>
-            <div className="space-y-1.5 text-sm text-zinc-300">
+            <div className="space-y-2 text-sm text-zinc-300">
               {match.scheduled_at && match.status !== 'postponed' && (
-                <p>{formatFechaLarga(match.scheduled_at)} · {formatHora(match.scheduled_at)}</p>
+                <>
+                  <InfoRow icon={CalendarDays} label="Fecha">{formatFechaLarga(match.scheduled_at)}</InfoRow>
+                  <InfoRow icon={Clock3} label="Hora">{formatHora(match.scheduled_at)} hs</InfoRow>
+                </>
               )}
               {(!match.scheduled_at || match.status === 'postponed') && (
-                <p>{match.status === 'postponed' ? 'Fecha nueva a definir' : 'Dia y horario a definir'}</p>
+                <InfoRow icon={CalendarDays} label="Fecha">{match.status === 'postponed' ? 'Nueva fecha a definir' : 'Dia y horario a definir'}</InfoRow>
               )}
               {match.venue_name && (
-                <p className="flex items-start gap-2">
-                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                  <span><span className="text-zinc-500">Ubicacion:</span> {match.venue_name}{match.venue_address ? ` · ${match.venue_address}` : ''}</span>
-                </p>
+                <InfoRow icon={MapPin} label="Ubicacion">{match.venue_name}{match.venue_address ? ` · ${match.venue_address}` : ''}</InfoRow>
               )}
               {(match.home_technical_director || match.away_technical_director) && (
                 <div className="flex items-start gap-2">
@@ -265,8 +275,8 @@ export default function MatchDetail() {
                   </div>
                 </div>
               )}
-              {match.referee_name && <p>Arbitro: {match.referee_name}</p>}
-              <p>{match.league_name}{match.season ? ` · ${match.season}` : ''}</p>
+              {match.referee_name && <InfoRow icon={UserRound} label="Arbitro">{match.referee_name}</InfoRow>}
+              <InfoRow icon={Trophy} label="Competencia">{match.league_name}{match.season ? ` · ${match.season}` : ''}</InfoRow>
             </div>
           </div>
         )}
@@ -304,13 +314,15 @@ export default function MatchDetail() {
                         <p className="text-xs text-zinc-500">
                           {isGoal
                             ? liveTeamName
-                            : event.home_score !== null && event.home_score !== undefined && event.away_score !== null && event.away_score !== undefined
+                            : event.event_type === 'start'
+                              ? 'Partido en vivo'
+                              : event.event_type === 'finish'
+                                ? 'Partido finalizado'
+                                : event.event_type === 'halftime'
+                                  ? 'Entretiempo'
+                                  : event.home_score !== null && event.home_score !== undefined && event.away_score !== null && event.away_score !== undefined
                               ? `${event.home_score} - ${event.away_score}`
-                              : event.provider === 'manual'
-                                ? 'Cargado por VMScore'
-                                : event.provider === 'copafacil'
-                                  ? 'Detectado por Copa Facil'
-                                  : 'Detectado por Locos VM'}
+                              : ''}
                         </p>
                       </div>
                     </div>

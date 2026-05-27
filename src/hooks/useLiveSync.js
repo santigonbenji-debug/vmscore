@@ -1,8 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import {
-  buildLiveStatePayload,
-  fetchLocosVmLiveState,
   parseLocosVmMatchId,
   searchLocosVmMatchCandidates,
 } from '../lib/locosVm'
@@ -13,66 +11,8 @@ function teamName(match, side) {
   return match.away_team_short_name ?? match.away_team_name ?? 'Visitante'
 }
 
-function buildGoalEvents({ match, link, previousHome, previousAway, nextHome, nextAway, minute, raw }) {
-  const events = []
-  const homeDiff = Math.max(0, Number(nextHome ?? 0) - Number(previousHome ?? 0))
-  const awayDiff = Math.max(0, Number(nextAway ?? 0) - Number(previousAway ?? 0))
-
-  for (let index = 1; index <= homeDiff; index += 1) {
-    const score = Number(previousHome ?? 0) + index
-    events.push({
-      match_id: match.id,
-      link_id: link.id,
-      provider: 'locos_vm',
-      external_match_id: link.external_match_id,
-      event_key: `goal-home-${score}-${nextAway ?? 0}`,
-      event_type: 'goal',
-      team_id: match.home_team_id,
-      team_side: 'home',
-      goal_number: score,
-      minute,
-      home_score: score,
-      away_score: nextAway,
-      title: `Gol de ${teamName(match, 'home')}`,
-      raw,
-    })
-  }
-
-  for (let index = 1; index <= awayDiff; index += 1) {
-    const score = Number(previousAway ?? 0) + index
-    events.push({
-      match_id: match.id,
-      link_id: link.id,
-      provider: 'locos_vm',
-      external_match_id: link.external_match_id,
-      event_key: `goal-away-${nextHome ?? 0}-${score}`,
-      event_type: 'goal',
-      team_id: match.away_team_id,
-      team_side: 'away',
-      goal_number: score,
-      minute,
-      home_score: nextHome,
-      away_score: score,
-      title: `Gol de ${teamName(match, 'away')}`,
-      raw,
-    })
-  }
-
-  return events
-}
-
 function scoreText(match, homeScore, awayScore) {
   return `${teamName(match, 'home')} ${homeScore ?? '-'} - ${awayScore ?? '-'} ${teamName(match, 'away')}`
-}
-
-async function notifyLiveSync({ match, type, title, body }) {
-  try {
-    await supabase.functions.invoke('send-push', {
-      body: { type, matchId: match.id, title, body },
-    })
-  } catch (error) {
-    console.warn('No se pudo enviar notificacion de vivo', error)
-  }
 }
 
 async function notifyTeamLiveEvent({ match, title, body }) {
@@ -86,6 +26,11 @@ async function notifyTeamLiveEvent({ match, title, body }) {
   })
   if (error || data?.ok !== true) {
     throw new Error(data?.errors?.join('; ') || error?.message || 'No se pudo enviar la notificacion push.')
+  }
+  if (!data?.sent) {
+    throw new Error(data?.recipients
+      ? 'El dispositivo favorito no pudo recibir la alerta.'
+      : 'No hay dispositivos favoritos suscriptos para recibir la alerta.')
   }
   return data
 }
@@ -248,136 +193,13 @@ export function useSyncLocosVmLive() {
   return useMutation({
     mutationFn: async ({ match, link }) => {
       if (!match || !link) throw new Error('Falta vincular el partido.')
-
-      const rawState = await fetchLocosVmLiveState(link.external_match_id)
-      const state = buildLiveStatePayload(rawState)
-      if (!state) throw new Error('No se pudo leer el estado en vivo.')
-
-      const previousHome = link.last_home_score
-      const previousAway = link.last_away_score
-      const nextHome = state.home_score
-      const nextAway = state.away_score
-      const now = new Date().toISOString()
-
-      const startedNow = !link.last_start_notified_at && state.status === 'in_progress'
-      const finishedNow = !link.last_finish_notified_at && state.status === 'finished'
-      const goalEvents = previousHome != null && previousAway != null && nextHome != null && nextAway != null
-        ? buildGoalEvents({
-            match,
-            link,
-            previousHome,
-            previousAway,
-            nextHome,
-            nextAway,
-            minute: state.minute,
-            raw: rawState,
-          })
-        : []
-
-      const liveEvents = []
-      if (startedNow) {
-        liveEvents.push({
-          match_id: match.id,
-          link_id: link.id,
-          provider: 'locos_vm',
-          external_match_id: link.external_match_id,
-          event_key: 'match-started',
-          event_type: 'start',
-          minute: state.minute ?? 0,
-          home_score: nextHome,
-          away_score: nextAway,
-          title: 'Inicio del partido',
-          status: 'applied',
-          raw: rawState,
-        })
-      }
-      liveEvents.push(...goalEvents)
-      if (finishedNow) {
-        liveEvents.push({
-          match_id: match.id,
-          link_id: link.id,
-          provider: 'locos_vm',
-          external_match_id: link.external_match_id,
-          event_key: `match-finished-${nextHome ?? '-'}-${nextAway ?? '-'}`,
-          event_type: 'finish',
-          minute: state.minute,
-          home_score: nextHome,
-          away_score: nextAway,
-          title: `Finalizo: ${teamName(match, 'home')} ${nextHome ?? '-'} - ${nextAway ?? '-'} ${teamName(match, 'away')}`,
-          status: 'applied',
-          raw: rawState,
-        })
-      }
-
-      let insertedEvents = []
-      if (liveEvents.length > 0) {
-        const { data, error: eventError } = await supabase
-          .from('live_sync_events')
-          .upsert(liveEvents.map((event) => ({ ...event, status: 'applied' })), { ignoreDuplicates: true })
-          .select()
-        if (eventError) throw eventError
-        insertedEvents = data ?? []
-      }
-
-      const { data: updatedLink, error: linkError } = await supabase
-        .from('match_live_links')
-        .update({
-          last_external_state: rawState,
-          last_status: state.status,
-          last_period: state.period,
-          last_minute: state.minute,
-          last_second: state.second,
-          last_home_score: nextHome,
-          last_away_score: nextAway,
-          last_synced_at: now,
-          last_start_notified_at: startedNow ? now : link.last_start_notified_at,
-          last_finish_notified_at: finishedNow ? now : link.last_finish_notified_at,
-          updated_at: now,
-        })
-        .eq('id', link.id)
-        .select()
-        .single()
-      if (linkError) throw linkError
-
-      if (nextHome !== null && nextAway !== null && match.status !== 'postponed' && match.status !== 'cancelled') {
-        const { error: matchError } = await supabase
-          .from('matches')
-          .update({
-            status: state.status === 'finished' ? 'finished' : 'in_progress',
-            home_score: nextHome,
-            away_score: nextAway,
-            updated_at: now,
-          })
-          .eq('id', match.id)
-        if (matchError) throw matchError
-      }
-
-      if (insertedEvents.some((event) => event.event_type === 'start')) {
-        notifyLiveSync({
-          match,
-          type: 'match_started',
-          title: 'Inicio del partido',
-          body: `${teamName(match, 'home')} vs ${teamName(match, 'away')}`,
-        })
-      }
-      for (const goalEvent of insertedEvents.filter((event) => event.event_type === 'goal')) {
-        notifyLiveSync({
-          match,
-          type: 'match_goal',
-          title: goalEvent.title,
-          body: scoreText(match, goalEvent.home_score, goalEvent.away_score),
-        })
-      }
-      if (insertedEvents.some((event) => event.event_type === 'finish')) {
-        notifyLiveSync({
-          match,
-          type: 'match_finished_live',
-          title: 'Finalizo el partido',
-          body: scoreText(match, nextHome, nextAway),
-        })
-      }
-
-      return { state, rawState, link: updatedLink, events: liveEvents }
+      const { data, error } = await supabase.functions.invoke('sync-locos-live', {
+        body: { matchIds: [match.id], limit: 1 },
+      })
+      if (error) throw error
+      const result = data?.results?.[0]
+      if (result?.error) throw new Error(result.error)
+      return result ?? data
     },
     onSuccess: (_, { match }) => {
       qc.invalidateQueries({ queryKey: ['match-live-link', match.id] })

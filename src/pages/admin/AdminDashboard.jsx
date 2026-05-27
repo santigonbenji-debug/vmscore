@@ -18,6 +18,7 @@ const ACCESOS_LIGA = [
   { to: '/admin/ligas', label: 'Ligas', icon: 'T', desc: 'Crear ligas para aprobacion' },
   { to: '/admin/equipos', label: 'Equipos', icon: 'E', desc: 'Clubes, escudo, DT y plantel' },
   { to: '/admin/partidos', label: 'Partidos', icon: 'F', desc: 'Fixture, eventos y resultados' },
+  { to: '/admin/canchas', label: 'Canchas', icon: 'C', desc: 'Sedes propias de la organizacion' },
 ]
 
 const ACCESOS_CLUB = [

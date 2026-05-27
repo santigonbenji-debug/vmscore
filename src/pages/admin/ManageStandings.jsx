@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLeagues, usePhases } from '../../hooks/useLeagues'
+import { useTeams } from '../../hooks/useTeams'
+import { useAddTeamToLeague, useLeagueTeams } from '../../hooks/useRosters'
 import {
   useStandingsRows,
   useEnsureStandingsRows,
@@ -29,10 +31,18 @@ export default function ManageStandings() {
   const { data: ligas = [], isLoading: lLoading } = useLeagues()
   const { data: fases = [], isLoading: fLoading } = usePhases(ligaId)
   const { data: rows = [],  isLoading: rLoading } = useStandingsRows(faseId)
+  const liga = useMemo(() => ligas.find((l) => l.id === ligaId), [ligas, ligaId])
+  const { data: leagueTeams = [], isLoading: enrolledLoading } = useLeagueTeams(ligaId)
+  const { data: sportTeams = [], isLoading: teamsLoading } = useTeams({
+    sportId: liga?.sport_id,
+    organizationId: liga?.organization_id,
+  })
 
   const ensure = useEnsureStandingsRows()
   const update = useUpdateStandingRow()
   const recalc = useRecalcPhase()
+  const addTeam = useAddTeamToLeague()
+  const [teamToEnroll, setTeamToEnroll] = useState('')
 
   // Auto seleccion inicial
   useEffect(() => { if (!ligaId && ligas.length > 0) setLigaId(ligas[0].id) }, [ligas, ligaId])
@@ -48,7 +58,11 @@ export default function ManageStandings() {
     setParams(next, { replace: true })
   }, [ligaId, faseId, setParams])
 
-  const liga = useMemo(() => ligas.find((l) => l.id === ligaId), [ligas, ligaId])
+  const enrolledIds = useMemo(() => new Set(leagueTeams.map((team) => team.team_id)), [leagueTeams])
+  const availableTeams = useMemo(
+    () => sportTeams.filter((team) => !enrolledIds.has(team.id)),
+    [sportTeams, enrolledIds],
+  )
 
   // Edits locales: edits[rowId] = { base_played, base_won, ... }
   const [edits, setEdits] = useState({})
@@ -113,6 +127,21 @@ export default function ManageStandings() {
     }
   }
 
+  async function enrollTeam() {
+    if (!ligaId || !faseId || !teamToEnroll) return
+    setSaveError(null)
+    try {
+      await addTeam.mutateAsync({ leagueId: ligaId, teamId: teamToEnroll })
+      await ensure.mutateAsync(faseId)
+      await recalc.mutateAsync(faseId)
+      setTeamToEnroll('')
+      setSavedFlash(true)
+      setTimeout(() => setSavedFlash(false), 2500)
+    } catch (err) {
+      setSaveError(err?.message ?? 'No se pudo inscribir el equipo en la liga.')
+    }
+  }
+
   async function saveAll() {
     setSaveError(null); setSavedFlash(false)
     try {
@@ -133,7 +162,7 @@ export default function ManageStandings() {
     }
   }
 
-  const guardando = update.isPending || ensure.isPending || recalc.isPending
+  const guardando = update.isPending || ensure.isPending || recalc.isPending || addTeam.isPending
 
   return (
     <div className="px-3 py-5 pb-28 space-y-4">
@@ -197,6 +226,48 @@ export default function ManageStandings() {
             </Button>
           </div>
         </div>
+      )}
+
+      {faseId && (
+        <section className="rounded-xl border border-surface-800 bg-surface-900 p-4 space-y-3">
+          <div>
+            <h2 className="text-sm font-bold text-zinc-100">Equipos inscriptos</h2>
+            <p className="mt-1 text-xs text-zinc-500">
+              Inscribi equipos de esta liga para crear sus filas en la tabla y usarlos en partidos.
+            </p>
+          </div>
+          {(enrolledLoading || teamsLoading) ? (
+            <Spinner className="py-3" />
+          ) : (
+            <>
+              <div className="flex gap-2">
+                <select
+                  value={teamToEnroll}
+                  onChange={(event) => setTeamToEnroll(event.target.value)}
+                  className="min-w-0 flex-1 rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="">{availableTeams.length ? 'Selecciona un equipo' : 'No hay equipos disponibles'}</option>
+                  {availableTeams.map((team) => (
+                    <option key={team.id} value={team.id}>{team.name}</option>
+                  ))}
+                </select>
+                <Button size="sm" onClick={enrollTeam} disabled={!teamToEnroll || guardando}>
+                  {addTeam.isPending ? '...' : 'Inscribir'}
+                </Button>
+              </div>
+              {leagueTeams.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {leagueTeams.map((team) => (
+                    <div key={team.team_id} className="flex items-center gap-2 rounded-lg border border-surface-800 bg-surface-950 px-2 py-1.5">
+                      <TeamLogo logoUrl={team.team_logo_url} name={team.team_name} color={team.primary_color} />
+                      <span className="text-xs text-zinc-200">{team.team_short_name ?? team.team_name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </section>
       )}
 
       {saveError && (

@@ -35,7 +35,7 @@ export function useEnsureStandingsRows() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (phaseId) => {
-      const { error } = await supabase.rpc('ensure_standings_rows', { p_phase_id: phaseId })
+      const { error } = await supabase.rpc('ensure_managed_standings_rows', { p_phase_id: phaseId })
       if (error) throw error
     },
     onSuccess: (_, phaseId) => {
@@ -50,7 +50,7 @@ export function useRecalcPhase() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (phaseId) => {
-      const { error } = await supabase.rpc('recalcular_standings_phase', { v_phase_id: phaseId })
+      const { error } = await supabase.rpc('recalculate_managed_standings_phase', { p_phase_id: phaseId })
       if (error) throw error
       return phaseId
     },

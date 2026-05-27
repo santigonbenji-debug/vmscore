@@ -119,7 +119,7 @@ function goalEvents({ match, link, previousHome, previousAway, nextHome, nextAwa
 }
 
 async function sendPush(match: Record<string, unknown>, type: string, title: string, body: string) {
-  await fetch(`${supabaseUrl}/functions/v1/send-push`, {
+  const response = await fetch(`${supabaseUrl}/functions/v1/send-push`, {
     method: 'POST',
     headers: {
       apikey: serviceRoleKey,
@@ -127,7 +127,65 @@ async function sendPush(match: Record<string, unknown>, type: string, title: str
       'content-type': 'application/json',
     },
     body: JSON.stringify({ type, matchId: match.id, title, body }),
-  }).catch(() => null)
+  })
+  const result = await response.json().catch(() => ({ ok: false, error: `HTTP ${response.status}` }))
+  if (!response.ok || result.ok !== true) {
+    throw new Error(result.error || result.errors?.join('; ') || `Push HTTP ${response.status}`)
+  }
+  return result
+}
+
+async function deliverPendingPushes(match: Record<string, unknown>, link: Record<string, unknown>) {
+  const { data: pending, error } = await supabase
+    .from('live_sync_events')
+    .select('*')
+    .eq('match_id', match.id)
+    .eq('provider', 'locos_vm')
+    .is('push_notified_at', null)
+    .in('event_type', ['start', 'goal', 'finish'])
+    .order('created_at', { ascending: true })
+  if (error) throw error
+
+  const deliveries = []
+  for (const event of pending ?? []) {
+    try {
+      let delivery
+      if (event.event_type === 'start') {
+        delivery = await sendPush(match, 'match_started', 'Inicio del partido', `${teamName(match, 'home')} vs ${teamName(match, 'away')}`)
+      } else if (event.event_type === 'goal') {
+        delivery = await sendPush(
+          match,
+          'match_goal',
+          String(event.title),
+          scoreText(match, numberOrNull(event.home_score), numberOrNull(event.away_score)),
+        )
+      } else {
+        delivery = await sendPush(match, 'match_finished_live', 'Finalizo el partido', scoreText(match, numberOrNull(event.home_score), numberOrNull(event.away_score)))
+      }
+
+      const deliveredAt = new Date().toISOString()
+      await supabase
+        .from('live_sync_events')
+        .update({ push_attempted_at: deliveredAt, push_notified_at: deliveredAt, push_error: null })
+        .eq('id', event.id)
+      if (event.event_type === 'start') {
+        await supabase.from('match_live_links').update({ last_start_notified_at: deliveredAt }).eq('id', link.id)
+      }
+      if (event.event_type === 'finish') {
+        await supabase.from('match_live_links').update({ last_finish_notified_at: deliveredAt }).eq('id', link.id)
+      }
+      deliveries.push({ event: event.event_type, ok: true, recipients: delivery.recipients ?? 0, sent: delivery.sent ?? 0 })
+    } catch (pushError) {
+      const attemptedAt = new Date().toISOString()
+      const message = pushError?.message ?? 'No se pudo enviar push'
+      await supabase
+        .from('live_sync_events')
+        .update({ push_attempted_at: attemptedAt, push_error: message })
+        .eq('id', event.id)
+      deliveries.push({ event: event.event_type, ok: false, error: message })
+    }
+  }
+  return deliveries
 }
 
 async function syncLink(link: Record<string, unknown>) {
@@ -147,11 +205,17 @@ async function syncLink(link: Record<string, unknown>) {
   const previousHome = Math.max(numberOrNull(link.last_home_score) ?? 0, numberOrNull(match.home_score) ?? 0)
   const previousAway = Math.max(numberOrNull(link.last_away_score) ?? 0, numberOrNull(match.away_score) ?? 0)
   const now = new Date().toISOString()
+  const isStarted = ['in_progress', 'paused', 'finished'].includes(status)
+  const liveStartedAt = link.live_started_at ?? (isStarted ? now : null)
+  const halftimeNow = status === 'paused' && !link.halftime_at
+  const halftimeAt = link.halftime_at ?? (halftimeNow ? now : null)
+  const secondHalfNow = status === 'in_progress' && Boolean(halftimeAt) && !link.second_half_started_at
+  const secondHalfStartedAt = link.second_half_started_at ?? (secondHalfNow ? now : null)
   const publishedHome = status === 'finished' ? nextHome : nextHome === null ? numberOrNull(match.home_score) : Math.max(nextHome, previousHome)
   const publishedAway = status === 'finished' ? nextAway : nextAway === null ? numberOrNull(match.away_score) : Math.max(nextAway, previousAway)
 
   const events: Record<string, unknown>[] = []
-  const startedNow = !link.last_start_notified_at && status === 'in_progress'
+  const startedNow = !link.last_start_notified_at && ['in_progress', 'paused'].includes(status)
   const finishedNow = !link.last_finish_notified_at && status === 'finished'
 
   if (startedNow) {
@@ -175,6 +239,23 @@ async function syncLink(link: Record<string, unknown>) {
     ? goalEvents({ match, link, previousHome, previousAway, nextHome, nextAway, minute, raw })
     : []
   events.push(...detectedGoals)
+
+  if (halftimeNow) {
+    events.push({
+      match_id: match.id,
+      link_id: link.id,
+      provider: 'locos_vm',
+      external_match_id: link.external_match_id,
+      event_key: 'match-halftime',
+      event_type: 'halftime',
+      minute: 45,
+      home_score: nextHome,
+      away_score: nextAway,
+      title: 'Final del primer tiempo',
+      status: 'applied',
+      raw,
+    })
+  }
 
   if (finishedNow) {
     events.push({
@@ -214,42 +295,33 @@ async function syncLink(link: Record<string, unknown>) {
       last_home_score: publishedHome,
       last_away_score: publishedAway,
       last_synced_at: now,
-      last_start_notified_at: startedNow ? now : link.last_start_notified_at,
-      last_finish_notified_at: finishedNow ? now : link.last_finish_notified_at,
+      live_started_at: liveStartedAt,
+      halftime_at: halftimeAt,
+      second_half_started_at: secondHalfStartedAt,
       updated_at: now,
     })
     .eq('id', link.id)
   if (updateError) throw updateError
 
-  if (publishedHome !== null && publishedAway !== null && match.status !== 'postponed' && match.status !== 'cancelled') {
+  if (['in_progress', 'paused', 'finished'].includes(status) && match.status !== 'postponed' && match.status !== 'cancelled') {
+    const matchUpdate: Record<string, unknown> = {
+      status: status === 'finished' ? 'finished' : 'in_progress',
+      updated_at: now,
+    }
+    if (publishedHome !== null && publishedAway !== null) {
+      matchUpdate.home_score = publishedHome
+      matchUpdate.away_score = publishedAway
+    }
     const { error: matchUpdateError } = await supabase
       .from('matches')
-      .update({
-        status: status === 'finished' ? 'finished' : 'in_progress',
-        home_score: publishedHome,
-        away_score: publishedAway,
-        updated_at: now,
-      })
+      .update(matchUpdate)
       .eq('id', match.id)
     if (matchUpdateError) throw matchUpdateError
   }
 
-  if (insertedEvents.some((event) => event.event_type === 'start')) {
-    await sendPush(match, 'match_started', 'Inicio del partido', `${teamName(match, 'home')} vs ${teamName(match, 'away')}`)
-  }
-  for (const goal of insertedEvents.filter((event) => event.event_type === 'goal')) {
-    await sendPush(
-      match,
-      'match_goal',
-      String(goal.title),
-      scoreText(match, numberOrNull(goal.home_score), numberOrNull(goal.away_score)),
-    )
-  }
-  if (insertedEvents.some((event) => event.event_type === 'finish')) {
-    await sendPush(match, 'match_finished_live', 'Finalizo el partido', scoreText(match, publishedHome, publishedAway))
-  }
+  const deliveries = await deliverPendingPushes(match, link)
 
-  return { id: link.id, events: insertedEvents.length, status, home_score: publishedHome, away_score: publishedAway }
+  return { id: link.id, events: insertedEvents.length, deliveries, status, home_score: publishedHome, away_score: publishedAway }
 }
 
 serve(async (req) => {
@@ -258,12 +330,15 @@ serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}))
     const limit = Math.min(Number(body.limit ?? 20), 50)
-    const { data: links, error } = await supabase
+    const matchIds = Array.isArray(body.matchIds) ? body.matchIds.filter(Boolean) : []
+    let query = supabase
       .from('match_live_links')
       .select('*')
       .eq('provider', 'locos_vm')
       .eq('enabled', true)
       .limit(limit)
+    if (matchIds.length > 0) query = query.in('match_id', matchIds)
+    const { data: links, error } = await query
 
     if (error) throw error
 

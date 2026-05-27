@@ -71,12 +71,38 @@ export function matchStatusDetail(match) {
   if (match?.status === 'postponed') {
     return 'Suspendido, fecha nueva a definir'
   }
+  if (match?.live_provider === 'locos_vm' && match?.live_last_status === 'paused') {
+    return 'Final 1T'
+  }
   return labelStatus(match?.status)
 }
 
 export function matchStartedByClock(match, now = Date.now()) {
   if (!match?.scheduled_at || match.status !== 'scheduled') return false
   return new Date(match.scheduled_at).getTime() <= now
+}
+
+export function isLocosHalftime(source) {
+  return (source?.provider ?? source?.live_provider) === 'locos_vm' &&
+    (source?.last_status ?? source?.live_last_status) === 'paused'
+}
+
+export function locosMinuteLabel(source, now = Date.now()) {
+  const provider = source?.provider ?? source?.live_provider
+  const status = source?.last_status ?? source?.live_last_status
+  if (provider !== 'locos_vm') return null
+  if (status === 'paused') return 'Final 1T'
+  if (status === 'finished') return 'Finalizado'
+  if (status !== 'in_progress') return null
+
+  const secondHalfStartedAt = source?.second_half_started_at ?? source?.live_second_half_started_at
+  const activeStart = secondHalfStartedAt ?? source?.live_started_at
+  if (!activeStart) return null
+
+  const base = secondHalfStartedAt ? 45 : 0
+  const elapsed = Math.max(0, Math.floor((now - new Date(activeStart).getTime()) / 60000))
+  if (elapsed >= 45) return `${base + 45}+1'`
+  return `${base + elapsed}'`
 }
 
 export function labelGenero(gender) {

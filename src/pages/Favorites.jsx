@@ -14,7 +14,7 @@ import { es } from 'date-fns/locale'
 import FavoriteButton from '../components/teams/FavoriteButton'
 import TeamLogo from '../components/teams/TeamLogo'
 import Spinner from '../components/ui/Spinner'
-import { matchStartedByClock, matchStatusDetail } from '../lib/helpers'
+import { isLocosHalftime, matchStartedByClock, matchStatusDetail } from '../lib/helpers'
 
 const TZ = 'America/Argentina/San_Luis'
 
@@ -46,8 +46,9 @@ function useAllFavoriteMatches({ teamIds, leagueIds, organizationIds }) {
 function MatchRow({ p, onClick, favoriteIds, now }) {
   const finalizado = p.status === 'finished'
   const suspendido = p.status === 'postponed'
+  const entretiempo = isLocosHalftime(p)
   const comenzadoPorHorario = matchStartedByClock(p, now)
-  const enVivo = p.status === 'in_progress' || (!finalizado && !suspendido && comenzadoPorHorario)
+  const enVivo = !entretiempo && (p.status === 'in_progress' || (!finalizado && !suspendido && comenzadoPorHorario))
   const hora = p.scheduled_at
     ? format(toZonedTime(new Date(p.scheduled_at), TZ), 'HH:mm')
     : 'A def.'
@@ -60,7 +61,9 @@ function MatchRow({ p, onClick, favoriteIds, now }) {
     <div onClick={onClick}
       className="flex items-center gap-2 px-3 py-2.5 hover:bg-surface-800/60 cursor-pointer transition-colors border-b border-surface-800 last:border-0">
       <div className="w-12 shrink-0 text-center">
-        {enVivo
+        {entretiempo
+          ? <span className="text-amber-300 text-[10px] font-bold leading-tight">FINAL 1T</span>
+          : enVivo
           ? <span className="text-red-400 text-[11px] font-bold tracking-wide animate-pulse">VIVO</span>
           : finalizado
             ? <span className="text-[11px] text-zinc-500 font-semibold">FT</span>
@@ -80,7 +83,7 @@ function MatchRow({ p, onClick, favoriteIds, now }) {
             {p.home_team_short_name ?? p.home_team_name}
           </span>
           {localFav && <span className="text-amber-400 text-[10px] shrink-0">★</span>}
-          {(finalizado || enVivo) && (
+          {(finalizado || enVivo || entretiempo) && (
             <span className={`text-sm font-bold tabular-nums shrink-0 ${homeWon ? 'text-zinc-100' : finalizado ? 'text-zinc-500' : 'text-red-400'}`}>
               {p.home_score ?? 0}
             </span>
@@ -92,7 +95,7 @@ function MatchRow({ p, onClick, favoriteIds, now }) {
             {p.away_team_short_name ?? p.away_team_name}
           </span>
           {visiFav && <span className="text-amber-400 text-[10px] shrink-0">★</span>}
-          {(finalizado || enVivo) && (
+          {(finalizado || enVivo || entretiempo) && (
             <span className={`text-sm font-bold tabular-nums shrink-0 ${awayWon ? 'text-zinc-100' : finalizado ? 'text-zinc-500' : 'text-red-400'}`}>
               {p.away_score ?? 0}
             </span>

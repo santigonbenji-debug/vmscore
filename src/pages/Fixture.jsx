@@ -21,7 +21,7 @@ import FavoriteButton from '../components/teams/FavoriteButton'
 import TeamLogo from '../components/teams/TeamLogo'
 import Spinner from '../components/ui/Spinner'
 import { useNow } from '../hooks/useNow'
-import { matchStartedByClock, matchStatusDetail } from '../lib/helpers'
+import { isLocosHalftime, matchStartedByClock, matchStatusDetail } from '../lib/helpers'
 
 const TZ = 'America/Argentina/San_Luis'
 
@@ -117,8 +117,9 @@ function removeDuplicateMatches(matches) {
 function MatchRow({ p, onClick, now }) {
   const finalizado = p.status === 'finished'
   const suspendido = p.status === 'postponed'
+  const entretiempo = isLocosHalftime(p)
   const comenzadoPorHorario = matchStartedByClock(p, now)
-  const enVivo = p.status === 'in_progress' || (!finalizado && !suspendido && comenzadoPorHorario)
+  const enVivo = !entretiempo && (p.status === 'in_progress' || (!finalizado && !suspendido && comenzadoPorHorario))
   const hora = p.scheduled_at
     ? format(toZonedTime(new Date(p.scheduled_at), TZ), 'HH:mm')
     : 'A def.'
@@ -139,7 +140,9 @@ function MatchRow({ p, onClick, now }) {
       }`}
     >
       <div className="w-12 shrink-0 text-center">
-        {enVivo ? (
+        {entretiempo ? (
+          <span className="text-amber-300 text-[10px] font-bold leading-tight">FINAL 1T</span>
+        ) : enVivo ? (
           <span className="text-red-400 text-[11px] font-bold tracking-wide animate-pulse">VIVO</span>
         ) : finalizado ? (
           <span className="text-[11px] text-zinc-500 font-semibold">FT</span>
@@ -162,7 +165,7 @@ function MatchRow({ p, onClick, now }) {
           <span className={`text-sm flex-1 truncate ${homeWon ? 'font-bold text-zinc-100' : finalizado ? 'text-zinc-500' : 'font-medium text-zinc-200'}`}>
             {p.home_team_short_name ?? p.home_team_name}
           </span>
-          {(finalizado || enVivo) && (
+          {(finalizado || enVivo || entretiempo) && (
             <span className={`text-sm font-bold tabular-nums shrink-0 ${homeWon ? 'text-zinc-100' : finalizado ? 'text-zinc-500' : 'text-red-400'}`}>
               {p.home_score ?? 0}
             </span>
@@ -175,7 +178,7 @@ function MatchRow({ p, onClick, now }) {
           <span className={`text-sm flex-1 truncate ${awayWon ? 'font-bold text-zinc-100' : finalizado ? 'text-zinc-500' : 'font-medium text-zinc-200'}`}>
             {p.away_team_short_name ?? p.away_team_name}
           </span>
-          {(finalizado || enVivo) && (
+          {(finalizado || enVivo || entretiempo) && (
             <span className={`text-sm font-bold tabular-nums shrink-0 ${awayWon ? 'text-zinc-100' : finalizado ? 'text-zinc-500' : 'text-red-400'}`}>
               {p.away_score ?? 0}
             </span>
