@@ -122,6 +122,7 @@ const COMP_FILTERS = [
   { key: 'liga',   label: 'Ligas' },
   { key: 'copa',   label: 'Copas' },
   { key: 'torneo', label: 'Torneos' },
+  { key: 'campeonato', label: 'Campeonatos' },
 ]
 
 export default function Standings() {
@@ -186,6 +187,7 @@ export default function Standings() {
     const byPhase = {}
     for (const row of standings) {
       const liga = ligaById[row.league_id]
+      if (liga?.format === 'playoffs') continue
       if (organizationSel && row.organization_id !== organizationSel) continue
       // Filtro por tipo de competicion
       if (comp !== 'all' && liga?.competition_type !== comp) continue
@@ -219,6 +221,13 @@ export default function Standings() {
       rows: [...t.rows].sort((a, b) => (a.position ?? 99) - (b.position ?? 99)),
     }))
   }, [standings, ligaById, comp, ligaSel, organizationSel])
+
+  const bracketCompetitions = useMemo(() => ligas.filter((league) => (
+    league.format === 'playoffs' &&
+    (comp === 'all' || league.competition_type === comp) &&
+    (!ligaSel || league.id === ligaSel) &&
+    (!organizationSel || league.organization_id === organizationSel)
+  )), [comp, ligaSel, ligas, organizationSel])
 
   const isLoading = stLoading || scLoading
 
@@ -284,7 +293,23 @@ export default function Standings() {
 
       {isLoading && <Spinner className="py-12" />}
 
-      {!isLoading && tablas.length === 0 && (
+      {!isLoading && bracketCompetitions.map((league) => (
+        <button
+          key={league.id}
+          type="button"
+          onClick={() => navigate(`/competencia/${league.id}`)}
+          className="flex w-full items-center justify-between rounded-xl border border-surface-800 bg-surface-900 p-4 text-left hover:border-primary/40"
+        >
+          <div>
+            <p className="text-xs font-bold uppercase text-primary">Copa · Eliminacion directa</p>
+            <p className="mt-1 text-sm font-black text-zinc-100">{league.name}</p>
+            <p className="mt-1 text-xs text-zinc-500">{league.season || league.year} · Ver cuadro de llaves</p>
+          </div>
+          <span className="text-xl text-primary">›</span>
+        </button>
+      ))}
+
+      {!isLoading && tablas.length === 0 && bracketCompetitions.length === 0 && (
         <p className="text-center text-zinc-500 py-12 text-sm">
           Aún no hay posiciones para mostrar.
         </p>

@@ -60,23 +60,34 @@ export function usePhases(leagueId) {
 // --- MUTATIONS ---
 
 // Crear liga + fase por defecto automáticamente
+const DEFAULT_PHASE_BY_FORMAT = {
+  round_robin: { name: 'Fase Regular', type: 'round_robin' },
+  playoffs: { name: 'Cuartos de final', type: 'knockout' },
+  championship: { name: 'Fase de Grupos', type: 'groups' },
+}
+
+function defaultFormat(competitionType) {
+  if (competitionType === 'copa') return 'playoffs'
+  if (competitionType === 'torneo') return 'championship'
+  return 'round_robin'
+}
+
 export function useCreateLeague() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (formData) => {
+      const { initial_phase_name, initial_phase_type, ...leagueData } = formData
+      const format = leagueData.format ?? defaultFormat(leagueData.competition_type)
       const { data: liga, error } = await supabase
-        .from('leagues').insert(formData).select().single()
+        .from('leagues').insert({ ...leagueData, format }).select().single()
       if (error) throw error
-      const phaseByCompetition = {
-        liga: { name: 'Fase Regular', type: 'round_robin' },
-        copa: { name: 'Eliminatorias', type: 'playoffs' },
-        torneo: { name: 'Fase Inicial', type: 'championship' },
-      }
-      const initialPhase = phaseByCompetition[formData.competition_type] ?? phaseByCompetition.liga
+      const initialPhase = DEFAULT_PHASE_BY_FORMAT[format] ?? DEFAULT_PHASE_BY_FORMAT.round_robin
 
-      // Cada formato nace con una fase coherente; las llaves automaticas se agregaran aparte.
       const { error: phaseError } = await supabase.from('phases').insert({
-        league_id: liga.id, name: initialPhase.name, type: initialPhase.type, phase_order: 1,
+        league_id: liga.id,
+        name: initial_phase_name || initialPhase.name,
+        type: initial_phase_type || initialPhase.type,
+        phase_order: 1,
       })
       if (phaseError) throw phaseError
       return liga
@@ -93,6 +104,46 @@ export function useUpdateLeague() {
       if (error) throw error
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['leagues'] }),
+  })
+}
+
+export function useCreatePhase() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ league_id, ...phase }) => {
+      const { data, error } = await supabase
+        .from('phases')
+        .insert({ league_id, ...phase })
+        .select()
+        .single()
+      if (error) throw error
+      return data
+    },
+    onSuccess: (_, phase) => qc.invalidateQueries({ queryKey: ['phases', phase.league_id] }),
+  })
+}
+
+export function useUpdatePhase() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, league_id, ...phase }) => {
+      const { error } = await supabase.from('phases').update(phase).eq('id', id)
+      if (error) throw error
+      return { league_id }
+    },
+    onSuccess: ({ league_id }) => qc.invalidateQueries({ queryKey: ['phases', league_id] }),
+  })
+}
+
+export function useDeletePhase() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, league_id }) => {
+      const { error } = await supabase.from('phases').delete().eq('id', id)
+      if (error) throw error
+      return { league_id }
+    },
+    onSuccess: ({ league_id }) => qc.invalidateQueries({ queryKey: ['phases', league_id] }),
   })
 }
 

@@ -30,10 +30,11 @@ export function useAddTeamToLeague() {
       if (error) throw error
       const { data: phases, error: phasesError } = await supabase
         .from('phases')
-        .select('id')
+        .select('id, type')
         .eq('league_id', leagueId)
       if (phasesError) throw phasesError
       for (const phase of phases ?? []) {
+        if (phase.type === 'knockout') continue
         const { error: standingsError } = await supabase.rpc('ensure_managed_standings_rows', { p_phase_id: phase.id })
         if (standingsError) throw standingsError
         const { error: recalcError } = await supabase.rpc('recalculate_managed_standings_phase', { p_phase_id: phase.id })

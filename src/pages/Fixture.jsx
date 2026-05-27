@@ -455,7 +455,13 @@ export default function Fixture() {
           <section key={group.id} className="bg-surface-900 rounded-xl border border-surface-800 shadow-sm overflow-hidden">
             <div className="flex items-center gap-2 px-3 py-2 border-b border-surface-800 bg-surface-800/40">
               {group.icono && <span className="text-sm">{group.icono}</span>}
-              <p className="font-bold text-xs truncate flex-1 text-zinc-100">{group.nombre}</p>
+              <button
+                type="button"
+                onClick={() => group.id !== 'sin-liga' && navigate(`/competencia/${group.id}`)}
+                className="flex-1 truncate text-left text-xs font-bold text-zinc-100 hover:text-primary"
+              >
+                {group.nombre}
+              </button>
               {group.round && (
                 <p className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-bold text-primary">
                   Fecha {group.round}

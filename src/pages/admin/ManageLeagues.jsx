@@ -25,6 +25,13 @@ const COMP_TYPES = [
   { value: 'liga', label: 'Liga', icon: 'T', desc: 'Todos contra todos' },
   { value: 'copa', label: 'Copa', icon: 'C', desc: 'Eliminatorias' },
   { value: 'torneo', label: 'Torneo', icon: 'F', desc: 'Fases libres' },
+  { value: 'campeonato', label: 'Campeonato', icon: 'M', desc: 'Formato configurable' },
+]
+
+const FORMATS = [
+  { value: 'round_robin', label: 'Todos contra todos', desc: 'Tabla de posiciones y fechas.' },
+  { value: 'playoffs', label: 'Eliminacion directa', desc: 'Llaves: cuartos, semifinal y final.' },
+  { value: 'championship', label: 'Grupos y definicion', desc: 'Fase de grupos y luego eliminatorias.' },
 ]
 
 const EMPTY_FORM = {
@@ -37,6 +44,9 @@ const EMPTY_FORM = {
   status: 'upcoming',
   champion_team_id: '',
   competition_type: 'liga',
+  format: 'round_robin',
+  initial_phase_name: 'Fase Regular',
+  initial_phase_type: 'round_robin',
 }
 
 const INPUT = 'w-full rounded-lg border border-surface-700 bg-surface-800 px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-primary/30'
@@ -99,6 +109,9 @@ export default function ManageLeagues() {
       status: league.status,
       champion_team_id: league.champion_team_id ?? '',
       competition_type: league.competition_type ?? 'liga',
+      format: league.format ?? 'round_robin',
+      initial_phase_name: '',
+      initial_phase_type: '',
     })
     setModal(true)
   }
@@ -116,6 +129,12 @@ export default function ManageLeagues() {
       province: selectedOrg.province,
       country: selectedOrg.country || 'Argentina',
       approval_status: editing ? editing.approval_status : (isSuperAdmin ? 'approved' : 'pending_review'),
+    }
+    delete payload.initial_phase_name
+    delete payload.initial_phase_type
+    if (!editing) {
+      payload.initial_phase_name = form.initial_phase_name
+      payload.initial_phase_type = form.initial_phase_type
     }
 
     if (editing) await updateLeague.mutateAsync({ id: editing.id, ...payload })
@@ -148,12 +167,12 @@ export default function ManageLeagues() {
     <div className="px-4 py-6 pb-28">
       <div className="mb-5 flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-zinc-100">Ligas</h1>
+          <h1 className="text-xl font-bold text-zinc-100">Competiciones</h1>
           <p className="mt-1 text-xs text-zinc-500">
             {isSuperAdmin ? 'Todas las organizaciones' : `${organization?.city ?? ''}, ${organization?.province ?? ''}`}
           </p>
         </div>
-        <Button size="sm" onClick={openCreate}>+ Nueva Liga</Button>
+        <Button size="sm" onClick={openCreate}>+ Nueva</Button>
       </div>
 
       {isSuperAdmin && (
@@ -183,7 +202,7 @@ export default function ManageLeagues() {
       </div>
 
       {isLoading ? <Spinner className="py-12" /> : leagues.length === 0 ? (
-        <p className="py-16 text-center text-sm text-zinc-500">No hay ligas todavia.</p>
+        <p className="py-16 text-center text-sm text-zinc-500">No hay competiciones todavia.</p>
       ) : (
         <div className="space-y-3">
           {leagues.map((league) => {
@@ -205,6 +224,7 @@ export default function ManageLeagues() {
                       </Badge>
                       {league.is_archived && <Badge variant="danger">Archivada</Badge>}
                       {comp && <Badge variant="primary">{comp.icon} {comp.label}</Badge>}
+                      <Badge>{FORMATS.find((format) => format.value === league.format)?.label ?? 'Formato'}</Badge>
                     </div>
                     <p className="mt-2 text-[10px] text-zinc-500">
                       {league.organizations?.name ?? 'Sin organizacion'} · {league.city}, {league.province}
@@ -230,11 +250,8 @@ export default function ManageLeagues() {
                         </button>
                       )
                     )}
-                    <button onClick={() => navigate(`/admin/posiciones?liga=${league.id}`)} className="text-xs font-medium text-emerald-400 hover:text-emerald-300">
-                      Tabla
-                    </button>
-                    <button onClick={() => navigate(`/admin/goleadores?liga=${league.id}`)} className="text-xs font-medium text-amber-400 hover:text-amber-300">
-                      Goleadores
+                    <button onClick={() => navigate(`/admin/competencia/${league.id}`)} className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-white hover:bg-primary/90">
+                      Administrar
                     </button>
                     <button onClick={() => openEdit(league)} className="text-xs font-medium text-primary hover:text-primary-400">
                       Editar
@@ -252,7 +269,7 @@ export default function ManageLeagues() {
         </div>
       )}
 
-      <Modal open={modal} onClose={() => setModal(false)} title={editing ? 'Editar Liga' : 'Nueva Liga'}>
+      <Modal open={modal} onClose={() => setModal(false)} title={editing ? 'Editar competencia' : 'Nueva competencia'}>
         <div className="space-y-4">
           {isSuperAdmin ? (
             <div>
@@ -293,12 +310,19 @@ export default function ManageLeagues() {
 
           <div>
             <label className="mb-1.5 block text-xs font-semibold text-zinc-400">Tipo de competencia *</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {COMP_TYPES.map((comp) => (
                 <button
                   key={comp.value}
                   type="button"
-                  onClick={() => setForm({ ...form, competition_type: comp.value })}
+                  onClick={() => {
+                    const defaults = comp.value === 'copa'
+                      ? { format: 'playoffs', initial_phase_name: 'Cuartos de final', initial_phase_type: 'knockout' }
+                      : comp.value === 'torneo'
+                        ? { format: 'championship', initial_phase_name: 'Fase de Grupos', initial_phase_type: 'groups' }
+                        : { format: 'round_robin', initial_phase_name: 'Fase Regular', initial_phase_type: 'round_robin' }
+                    setForm({ ...form, competition_type: comp.value, ...defaults })
+                  }}
                   className={`rounded-lg border p-2 text-center transition-colors ${
                     form.competition_type === comp.value
                       ? 'border-primary bg-primary/15 text-primary'
@@ -311,10 +335,65 @@ export default function ManageLeagues() {
                 </button>
               ))}
             </div>
-            {form.competition_type === 'copa' && (
-              <p className="mt-2 text-[10px] text-zinc-500">Se crea una fase de eliminatorias. La generacion automatica de llaves se incorporara como opcion.</p>
-            )}
           </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-zinc-400">Formato deportivo *</label>
+            <div className="space-y-2">
+              {FORMATS.map((format) => (
+                <button
+                  key={format.value}
+                  type="button"
+                  onClick={() => {
+                    const initial = format.value === 'playoffs'
+                      ? { initial_phase_name: 'Cuartos de final', initial_phase_type: 'knockout' }
+                      : format.value === 'championship'
+                        ? { initial_phase_name: 'Fase de Grupos', initial_phase_type: 'groups' }
+                        : { initial_phase_name: 'Fase Regular', initial_phase_type: 'round_robin' }
+                    setForm({ ...form, format: format.value, ...initial })
+                  }}
+                  className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
+                    form.format === format.value
+                      ? 'border-primary bg-primary/10'
+                      : 'border-surface-700 bg-surface-800'
+                  }`}
+                >
+                  <span className="block text-sm font-bold text-zinc-100">{format.label}</span>
+                  <span className="block text-xs text-zinc-400">{format.desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {!editing && (
+            <div className="rounded-xl border border-surface-700 bg-surface-800/60 p-3">
+              <label className="mb-2 block text-xs font-semibold text-zinc-400">Primera fase a cargar</label>
+              <select
+                value={form.initial_phase_name}
+                onChange={(event) => setForm({ ...form, initial_phase_name: event.target.value })}
+                className={INPUT}
+              >
+                {form.format === 'playoffs' ? (
+                  <>
+                    <option value="Octavos de final">Octavos de final</option>
+                    <option value="Cuartos de final">Cuartos de final</option>
+                    <option value="Semifinal">Semifinal</option>
+                    <option value="Final">Final</option>
+                  </>
+                ) : form.format === 'championship' ? (
+                  <>
+                    <option value="Fase de Grupos">Fase de Grupos</option>
+                    <option value="Fase Regular">Fase Regular</option>
+                  </>
+                ) : (
+                  <option value="Fase Regular">Fase Regular</option>
+                )}
+              </select>
+              <p className="mt-2 text-xs text-zinc-500">
+                Podes comenzar en la ronda actual. Las fases anteriores no son obligatorias.
+              </p>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -369,7 +448,7 @@ export default function ManageLeagues() {
           )}
 
           <Button onClick={save} disabled={saving || !form.organization_id || !form.sport_id || !form.name} className="w-full">
-            {saving ? 'Guardando...' : editing ? 'Guardar cambios' : isSuperAdmin ? 'Crear Liga' : 'Enviar a aprobacion'}
+            {saving ? 'Guardando...' : editing ? 'Guardar cambios' : isSuperAdmin ? 'Crear competencia' : 'Enviar a aprobacion'}
           </Button>
         </div>
       </Modal>

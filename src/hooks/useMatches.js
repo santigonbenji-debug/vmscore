@@ -61,6 +61,22 @@ export function useTeamMatches(teamId, limit = 50) {
   })
 }
 
+export function useLeagueMatches(leagueId) {
+  return useQuery({
+    queryKey: ['league-matches', leagueId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('v_matches')
+        .select('*')
+        .eq('league_id', leagueId)
+        .order('scheduled_at', { ascending: true, nullsFirst: false })
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!leagueId,
+  })
+}
+
 function pairKey(match) {
   return [match.home_team_id, match.away_team_id].filter(Boolean).sort().join('|')
 }

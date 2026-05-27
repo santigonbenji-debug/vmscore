@@ -9,6 +9,7 @@ import MatchDetail from './pages/MatchDetail'
 import TeamProfile from './pages/TeamProfile'
 import Favorites   from './pages/Favorites'
 import Contacto    from './pages/Contacto'
+import CompetitionDetail from './pages/CompetitionDetail'
 import AdminLogin      from './pages/admin/AdminLogin'
 import AdminResetPassword from './pages/admin/AdminResetPassword'
 import AdminDashboard  from './pages/admin/AdminDashboard'
@@ -26,6 +27,7 @@ import ManageScorers   from './pages/admin/ManageScorers'
 import ManageExternalSources from './pages/admin/ManageExternalSources'
 import ManageDeepScraping from './pages/admin/ManageDeepScraping'
 import ManageOrganizations from './pages/admin/ManageOrganizations'
+import ManageCompetition from './pages/admin/ManageCompetition'
 
 function ProtectedRoute({ children }) {
   const { isAdmin, loading } = useAuth()
@@ -54,6 +56,7 @@ export default function App() {
         <Route path="equipo/:teamId"   element={<TeamProfile />} />
         <Route path="favoritos"        element={<Favorites />} />
         <Route path="contacto"         element={<Contacto />} />
+        <Route path="competencia/:leagueId" element={<CompetitionDetail />} />
       </Route>
 
       <Route path="/admin/login" element={<AdminLogin />} />
@@ -62,6 +65,7 @@ export default function App() {
       <Route path="/admin" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route index                     element={<AdminDashboard />} />
         <Route path="ligas"              element={<ManageLeagues />} />
+        <Route path="competencia/:leagueId" element={<ManageCompetition />} />
         <Route path="equipos"            element={<ManageTeams />} />
         <Route path="partidos"           element={<ManageMatches />} />
         <Route path="arbitros"           element={<SuperAdminRoute><ManageReferees /></SuperAdminRoute>} />

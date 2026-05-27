@@ -3,7 +3,7 @@ import { useAuth } from '../../hooks/useAuth'
 
 const ACCESOS_SUPER = [
   { to: '/admin/organizaciones', label: 'Organizaciones', icon: 'O', desc: 'Ubicacion, archivo y permisos' },
-  { to: '/admin/ligas', label: 'Ligas', icon: 'T', desc: 'Crear y editar torneos' },
+  { to: '/admin/ligas', label: 'Competiciones', icon: 'T', desc: 'Ligas, copas y torneos' },
   { to: '/admin/equipos', label: 'Equipos', icon: 'E', desc: 'Administrar clubes' },
   { to: '/admin/partidos', label: 'Partidos', icon: 'F', desc: 'Cargar fixture' },
   { to: '/admin/importar', label: 'Importar', icon: 'I', desc: 'Copa Facil y fuentes externas' },
@@ -15,7 +15,7 @@ const ACCESOS_SUPER = [
 ]
 
 const ACCESOS_LIGA = [
-  { to: '/admin/ligas', label: 'Ligas', icon: 'T', desc: 'Crear ligas para aprobacion' },
+  { to: '/admin/ligas', label: 'Competiciones', icon: 'T', desc: 'Ligas y copas para aprobacion' },
   { to: '/admin/deportes', label: 'Deportes', icon: 'D', desc: 'Disciplinas de la organizacion' },
   { to: '/admin/equipos', label: 'Equipos', icon: 'E', desc: 'Clubes, escudo, DT y plantel' },
   { to: '/admin/partidos', label: 'Partidos', icon: 'F', desc: 'Fixture, eventos y resultados' },

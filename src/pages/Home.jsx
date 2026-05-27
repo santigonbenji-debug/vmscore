@@ -470,7 +470,13 @@ export default function Home() {
                         />
                       )}
                       <span className="text-base">{league.icon}</span>
-                      <p className="text-xs font-semibold text-zinc-300 truncate">{league.name}</p>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/competencia/${league.id}`)}
+                        className="truncate text-left text-xs font-semibold text-zinc-300 hover:text-primary"
+                      >
+                        {league.name}
+                      </button>
                     </div>
                     {formatRoundLabel(league.rounds) && (
                       <div className="shrink-0 rounded-full bg-surface-800 px-2.5 py-1 text-xs font-bold text-primary">

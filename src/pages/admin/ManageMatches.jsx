@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useLeagues, usePhases } from '../../hooks/useLeagues'
 import { useLeagueTeams } from '../../hooks/useRosters'
 import {
@@ -51,8 +51,9 @@ const STATUS_VARIANT = {
 
 export default function ManageMatches() {
   const { isSuperAdmin, organizationId } = useAuth()
-  const [ligaId, setLigaId] = useState('')
-  const [faseid, setFaseId] = useState('')
+  const [params] = useSearchParams()
+  const [ligaId, setLigaId] = useState(() => params.get('liga') ?? '')
+  const [faseid, setFaseId] = useState(() => params.get('fase') ?? '')
   const [fechaFiltro, setFechaFiltro] = useState('all')
   const [modal, setModal] = useState(false)
   const [modalEditar, setModalEditar] = useState(false)
@@ -65,6 +66,8 @@ export default function ManageMatches() {
   const { data: fases = [] } = usePhases(ligaId)
   const { data: partidos = [], isLoading } = useMatches({ phaseId: faseid || undefined })
   const ligaSeleccionada = ligas.find((liga) => liga.id === ligaId)
+  const faseSeleccionada = fases.find((fase) => fase.id === faseid)
+  const isKnockout = faseSeleccionada?.type === 'knockout' || ligaSeleccionada?.format === 'playoffs'
   const activeOrganizationId = isSuperAdmin ? ligaSeleccionada?.organization_id : organizationId
   const { data: equiposInscritos = [] } = useLeagueTeams(ligaId)
   const { data: canchas = [] } = useVenues({ organizationId: activeOrganizationId })
@@ -89,11 +92,11 @@ export default function ManageMatches() {
   const partidosPorFecha = useMemo(() => {
     const grupos = {}
     partidosFiltrados.forEach((partido) => {
-      const key = partido.round ?? 'none'
+      const key = isKnockout ? (faseSeleccionada?.id ?? 'knockout') : partido.round ?? 'none'
       if (!grupos[key]) {
         grupos[key] = {
           key,
-          label: partido.round ? `Fecha ${partido.round}` : 'Sin fecha asignada',
+          label: isKnockout ? (faseSeleccionada?.name ?? 'Eliminatoria') : partido.round ? `Fecha ${partido.round}` : 'Sin fecha asignada',
           partidos: [],
         }
       }
@@ -105,7 +108,7 @@ export default function ManageMatches() {
       if (b.key === 'none') return -1
       return Number(a.key) - Number(b.key)
     })
-  }, [partidosFiltrados])
+  }, [faseSeleccionada?.id, faseSeleccionada?.name, isKnockout, partidosFiltrados])
 
   function handleLigaChange(id) {
     setLigaId(id)
@@ -215,15 +218,15 @@ export default function ManageMatches() {
       <div className="mb-5 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-zinc-100">Partidos</h1>
-          <p className="mt-1 text-xs text-zinc-500">Edita fixture, cancha y resultados por division y fecha.</p>
+          <p className="mt-1 text-xs text-zinc-500">Carga cruces, horarios, sedes y resultados de una competencia.</p>
         </div>
         {faseid && <Button size="sm" onClick={abrirCrear}>+ Nuevo Partido</Button>}
       </div>
 
       <div className="mb-3">
-        <label className="mb-1 block text-xs font-semibold text-zinc-400">Division</label>
+        <label className="mb-1 block text-xs font-semibold text-zinc-400">Competencia</label>
         <select value={ligaId} onChange={(event) => handleLigaChange(event.target.value)} className={INPUT}>
-          <option value="">Selecciona una division...</option>
+          <option value="">Selecciona una competencia...</option>
           {ligas.map((liga) => (
             <option key={liga.id} value={liga.id}>
               {liga.sports?.icon} {liga.name} · {liga.season}
@@ -248,21 +251,33 @@ export default function ManageMatches() {
         </div>
       )}
 
+      {ligaSeleccionada && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-surface-800 bg-surface-900 p-3">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-bold text-zinc-100">{ligaSeleccionada.name}</p>
+            <p className="text-xs text-zinc-500">{ligaSeleccionada.format === 'playoffs' ? 'Eliminacion directa' : 'Fixture por fechas'}</p>
+          </div>
+          <Link to={`/admin/competencia/${ligaSeleccionada.id}`} className="shrink-0 text-xs font-bold text-primary">
+            Equipos y fases
+          </Link>
+        </div>
+      )}
+
       {!ligaId && (
-        <p className="py-16 text-center text-sm text-zinc-500">Selecciona una division para ver los partidos</p>
+        <p className="py-16 text-center text-sm text-zinc-500">Selecciona una competencia para ver los partidos</p>
       )}
       {ligaId && fases.length === 0 && (
-        <p className="py-8 text-center text-sm text-zinc-500">Esta division no tiene fases. Creala desde Ligas.</p>
+        <p className="py-8 text-center text-sm text-zinc-500">Esta competencia no tiene fases. Crealas desde su administracion.</p>
       )}
       {faseid && isLoading && <Spinner className="py-12" />}
       {faseid && !isLoading && partidos.length === 0 && (
         <p className="py-12 text-center text-sm text-zinc-500">No hay partidos en esta fase todavia</p>
       )}
 
-      {faseid && partidos.length > 0 && (
+      {faseid && partidos.length > 0 && !isKnockout && (
         <div className="mb-4 rounded-xl border border-surface-800 bg-surface-900 p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
-            <p className="text-xs font-bold uppercase tracking-wide text-zinc-400">Fecha</p>
+            <p className="text-xs font-bold uppercase tracking-wide text-zinc-400">{isKnockout ? 'Ronda' : 'Fecha'}</p>
             <p className="text-xs text-zinc-500">{partidosFiltrados.length} partido{partidosFiltrados.length === 1 ? '' : 's'}</p>
           </div>
           <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
@@ -280,7 +295,7 @@ export default function ManageMatches() {
                 onClick={() => setFechaFiltro(String(round))}
                 className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${fechaFiltro === String(round) ? 'bg-primary text-white' : 'bg-surface-800 text-zinc-300'}`}
               >
-                Fecha {round}
+                {isKnockout ? `Orden ${round}` : `Fecha ${round}`}
               </button>
             ))}
             {partidos.some((partido) => partido.round === null || partido.round === undefined) && (
@@ -289,7 +304,7 @@ export default function ManageMatches() {
                 onClick={() => setFechaFiltro('none')}
                 className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${fechaFiltro === 'none' ? 'bg-primary text-white' : 'bg-surface-800 text-zinc-300'}`}
               >
-                Sin fecha
+                {isKnockout ? 'Sin orden' : 'Sin fecha'}
               </button>
             )}
           </div>
@@ -411,11 +426,11 @@ export default function ManageMatches() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold text-zinc-400">Fecha</label>
+              <label className="mb-1 block text-xs font-semibold text-zinc-400">{isKnockout ? 'Orden del cruce' : 'Fecha'}</label>
               <input
                 type="number"
                 value={form.round}
-                placeholder="9"
+                placeholder={isKnockout ? '1' : '9'}
                 onChange={(event) => setForm({ ...form, round: event.target.value })}
                 className={INPUT}
               />
@@ -471,11 +486,11 @@ export default function ManageMatches() {
               <p className="mt-1 text-[10px] text-zinc-500">Solo puede quedar vacio si el partido esta postergado.</p>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold text-zinc-400">Fecha</label>
+              <label className="mb-1 block text-xs font-semibold text-zinc-400">{isKnockout ? 'Orden del cruce' : 'Fecha'}</label>
               <input
                 type="number"
                 value={editForm.round}
-                placeholder="9"
+                placeholder={isKnockout ? '1' : '9'}
                 onChange={(event) => setEditForm({ ...editForm, round: event.target.value })}
                 className={INPUT}
               />

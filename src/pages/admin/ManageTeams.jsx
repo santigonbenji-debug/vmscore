@@ -332,18 +332,18 @@ export default function ManageTeams() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-semibold text-zinc-400 mb-1 block">Liga donde compite *</label>
+            <label className="text-xs font-semibold text-zinc-400 mb-1 block">Competencia donde participa *</label>
             <select value={form.league_id} onChange={(event) => setForm({ ...form, league_id: event.target.value })}
               disabled={!form.sport_id}
               className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none disabled:opacity-50">
-              <option value="">{form.sport_id ? 'Seleccionar liga aprobada...' : 'Selecciona primero el deporte'}</option>
+              <option value="">{form.sport_id ? 'Seleccionar competencia aprobada...' : 'Selecciona primero el deporte'}</option>
               {modalLeagues.map((league) => <option key={league.id} value={league.id}>{league.name}{league.season ? ` - ${league.season}` : ''}</option>)}
             </select>
             {form.sport_id && modalLeagues.length === 0 && (
-              <p className="mt-1 text-[10px] text-amber-300">Primero debe existir una liga aprobada para este deporte y organizacion.</p>
+              <p className="mt-1 text-[10px] text-amber-300">Primero debe existir una competencia aprobada para este deporte y organizacion.</p>
             )}
             {editando && (
-              <p className="mt-1 text-[10px] text-zinc-500">Guardar inscribe al equipo en la liga seleccionada sin quitarlo de otras competencias.</p>
+              <p className="mt-1 text-[10px] text-zinc-500">Guardar inscribe al equipo en la competencia seleccionada sin quitarlo de otras.</p>
             )}
           </div>
           <div>
