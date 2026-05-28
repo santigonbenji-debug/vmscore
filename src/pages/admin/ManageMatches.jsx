@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { CalendarPlus, SlidersHorizontal } from 'lucide-react'
+import { CalendarPlus, DatabaseZap, SlidersHorizontal } from 'lucide-react'
 import { useLeagues, usePhases } from '../../hooks/useLeagues'
 import { useLeagueTeams } from '../../hooks/useRosters'
 import {
@@ -11,6 +11,11 @@ import {
   useSaveMatchScore,
   useUpdateMatchDetails,
 } from '../../hooks/useMatches'
+import {
+  useExternalMatchArchive,
+  useExternalSources,
+  usePublishExternalArchiveMatch,
+} from '../../hooks/useExternalSources'
 import { useVenues } from '../../hooks/useVenues'
 import { useReferees } from '../../hooks/useReferees'
 import { useAuth } from '../../hooks/useAuth'
@@ -18,6 +23,7 @@ import Modal from '../../components/ui/Modal'
 import Button from '../../components/ui/Button'
 import Badge from '../../components/ui/Badge'
 import Spinner from '../../components/ui/Spinner'
+import TeamLogo from '../../components/teams/TeamLogo'
 import { formatFechaHora, matchStatusDetail, utcToInputLocal } from '../../lib/helpers'
 
 const INPUT = 'w-full rounded-lg border border-surface-700 bg-surface-800 px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-primary/30'
@@ -69,8 +75,18 @@ export default function ManageMatches() {
   const { data: ligas = [] } = useLeagues({ organizationId: scopedOrgId, approvalStatus: 'approved' })
   const { data: fases = [] } = usePhases(ligaId)
   const { data: partidos = [], isLoading } = useMatches({ phaseId: faseid || undefined })
+  const { data: fuentesExternas = [] } = useExternalSources()
   const ligaSeleccionada = ligas.find((liga) => liga.id === ligaId)
   const faseSeleccionada = fases.find((fase) => fase.id === faseid)
+  const fuenteSeleccionada = useMemo(() => {
+    if (!ligaId || !faseid) return null
+    return fuentesExternas.find((fuente) => (
+      fuente.league_id === ligaId &&
+      fuente.phase_id === faseid &&
+      fuente.provider === 'copafacil'
+    )) ?? fuentesExternas.find((fuente) => fuente.league_id === ligaId && fuente.phase_id === faseid) ?? null
+  }, [faseid, fuentesExternas, ligaId])
+  const { data: archivoExterno = [] } = useExternalMatchArchive(fuenteSeleccionada?.id)
   const isKnockout = faseSeleccionada?.type === 'knockout' || ligaSeleccionada?.format === 'playoffs'
   const activeOrganizationId = isSuperAdmin ? ligaSeleccionada?.organization_id : organizationId
   const { data: equiposInscritos = [] } = useLeagueTeams(ligaId)
@@ -82,17 +98,76 @@ export default function ManageMatches() {
   const postergarPartido = usePostponeMatch()
   const actualizarDetalles = useUpdateMatchDetails()
   const guardarMarcador = useSaveMatchScore()
+  const publicarImportado = usePublishExternalArchiveMatch()
 
-  const fechasDisponibles = useMemo(() => {
-    const values = [...new Set(partidos.map((partido) => partido.round).filter((round) => round !== null && round !== undefined))]
-    return values.sort((a, b) => Number(a) - Number(b))
+  const equiposPorId = useMemo(() => {
+    const map = new Map()
+    equiposInscritos.forEach((equipo) => {
+      map.set(equipo.team_id, equipo)
+    })
+    return map
+  }, [equiposInscritos])
+
+  const partidosOficialesKey = useMemo(() => {
+    const keys = new Set()
+    partidos.forEach((partido) => {
+      const teams = [partido.home_team_id, partido.away_team_id].filter(Boolean).sort().join('|')
+      if (!teams) return
+      if (partido.round !== null && partido.round !== undefined) {
+        keys.add(`${teams}|round:${partido.round}`)
+      }
+      if (partido.scheduled_at) {
+        keys.add(`${teams}|day:${new Date(partido.scheduled_at).toISOString().slice(0, 10)}`)
+      }
+    })
+    return keys
   }, [partidos])
 
+  const partidosImportadosPendientes = useMemo(() => (
+    archivoExterno
+      .filter((partido) => {
+        if (partido.computed_match_id || !partido.mapped_home_team_id || !partido.mapped_away_team_id) return false
+        const teams = [partido.mapped_home_team_id, partido.mapped_away_team_id].sort().join('|')
+        const byRound = partido.round !== null && partido.round !== undefined
+          ? partidosOficialesKey.has(`${teams}|round:${partido.round}`)
+          : false
+        const byDay = partido.scheduled_at
+          ? partidosOficialesKey.has(`${teams}|day:${new Date(partido.scheduled_at).toISOString().slice(0, 10)}`)
+          : false
+        return !byRound && !byDay
+      })
+      .map((partido) => ({
+        ...partido,
+        id: `external-${partido.id}`,
+        archive_id: partido.id,
+        source_kind: 'external',
+        phase_id: faseid,
+        home_team_id: partido.mapped_home_team_id,
+        away_team_id: partido.mapped_away_team_id,
+        home_team_name: equiposPorId.get(partido.mapped_home_team_id)?.team_name ?? partido.external_home_team_id,
+        home_team_short_name: equiposPorId.get(partido.mapped_home_team_id)?.team_short_name ?? null,
+        home_team_logo_url: equiposPorId.get(partido.mapped_home_team_id)?.team_logo_url ?? null,
+        away_team_name: equiposPorId.get(partido.mapped_away_team_id)?.team_name ?? partido.external_away_team_id,
+        away_team_short_name: equiposPorId.get(partido.mapped_away_team_id)?.team_short_name ?? null,
+        away_team_logo_url: equiposPorId.get(partido.mapped_away_team_id)?.team_logo_url ?? null,
+      }))
+  ), [archivoExterno, equiposPorId, faseid, partidosOficialesKey])
+
+  const partidosVisibles = useMemo(() => ([
+    ...partidos.map((partido) => ({ ...partido, source_kind: 'official' })),
+    ...partidosImportadosPendientes,
+  ]), [partidos, partidosImportadosPendientes])
+
+  const fechasDisponibles = useMemo(() => {
+    const values = [...new Set(partidosVisibles.map((partido) => partido.round).filter((round) => round !== null && round !== undefined))]
+    return values.sort((a, b) => Number(a) - Number(b))
+  }, [partidosVisibles])
+
   const partidosFiltrados = useMemo(() => {
-    if (fechaFiltro === 'all') return partidos
-    if (fechaFiltro === 'none') return partidos.filter((partido) => partido.round === null || partido.round === undefined)
-    return partidos.filter((partido) => String(partido.round) === fechaFiltro)
-  }, [fechaFiltro, partidos])
+    if (fechaFiltro === 'all') return partidosVisibles
+    if (fechaFiltro === 'none') return partidosVisibles.filter((partido) => partido.round === null || partido.round === undefined)
+    return partidosVisibles.filter((partido) => String(partido.round) === fechaFiltro)
+  }, [fechaFiltro, partidosVisibles])
 
   const partidosPorFecha = useMemo(() => {
     const grupos = {}
@@ -114,6 +189,18 @@ export default function ManageMatches() {
       return Number(a.key) - Number(b.key)
     })
   }, [faseSeleccionada?.id, faseSeleccionada?.name, isKnockout, partidosFiltrados])
+
+  useEffect(() => {
+    if (!ligaId || faseid || fases.length === 0) return
+    setFaseId(fases[0].id)
+  }, [faseid, fases, ligaId])
+
+  useEffect(() => {
+    if (!faseid) return
+    if (fases.length > 0 && !fases.some((fase) => fase.id === faseid)) {
+      setFaseId(fases[0]?.id ?? '')
+    }
+  }, [faseid, fases])
 
   function handleLigaChange(id) {
     setLigaId(id)
@@ -264,7 +351,27 @@ export default function ManageMatches() {
     await postergarPartido.mutateAsync({ id: partido.id })
   }
 
+  async function publicarPartidoImportado(partido) {
+    await publicarImportado.mutateAsync({
+      id: partido.archive_id,
+      sourceId: fuenteSeleccionada?.id,
+      leagueId: ligaId,
+    })
+  }
+
+  async function publicarImportadosVisibles() {
+    const pendientes = partidosFiltrados.filter((partido) => partido.source_kind === 'external')
+    for (const partido of pendientes) {
+      await publicarImportado.mutateAsync({
+        id: partido.archive_id,
+        sourceId: fuenteSeleccionada?.id,
+        leagueId: ligaId,
+      })
+    }
+  }
+
   const guardando = crearPartido.isPending
+  const externosFiltrados = partidosFiltrados.filter((partido) => partido.source_kind === 'external')
 
   return (
     <div className="px-4 py-6 pb-28">
@@ -316,6 +423,34 @@ export default function ManageMatches() {
         </div>
       )}
 
+      {faseid && fuenteSeleccionada && partidosImportadosPendientes.length > 0 && (
+        <div className="mb-4 rounded-xl border border-primary/30 bg-primary/10 p-3">
+          <div className="flex items-start gap-3">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary text-white">
+              <DatabaseZap className="h-5 w-5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-black text-zinc-100">Cruces importados listos</p>
+              <p className="mt-0.5 text-xs text-zinc-400">
+                Hay partidos guardados desde la fuente externa que todavia no estan publicados como partidos editables.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  onClick={publicarImportadosVisibles}
+                  disabled={publicarImportado.isPending || externosFiltrados.length === 0}
+                >
+                  {publicarImportado.isPending ? 'Publicando...' : `Publicar visibles (${externosFiltrados.length})`}
+                </Button>
+                <Link to="/admin/importar" className="rounded-lg bg-surface-800 px-3 py-2 text-xs font-bold text-zinc-200">
+                  Ver importacion
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {!ligaId && (
         <p className="py-16 text-center text-sm text-zinc-500">Selecciona una competencia para ver los partidos</p>
       )}
@@ -323,11 +458,11 @@ export default function ManageMatches() {
         <p className="py-8 text-center text-sm text-zinc-500">Esta competencia no tiene fases. Crealas desde su administracion.</p>
       )}
       {faseid && isLoading && <Spinner className="py-12" />}
-      {faseid && !isLoading && partidos.length === 0 && (
+      {faseid && !isLoading && partidosVisibles.length === 0 && (
         <p className="py-12 text-center text-sm text-zinc-500">No hay partidos en esta fase todavia</p>
       )}
 
-      {faseid && partidos.length > 0 && !isKnockout && (
+      {faseid && partidosVisibles.length > 0 && !isKnockout && (
         <div className="mb-4 rounded-xl border border-surface-800 bg-surface-900 p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-xs font-bold uppercase tracking-wide text-zinc-400">{isKnockout ? 'Ronda' : 'Fecha'}</p>
@@ -351,7 +486,7 @@ export default function ManageMatches() {
                 {isKnockout ? `Orden ${round}` : `Fecha ${round}`}
               </button>
             ))}
-            {partidos.some((partido) => partido.round === null || partido.round === undefined) && (
+            {partidosVisibles.some((partido) => partido.round === null || partido.round === undefined) && (
               <button
                 type="button"
                 onClick={() => setFechaFiltro('none')}
@@ -386,8 +521,11 @@ export default function ManageMatches() {
                     </Badge>
                   </div>
 
-                  <div className="flex items-center justify-center gap-3 py-1">
-                    <span className="flex-1 text-right text-sm font-semibold text-zinc-100">{partido.home_team_short_name ?? partido.home_team_name}</span>
+                  <div className="grid grid-cols-[1fr,auto,1fr] items-center gap-3 py-1">
+                    <div className="flex min-w-0 items-center justify-end gap-2">
+                      <span className="truncate text-right text-sm font-semibold text-zinc-100">{partido.home_team_short_name ?? partido.home_team_name}</span>
+                      <TeamLogo logoUrl={partido.home_team_logo_url} name={partido.home_team_name} color={partido.home_primary_color} size="sm" />
+                    </div>
                     <span className="text-sm font-bold text-zinc-500">
                       {(partido.status === 'finished' || partido.status === 'in_progress') &&
                       partido.home_score !== null &&
@@ -395,7 +533,10 @@ export default function ManageMatches() {
                         ? `${partido.home_score} - ${partido.away_score}`
                         : 'vs'}
                     </span>
-                    <span className="flex-1 text-left text-sm font-semibold text-zinc-100">{partido.away_team_short_name ?? partido.away_team_name}</span>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <TeamLogo logoUrl={partido.away_team_logo_url} name={partido.away_team_name} color={partido.away_primary_color} size="sm" />
+                      <span className="truncate text-left text-sm font-semibold text-zinc-100">{partido.away_team_short_name ?? partido.away_team_name}</span>
+                    </div>
                   </div>
 
                   <div className="mt-2 grid gap-1 text-xs text-zinc-500 sm:grid-cols-2">
@@ -411,38 +552,51 @@ export default function ManageMatches() {
                   </div>
 
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {partido.status !== 'postponed' && partido.status !== 'cancelled' && (
+                    {partido.source_kind === 'external' ? (
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onClick={() => publicarPartidoImportado(partido)}
+                        disabled={publicarImportado.isPending}
+                      >
+                        {publicarImportado.isPending ? 'Publicando...' : 'Publicar en partidos'}
+                      </Button>
+                    ) : partido.status !== 'postponed' && partido.status !== 'cancelled' && (
                       <Button size="sm" variant="primary" onClick={() => abrirEditar(partido)}>
                         {partido.status === 'finished' ? 'Editar partido' : 'Cargar partido'}
                       </Button>
                     )}
-                    <Link to={`/admin/resultado/${partido.id}`}>
-                      <Button size="sm" variant="outline">
-                        Eventos y convocados
-                      </Button>
-                    </Link>
-                    {(partido.status === 'postponed' || partido.status === 'cancelled') && (
-                      <Button size="sm" variant="secondary" onClick={() => abrirEditar(partido)}>
-                        Editar detalles
-                      </Button>
+                    {partido.source_kind !== 'external' && (
+                      <>
+                        <Link to={`/admin/resultado/${partido.id}`}>
+                          <Button size="sm" variant="outline">
+                            Eventos y convocados
+                          </Button>
+                        </Link>
+                        {(partido.status === 'postponed' || partido.status === 'cancelled') && (
+                          <Button size="sm" variant="secondary" onClick={() => abrirEditar(partido)}>
+                            Editar detalles
+                          </Button>
+                        )}
+                        {partido.status !== 'postponed' && partido.status !== 'cancelled' && (
+                          <Button size="sm" variant="secondary" onClick={() => abrirEditar(partido)}>
+                            Fecha/sede
+                          </Button>
+                        )}
+                        {partido.status === 'scheduled' && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => suspender(partido)}
+                          >
+                            Suspender
+                          </Button>
+                        )}
+                        <button onClick={() => eliminar(partido)} className="ml-auto text-xs font-medium text-red-400 hover:text-red-300">
+                          Borrar
+                        </button>
+                      </>
                     )}
-                    {partido.status !== 'postponed' && partido.status !== 'cancelled' && (
-                      <Button size="sm" variant="secondary" onClick={() => abrirEditar(partido)}>
-                        Fecha/sede
-                      </Button>
-                    )}
-                    {partido.status === 'scheduled' && (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => suspender(partido)}
-                      >
-                        Suspender
-                      </Button>
-                    )}
-                    <button onClick={() => eliminar(partido)} className="ml-auto text-xs font-medium text-red-400 hover:text-red-300">
-                      Borrar
-                    </button>
                   </div>
                 </div>
               ))}
