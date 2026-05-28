@@ -8,6 +8,7 @@ import {
   useDeleteMatch,
   useMatches,
   usePostponeMatch,
+  useSaveMatchScore,
   useUpdateMatchDetails,
 } from '../../hooks/useMatches'
 import { useVenues } from '../../hooks/useVenues'
@@ -40,6 +41,8 @@ const EDIT_FORM_VACIO = {
   notes: '',
   home_technical_director: '',
   away_technical_director: '',
+  home_score: '',
+  away_score: '',
 }
 
 const STATUS_VARIANT = {
@@ -78,6 +81,7 @@ export default function ManageMatches() {
   const borrarPartido = useDeleteMatch()
   const postergarPartido = usePostponeMatch()
   const actualizarDetalles = useUpdateMatchDetails()
+  const guardarMarcador = useSaveMatchScore()
 
   const fechasDisponibles = useMemo(() => {
     const values = [...new Set(partidos.map((partido) => partido.round).filter((round) => round !== null && round !== undefined))]
@@ -138,6 +142,8 @@ export default function ManageMatches() {
       notes: partido.notes ?? '',
       home_technical_director: partido.home_technical_director ?? '',
       away_technical_director: partido.away_technical_director ?? '',
+      home_score: partido.home_score ?? '',
+      away_score: partido.away_score ?? '',
     })
     setModalEditar(true)
   }
@@ -183,6 +189,11 @@ export default function ManageMatches() {
       alert('La fecha y hora son obligatorias. Usa Postergado solo si la nueva fecha queda a definir.')
       return
     }
+    const hasScoreInput = editForm.home_score !== '' || editForm.away_score !== ''
+    if (hasScoreInput && (editForm.home_score === '' || editForm.away_score === '')) {
+      alert('Para guardar marcador, carga los goles de ambos equipos.')
+      return
+    }
     await actualizarDetalles.mutateAsync({
       id: editando.id,
       scheduledAtLocal: editForm.scheduledAtLocal,
@@ -193,6 +204,47 @@ export default function ManageMatches() {
       notes: editForm.notes || null,
       home_technical_director: editForm.home_technical_director || null,
       away_technical_director: editForm.away_technical_director || null,
+    })
+    if (hasScoreInput) {
+      await guardarMarcador.mutateAsync({
+        id: editando.id,
+        homeScore: editForm.home_score,
+        awayScore: editForm.away_score,
+        status: editForm.status === 'finished' ? 'finished' : 'in_progress',
+      })
+    }
+    setModalEditar(false)
+    setEditando(null)
+    setEditForm(EDIT_FORM_VACIO)
+  }
+
+  async function guardarResultadoRapido(status = 'finished') {
+    if (!editando) return
+    if (editForm.home_score === '' || editForm.away_score === '') {
+      alert('Carga los goles de los dos equipos para guardar el marcador.')
+      return
+    }
+    if (editForm.status !== 'postponed' && !editForm.scheduledAtLocal) {
+      alert('La fecha y hora son obligatorias. Usa Postergado solo si la nueva fecha queda a definir.')
+      return
+    }
+
+    await actualizarDetalles.mutateAsync({
+      id: editando.id,
+      scheduledAtLocal: editForm.scheduledAtLocal,
+      round: editForm.round === '' ? null : parseInt(editForm.round),
+      venue_id: editForm.venue_id || null,
+      referee_id: editForm.referee_id || null,
+      status,
+      notes: editForm.notes || null,
+      home_technical_director: editForm.home_technical_director || null,
+      away_technical_director: editForm.away_technical_director || null,
+    })
+    await guardarMarcador.mutateAsync({
+      id: editando.id,
+      homeScore: editForm.home_score,
+      awayScore: editForm.away_score,
+      status,
     })
     setModalEditar(false)
     setEditando(null)
@@ -359,21 +411,26 @@ export default function ManageMatches() {
                   </div>
 
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {partido.status !== 'finished' && partido.status !== 'postponed' && partido.status !== 'cancelled' && (
-                      <Link to={`/admin/resultado/${partido.id}`}>
-                        <Button size="sm" variant="primary">
-                          {partido.status === 'in_progress' ? 'Cargar en vivo' : 'Cargar datos'}
-                        </Button>
-                      </Link>
+                    {partido.status !== 'postponed' && partido.status !== 'cancelled' && (
+                      <Button size="sm" variant="primary" onClick={() => abrirEditar(partido)}>
+                        {partido.status === 'finished' ? 'Editar partido' : 'Cargar partido'}
+                      </Button>
                     )}
-                    {partido.status === 'finished' && (
-                      <Link to={`/admin/resultado/${partido.id}`}>
-                        <Button size="sm" variant="outline">Ver/editar resultado</Button>
-                      </Link>
+                    <Link to={`/admin/resultado/${partido.id}`}>
+                      <Button size="sm" variant="outline">
+                        Eventos y convocados
+                      </Button>
+                    </Link>
+                    {(partido.status === 'postponed' || partido.status === 'cancelled') && (
+                      <Button size="sm" variant="secondary" onClick={() => abrirEditar(partido)}>
+                        Editar detalles
+                      </Button>
                     )}
-                    <Button size="sm" variant="secondary" onClick={() => abrirEditar(partido)}>
-                      Editar detalles
-                    </Button>
+                    {partido.status !== 'postponed' && partido.status !== 'cancelled' && (
+                      <Button size="sm" variant="secondary" onClick={() => abrirEditar(partido)}>
+                        Fecha/sede
+                      </Button>
+                    )}
                     {partido.status === 'scheduled' && (
                       <Button
                         size="sm"
@@ -484,14 +541,14 @@ export default function ManageMatches() {
         open={modalEditar}
         onClose={() => setModalEditar(false)}
         title="Editar partido"
-        eyebrow="Detalles"
-        description="Ajusta fecha, sede, estado y datos visibles del encuentro sin tocar eventos ni tabla automaticamente."
+        eyebrow="Partido"
+        description="Desde aca podes resolver lo mas usado: fecha, sede, estado y marcador. Eventos y convocados quedan en el boton avanzado."
         icon={<SlidersHorizontal className="h-5 w-5" />}
         size="lg"
         guide={[
-          { title: 'Fecha', text: 'Programado o a definir.' },
-          { title: 'Estado', text: 'En vivo, finalizado o postergado.' },
-          { title: 'Contexto', text: 'Cancha, arbitro, DT y notas.' },
+          { title: 'Datos', text: 'Fecha, cancha y arbitro.' },
+          { title: 'Marcador', text: 'Carga resultado sin salir.' },
+          { title: 'Avanzado', text: 'Eventos y convocados aparte.' },
         ]}
       >
         <div className="space-y-4">
@@ -551,6 +608,61 @@ export default function ManageMatches() {
             </select>
           </div>
 
+          {editando && editForm.status !== 'postponed' && editForm.status !== 'cancelled' && (
+            <div className="rounded-xl border border-primary/20 bg-primary/10 p-3">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-black text-zinc-100">Marcador rapido</p>
+                  <p className="text-xs text-zinc-400">Guarda el resultado sin abrir otra pantalla.</p>
+                </div>
+                <Link to={`/admin/resultado/${editando.id}`} className="text-xs font-bold text-primary">
+                  Eventos
+                </Link>
+              </div>
+              <div className="grid grid-cols-[1fr,5rem,5rem] items-end gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-xs text-zinc-400">{editando.home_team_short_name ?? editando.home_team_name}</p>
+                  <p className="truncate text-xs text-zinc-400">{editando.away_team_short_name ?? editando.away_team_name}</p>
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10px] font-bold uppercase text-zinc-500">Local</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={editForm.home_score}
+                    onChange={(event) => setEditForm({ ...editForm, home_score: event.target.value })}
+                    className={`${INPUT} text-center text-base font-black`}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10px] font-bold uppercase text-zinc-500">Visit.</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={editForm.away_score}
+                    onChange={(event) => setEditForm({ ...editForm, away_score: event.target.value })}
+                    className={`${INPUT} text-center text-base font-black`}
+                  />
+                </div>
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <Button
+                  variant="secondary"
+                  onClick={() => guardarResultadoRapido('in_progress')}
+                  disabled={actualizarDetalles.isPending || guardarMarcador.isPending || editForm.home_score === '' || editForm.away_score === ''}
+                >
+                  Guardar en vivo
+                </Button>
+                <Button
+                  onClick={() => guardarResultadoRapido('finished')}
+                  disabled={actualizarDetalles.isPending || guardarMarcador.isPending || editForm.home_score === '' || editForm.away_score === ''}
+                >
+                  Resultado final
+                </Button>
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="mb-1 block text-xs font-semibold text-zinc-400">Notas</label>
             <textarea
@@ -584,8 +696,8 @@ export default function ManageMatches() {
             </div>
           </div>
 
-          <Button onClick={guardarEdicion} disabled={actualizarDetalles.isPending || (editForm.status !== 'postponed' && !editForm.scheduledAtLocal)} className="w-full">
-            {actualizarDetalles.isPending ? 'Guardando...' : 'Guardar detalles'}
+          <Button onClick={guardarEdicion} disabled={actualizarDetalles.isPending || guardarMarcador.isPending || (editForm.status !== 'postponed' && !editForm.scheduledAtLocal)} className="w-full">
+            {actualizarDetalles.isPending || guardarMarcador.isPending ? 'Guardando...' : 'Guardar todo'}
           </Button>
         </div>
       </Modal>

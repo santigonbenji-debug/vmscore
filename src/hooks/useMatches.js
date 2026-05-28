@@ -286,6 +286,54 @@ export function useUpdateMatch() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['matches'] })
       qc.invalidateQueries({ queryKey: ['match'] })
+      qc.invalidateQueries({ queryKey: ['standings'] })
+      qc.invalidateQueries({ queryKey: ['matches-home'] })
+      qc.invalidateQueries({ queryKey: ['home-matches'] })
+      qc.invalidateQueries({ queryKey: ['matches-all-with-external'] })
+    },
+  })
+}
+
+export function useSaveMatchScore() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, homeScore, awayScore, status = 'finished' }) => {
+      const parsedHomeScore = parseOptionalScore(homeScore)
+      const parsedAwayScore = parseOptionalScore(awayScore)
+      const hasCompleteScore = Number.isFinite(parsedHomeScore) && Number.isFinite(parsedAwayScore)
+
+      if (!hasCompleteScore) {
+        throw new Error('Carga los goles de ambos equipos para guardar el marcador.')
+      }
+
+      const { error } = await supabase
+        .from('matches')
+        .update({
+          home_score: parsedHomeScore,
+          away_score: parsedAwayScore,
+          status,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+      if (error) throw error
+
+      if (status === 'finished') {
+        supabase.functions.invoke('send-push', {
+          body: { type: 'match_finished', matchId: id },
+        }).catch((pushError) => {
+          console.warn('No se pudo enviar push de resultado final', pushError)
+        })
+      }
+    },
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: ['match', id] })
+      qc.invalidateQueries({ queryKey: ['matches'] })
+      qc.invalidateQueries({ queryKey: ['standings'] })
+      qc.invalidateQueries({ queryKey: ['matches-home'] })
+      qc.invalidateQueries({ queryKey: ['home-matches'] })
+      qc.invalidateQueries({ queryKey: ['matches-all-with-external'] })
+      qc.invalidateQueries({ queryKey: ['team-matches'] })
+      qc.invalidateQueries({ queryKey: ['team-matches-with-external'] })
     },
   })
 }

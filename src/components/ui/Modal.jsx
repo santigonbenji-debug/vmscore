@@ -35,12 +35,12 @@ export default function Modal({
   return (
     <div className="fixed inset-0 z-[80] flex items-end justify-center p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={onClose} />
-      <div className={`relative w-full ${SIZE[size] ?? SIZE.md} max-h-[92dvh] overflow-hidden rounded-t-2xl border border-surface-800 bg-surface-950 text-zinc-100 shadow-2xl sm:rounded-2xl`}>
-        <div className="sticky top-0 z-10 border-b border-surface-800 bg-surface-950/95 px-5 py-4 backdrop-blur">
+      <div className={`relative flex max-h-[96dvh] min-h-0 w-full flex-col overflow-hidden rounded-t-2xl border border-surface-800 bg-surface-950 text-zinc-100 shadow-2xl sm:max-h-[92dvh] sm:rounded-2xl ${SIZE[size] ?? SIZE.md}`}>
+        <div className="shrink-0 border-b border-surface-800 bg-surface-950/95 px-4 py-3 backdrop-blur sm:px-5 sm:py-4">
           <div className="flex items-start justify-between gap-4">
             <div className="flex min-w-0 gap-3">
               {icon && (
-                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-primary/25 bg-primary/15 text-primary shadow-[0_0_24px_rgba(232,78,27,0.16)]">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-primary/25 bg-primary/15 text-primary shadow-[0_0_24px_rgba(232,78,27,0.16)] sm:h-11 sm:w-11">
                   {icon}
                 </div>
               )}
@@ -60,9 +60,9 @@ export default function Modal({
             </button>
           </div>
           {guide.length > 0 && (
-            <div className="mt-4 grid gap-2 sm:grid-cols-3">
+            <div className="-mx-1 mt-3 flex gap-2 overflow-x-auto px-1 pb-1 scrollbar-none sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0 sm:pb-0">
               {guide.map((item, index) => (
-                <div key={`${item.title}-${index}`} className="rounded-xl border border-surface-800 bg-surface-900 p-3">
+                <div key={`${item.title}-${index}`} className="min-w-36 rounded-xl border border-surface-800 bg-surface-900 p-2.5 sm:min-w-0 sm:p-3">
                   <p className="text-[10px] font-black uppercase tracking-wide text-primary">{String(index + 1).padStart(2, '0')}</p>
                   <p className="mt-1 text-xs font-bold text-zinc-100">{item.title}</p>
                   {item.text && <p className="mt-0.5 text-[11px] leading-snug text-zinc-500">{item.text}</p>}
@@ -71,7 +71,7 @@ export default function Modal({
             </div>
           )}
         </div>
-        <div className="max-h-[calc(92dvh-5rem)] overflow-y-auto px-5 py-4 pb-[calc(2rem+env(safe-area-inset-bottom))]">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 pb-[calc(7rem+env(safe-area-inset-bottom))] sm:px-5 sm:pb-5">
           {children}
         </div>
       </div>
