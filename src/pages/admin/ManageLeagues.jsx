@@ -15,6 +15,7 @@ import Modal from '../../components/ui/Modal'
 import Button from '../../components/ui/Button'
 import Badge from '../../components/ui/Badge'
 import Spinner from '../../components/ui/Spinner'
+import { KNOCKOUT_PHASES } from '../../lib/competitionFormats'
 
 const STATUS_LABEL = { upcoming: 'Proxima', active: 'Activa', finished: 'Finalizada' }
 const STATUS_VARIANT = { upcoming: 'warning', active: 'success', finished: 'default' }
@@ -31,7 +32,7 @@ const COMP_TYPES = [
 
 const FORMATS = [
   { value: 'round_robin', label: 'Todos contra todos', desc: 'Tabla de posiciones y fechas.' },
-  { value: 'playoffs', label: 'Eliminacion directa', desc: 'Llaves: cuartos, semifinal y final.' },
+  { value: 'playoffs', label: 'Eliminacion directa', desc: 'Llaves desde 64avos hasta final.' },
   { value: 'championship', label: 'Grupos y definicion', desc: 'Fase de grupos y luego eliminatorias.' },
 ]
 
@@ -388,12 +389,9 @@ export default function ManageLeagues() {
                 className={INPUT}
               >
                 {form.format === 'playoffs' ? (
-                  <>
-                    <option value="Octavos de final">Octavos de final</option>
-                    <option value="Cuartos de final">Cuartos de final</option>
-                    <option value="Semifinal">Semifinal</option>
-                    <option value="Final">Final</option>
-                  </>
+                  KNOCKOUT_PHASES.map((phase) => (
+                    <option key={phase.name} value={phase.name}>{phase.shortLabel} - {phase.name}</option>
+                  ))
                 ) : form.format === 'championship' ? (
                   <>
                     <option value="Fase de Grupos">Fase de Grupos</option>

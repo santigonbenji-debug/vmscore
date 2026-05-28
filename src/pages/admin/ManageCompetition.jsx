@@ -17,6 +17,7 @@ import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
 import Spinner from '../../components/ui/Spinner'
 import TeamLogo from '../../components/teams/TeamLogo'
+import { KNOCKOUT_PHASES, KNOCKOUT_PHASE_NAMES, getNextKnockoutPhaseName } from '../../lib/competitionFormats'
 
 const INPUT = 'w-full rounded-lg border border-surface-700 bg-surface-800 px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-primary/30'
 
@@ -39,11 +40,9 @@ const PHASE_TYPES = [
   { value: 'knockout', label: 'Eliminatoria' },
 ]
 
-const KNOCKOUT_PHASES = ['Octavos de final', 'Cuartos de final', 'Semifinal', 'Final']
-
 function initialPhaseForm(league, phases) {
   return {
-    name: league?.format === 'playoffs' ? 'Semifinal' : 'Nueva fase',
+    name: league?.format === 'playoffs' ? getNextKnockoutPhaseName(phases) : 'Nueva fase',
     type: league?.format === 'playoffs' ? 'knockout' : 'round_robin',
     phase_order: (phases?.length ?? 0) + 1,
   }
@@ -104,9 +103,9 @@ export default function ManageCompetition() {
   const missingKnockoutPhases = useMemo(() => {
     if (league?.format !== 'playoffs') return []
     const existingNames = new Set(phases.filter((phase) => phase.type === 'knockout').map((phase) => phase.name))
-    const firstRoundIndex = KNOCKOUT_PHASES.findIndex((name) => existingNames.has(name))
+    const firstRoundIndex = KNOCKOUT_PHASE_NAMES.findIndex((name) => existingNames.has(name))
     if (firstRoundIndex < 0) return []
-    return KNOCKOUT_PHASES.slice(firstRoundIndex + 1).filter((name) => !existingNames.has(name))
+    return KNOCKOUT_PHASE_NAMES.slice(firstRoundIndex + 1).filter((name) => !existingNames.has(name))
   }, [league?.format, phases])
 
   async function enroll() {
@@ -238,7 +237,7 @@ export default function ManageCompetition() {
           </Button>
         </div>
         <div className="mt-3 flex items-center justify-between">
-          <Link to="/admin/equipos" className="text-xs font-semibold text-primary">Crear equipo nuevo</Link>
+          <Link to={`/admin/equipos?liga=${leagueId}`} className="text-xs font-semibold text-primary">Crear equipo nuevo</Link>
           <span className="text-xs text-zinc-500">{enrolled.length} inscriptos</span>
         </div>
         {loadingEnrolled ? <Spinner className="py-3" /> : enrolled.length > 0 && (
@@ -302,7 +301,7 @@ export default function ManageCompetition() {
         onClose={() => setPhaseModal(false)}
         title={editingPhase ? 'Editar fase' : 'Nueva fase'}
         eyebrow="Ronda"
-        description="Define una etapa de la competencia. En copas se usa para ordenar cuartos, semifinal y final."
+        description="Define una etapa de la competencia. En copas podes arrancar desde 64avos, 32avos, 16avos, octavos o la ronda actual."
         icon={<GitBranch className="h-5 w-5" />}
         guide={[
           { title: 'Nombre', text: 'Ronda o etapa.' },
@@ -315,7 +314,7 @@ export default function ManageCompetition() {
             <label className="mb-1 block text-xs font-semibold text-zinc-400">Nombre *</label>
             {league.format === 'playoffs' ? (
               <select value={phaseForm.name} onChange={(event) => setPhaseForm({ ...phaseForm, name: event.target.value })} className={INPUT}>
-                {KNOCKOUT_PHASES.map((phase) => <option key={phase} value={phase}>{phase}</option>)}
+                {KNOCKOUT_PHASES.map((phase) => <option key={phase.name} value={phase.name}>{phase.shortLabel} - {phase.name}</option>)}
               </select>
             ) : (
               <input value={phaseForm.name} onChange={(event) => setPhaseForm({ ...phaseForm, name: event.target.value })} className={INPUT} />

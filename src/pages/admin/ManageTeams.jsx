@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Shield } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useOrganizations } from '../../hooks/useOrganizations'
@@ -170,11 +171,14 @@ function PlayersEditor({ teamId }) {
 
 export default function ManageTeams() {
   const { isSuperAdmin, organizationId, organization } = useAuth()
+  const [searchParams] = useSearchParams()
+  const prefillLeagueId = searchParams.get('liga') ?? ''
   const [modal, setModal] = useState(false)
   const [editando, setEditando] = useState(null)
   const [form, setForm] = useState(FORM_VACIO)
   const [logoFile, setLogoFile] = useState(null)
   const [filtro, setFiltro] = useState('')
+  const [prefillHandled, setPrefillHandled] = useState(false)
 
   const scopedOrgId = isSuperAdmin ? undefined : organizationId
   const { data: organizations = [] } = useOrganizations({ includeArchived: isSuperAdmin })
@@ -246,6 +250,22 @@ export default function ManageTeams() {
   const modalLeagues = leagues.filter((league) => (
     league.organization_id === form.organization_id && league.sport_id === form.sport_id
   ))
+
+  useEffect(() => {
+    if (!prefillLeagueId || prefillHandled || leagues.length === 0) return
+    const league = leagues.find((item) => item.id === prefillLeagueId)
+    if (!league) return
+    setEditando(null)
+    setForm({
+      ...FORM_VACIO,
+      organization_id: league.organization_id,
+      sport_id: league.sport_id,
+      league_id: league.id,
+    })
+    setLogoFile(null)
+    setModal(true)
+    setPrefillHandled(true)
+  }, [leagues, prefillHandled, prefillLeagueId])
 
   return (
     <div className="px-4 py-6">
