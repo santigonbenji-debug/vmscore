@@ -15,13 +15,14 @@ import Modal from '../../components/ui/Modal'
 import Button from '../../components/ui/Button'
 import Badge from '../../components/ui/Badge'
 import Spinner from '../../components/ui/Spinner'
-import { KNOCKOUT_PHASES } from '../../lib/competitionFormats'
+import { KNOCKOUT_PHASES, LEG_MODES } from '../../lib/competitionFormats'
 
 const STATUS_LABEL = { upcoming: 'Proxima', active: 'Activa', finished: 'Finalizada' }
 const STATUS_VARIANT = { upcoming: 'warning', active: 'success', finished: 'default' }
 const GENDER_LABEL = { masculino: 'Masculino', femenino: 'Femenino', mixto: 'Mixto' }
 const APPROVAL_LABEL = { draft: 'Borrador', pending_review: 'Pendiente', approved: 'Aprobada', rejected: 'Rechazada' }
 const APPROVAL_VARIANT = { draft: 'default', pending_review: 'warning', approved: 'success', rejected: 'danger' }
+const LEG_MODE_LABEL = { single: 'Partido unico', two_legged: 'Ida y vuelta' }
 
 const COMP_TYPES = [
   { value: 'liga', label: 'Liga', icon: 'T', desc: 'Todos contra todos' },
@@ -47,6 +48,7 @@ const EMPTY_FORM = {
   champion_team_id: '',
   competition_type: 'liga',
   format: 'round_robin',
+  leg_mode: 'single',
   initial_phase_name: 'Fase Regular',
   initial_phase_type: 'round_robin',
 }
@@ -112,6 +114,7 @@ export default function ManageLeagues() {
       champion_team_id: league.champion_team_id ?? '',
       competition_type: league.competition_type ?? 'liga',
       format: league.format ?? 'round_robin',
+      leg_mode: league.leg_mode ?? 'single',
       initial_phase_name: '',
       initial_phase_type: '',
     })
@@ -227,6 +230,9 @@ export default function ManageLeagues() {
                       {league.is_archived && <Badge variant="danger">Archivada</Badge>}
                       {comp && <Badge variant="primary">{comp.icon} {comp.label}</Badge>}
                       <Badge>{FORMATS.find((format) => format.value === league.format)?.label ?? 'Formato'}</Badge>
+                      {league.format === 'playoffs' && (
+                        <Badge variant="primary">{LEG_MODE_LABEL[league.leg_mode ?? 'single']}</Badge>
+                      )}
                     </div>
                     <p className="mt-2 text-[10px] text-zinc-500">
                       {league.organizations?.name ?? 'Sin organizacion'} · {league.city}, {league.province}
@@ -332,10 +338,10 @@ export default function ManageLeagues() {
                   type="button"
                   onClick={() => {
                     const defaults = comp.value === 'copa'
-                      ? { format: 'playoffs', initial_phase_name: 'Cuartos de final', initial_phase_type: 'knockout' }
+                      ? { format: 'playoffs', leg_mode: 'single', initial_phase_name: 'Cuartos de final', initial_phase_type: 'knockout' }
                       : comp.value === 'torneo'
-                        ? { format: 'championship', initial_phase_name: 'Fase de Grupos', initial_phase_type: 'groups' }
-                        : { format: 'round_robin', initial_phase_name: 'Fase Regular', initial_phase_type: 'round_robin' }
+                        ? { format: 'championship', leg_mode: 'single', initial_phase_name: 'Fase de Grupos', initial_phase_type: 'groups' }
+                        : { format: 'round_robin', leg_mode: 'single', initial_phase_name: 'Fase Regular', initial_phase_type: 'round_robin' }
                     setForm({ ...form, competition_type: comp.value, ...defaults })
                   }}
                   className={`rounded-lg border p-2 text-center transition-colors ${
@@ -365,7 +371,7 @@ export default function ManageLeagues() {
                       : format.value === 'championship'
                         ? { initial_phase_name: 'Fase de Grupos', initial_phase_type: 'groups' }
                         : { initial_phase_name: 'Fase Regular', initial_phase_type: 'round_robin' }
-                    setForm({ ...form, format: format.value, ...initial })
+                    setForm({ ...form, format: format.value, leg_mode: format.value === 'playoffs' ? form.leg_mode : 'single', ...initial })
                   }}
                   className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
                     form.format === format.value
@@ -379,6 +385,29 @@ export default function ManageLeagues() {
               ))}
             </div>
           </div>
+
+          {form.format === 'playoffs' && (
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-zinc-400">Definicion de cada llave</label>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {LEG_MODES.map((mode) => (
+                  <button
+                    key={mode.value}
+                    type="button"
+                    onClick={() => setForm({ ...form, leg_mode: mode.value })}
+                    className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                      form.leg_mode === mode.value
+                        ? 'border-primary bg-primary/10'
+                        : 'border-surface-700 bg-surface-800'
+                    }`}
+                  >
+                    <span className="block text-sm font-bold text-zinc-100">{mode.label}</span>
+                    <span className="block text-xs text-zinc-400">{mode.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {!editing && (
             <div className="rounded-xl border border-surface-700 bg-surface-800/60 p-3">

@@ -85,7 +85,7 @@ function matchDuplicateKey(match) {
   const teams = pairKey(match)
   if (!teams) return null
   if (match.round != null) {
-    return `${match.league_id ?? 'sin-liga'}|${teams}|round-${match.round}`
+    return `${match.league_id ?? 'sin-liga'}|${teams}|round-${match.round}|leg-${match.leg ?? 1}`
   }
   if (match.scheduled_at) {
     return `${match.league_id ?? 'sin-liga'}|${teams}|${new Date(match.scheduled_at).toISOString().slice(0, 10)}`

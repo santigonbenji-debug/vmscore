@@ -25,6 +25,7 @@ import Badge from '../../components/ui/Badge'
 import Spinner from '../../components/ui/Spinner'
 import TeamLogo from '../../components/teams/TeamLogo'
 import { formatFechaHora, matchStatusDetail, utcToInputLocal } from '../../lib/helpers'
+import { LEG_LABELS } from '../../lib/competitionFormats'
 
 const INPUT = 'w-full rounded-lg border border-surface-700 bg-surface-800 px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-primary/30'
 
@@ -36,6 +37,10 @@ const FORM_VACIO = {
   referee_id: '',
   scheduledAtLocal: '',
   round: '',
+  leg: '1',
+  mode: 'scheduled',
+  home_score: '',
+  away_score: '',
 }
 
 const EDIT_FORM_VACIO = {
@@ -49,6 +54,7 @@ const EDIT_FORM_VACIO = {
   away_technical_director: '',
   home_score: '',
   away_score: '',
+  leg: '1',
 }
 
 const STATUS_VARIANT = {
@@ -88,6 +94,7 @@ export default function ManageMatches() {
   }, [faseid, fuentesExternas, ligaId])
   const { data: archivoExterno = [] } = useExternalMatchArchive(fuenteSeleccionada?.id)
   const isKnockout = faseSeleccionada?.type === 'knockout' || ligaSeleccionada?.format === 'playoffs'
+  const isTwoLegged = ligaSeleccionada?.leg_mode === 'two_legged'
   const activeOrganizationId = isSuperAdmin ? ligaSeleccionada?.organization_id : organizationId
   const { data: equiposInscritos = [] } = useLeagueTeams(ligaId)
   const { data: canchas = [] } = useVenues({ organizationId: activeOrganizationId })
@@ -113,23 +120,25 @@ export default function ManageMatches() {
     partidos.forEach((partido) => {
       const teams = [partido.home_team_id, partido.away_team_id].filter(Boolean).sort().join('|')
       if (!teams) return
+      const legPart = isTwoLegged ? `|leg:${partido.leg ?? 1}` : ''
       if (partido.round !== null && partido.round !== undefined) {
-        keys.add(`${teams}|round:${partido.round}`)
+        keys.add(`${teams}|round:${partido.round}${legPart}`)
       }
       if (partido.scheduled_at) {
         keys.add(`${teams}|day:${new Date(partido.scheduled_at).toISOString().slice(0, 10)}`)
       }
     })
     return keys
-  }, [partidos])
+  }, [isTwoLegged, partidos])
 
   const partidosImportadosPendientes = useMemo(() => (
     archivoExterno
       .filter((partido) => {
         if (partido.computed_match_id || !partido.mapped_home_team_id || !partido.mapped_away_team_id) return false
         const teams = [partido.mapped_home_team_id, partido.mapped_away_team_id].sort().join('|')
+        const legPart = isTwoLegged ? `|leg:${partido.leg ?? 1}` : ''
         const byRound = partido.round !== null && partido.round !== undefined
-          ? partidosOficialesKey.has(`${teams}|round:${partido.round}`)
+          ? partidosOficialesKey.has(`${teams}|round:${partido.round}${legPart}`)
           : false
         const byDay = partido.scheduled_at
           ? partidosOficialesKey.has(`${teams}|day:${new Date(partido.scheduled_at).toISOString().slice(0, 10)}`)
@@ -151,7 +160,7 @@ export default function ManageMatches() {
         away_team_short_name: equiposPorId.get(partido.mapped_away_team_id)?.team_short_name ?? null,
         away_team_logo_url: equiposPorId.get(partido.mapped_away_team_id)?.team_logo_url ?? null,
       }))
-  ), [archivoExterno, equiposPorId, faseid, partidosOficialesKey])
+  ), [archivoExterno, equiposPorId, faseid, isTwoLegged, partidosOficialesKey])
 
   const partidosVisibles = useMemo(() => ([
     ...partidos.map((partido) => ({ ...partido, source_kind: 'official' })),
@@ -223,6 +232,7 @@ export default function ManageMatches() {
     setEditForm({
       scheduledAtLocal: utcToInputLocal(partido.scheduled_at),
       round: partido.round ?? '',
+      leg: partido.leg ?? '1',
       venue_id: partido.venue_id ?? '',
       referee_id: partido.referee_id ?? '',
       status: partido.status ?? 'scheduled',
@@ -240,6 +250,10 @@ export default function ManageMatches() {
     if (form.home_team_id === form.away_team_id) {
       return alert('Local y visitante no pueden ser el mismo equipo.')
     }
+    const historico = form.mode === 'finished'
+    if (historico && (form.home_score === '' || form.away_score === '')) {
+      return alert('Para cargar un historico finalizado, completa el resultado de ambos equipos.')
+    }
 
     const payload = {
       phase_id: form.phase_id,
@@ -250,6 +264,11 @@ export default function ManageMatches() {
       venue_id: form.venue_id || null,
       referee_id: form.referee_id || null,
       round: form.round ? parseInt(form.round) : null,
+      leg: isTwoLegged ? parseInt(form.leg) : null,
+      status: historico ? 'finished' : 'scheduled',
+      home_score: historico ? parseInt(form.home_score) : null,
+      away_score: historico ? parseInt(form.away_score) : null,
+      notes: historico ? 'Historico cargado manualmente' : null,
     }
 
     try {
@@ -288,6 +307,7 @@ export default function ManageMatches() {
       venue_id: editForm.venue_id || null,
       referee_id: editForm.referee_id || null,
       status: editForm.status,
+      leg: isTwoLegged ? parseInt(editForm.leg) : null,
       notes: editForm.notes || null,
       home_technical_director: editForm.home_technical_director || null,
       away_technical_director: editForm.away_technical_director || null,
@@ -323,6 +343,7 @@ export default function ManageMatches() {
       venue_id: editForm.venue_id || null,
       referee_id: editForm.referee_id || null,
       status,
+      leg: isTwoLegged ? parseInt(editForm.leg) : null,
       notes: editForm.notes || null,
       home_technical_director: editForm.home_technical_director || null,
       away_technical_director: editForm.away_technical_director || null,
@@ -515,6 +536,7 @@ export default function ManageMatches() {
                       {partido.status === 'postponed'
                         ? 'Fecha nueva a definir'
                         : formatFechaHora(partido.scheduled_at)}
+                      {isTwoLegged && partido.leg ? ` · ${LEG_LABELS[partido.leg] ?? `Partido ${partido.leg}`}` : ''}
                     </span>
                     <Badge variant={STATUS_VARIANT[partido.status] ?? 'default'}>
                       {matchStatusDetail(partido)}
@@ -616,10 +638,32 @@ export default function ManageMatches() {
         guide={[
           { title: 'Fase', text: 'Ronda o fecha donde va.' },
           { title: 'Equipos', text: 'Solo inscriptos en la competencia.' },
-          { title: 'Detalles', text: 'Horario, cancha y arbitro.' },
+          { title: 'Modo', text: 'Programado o historico finalizado.' },
         ]}
       >
         <div className="space-y-4">
+          <div className="rounded-xl border border-surface-800 bg-surface-900 p-2">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, mode: 'scheduled', home_score: '', away_score: '' })}
+                className={`rounded-lg px-3 py-2 text-sm font-bold ${form.mode === 'scheduled' ? 'bg-primary text-white' : 'bg-surface-800 text-zinc-300'}`}
+              >
+                Programado
+              </button>
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, mode: 'finished' })}
+                className={`rounded-lg px-3 py-2 text-sm font-bold ${form.mode === 'finished' ? 'bg-primary text-white' : 'bg-surface-800 text-zinc-300'}`}
+              >
+                Historico finalizado
+              </button>
+            </div>
+            <p className="mt-2 px-1 text-xs text-zinc-500">
+              Historico finalizado crea el partido con resultado final de una sola vez.
+            </p>
+          </div>
+
           <div>
             <label className="mb-1 block text-xs font-semibold text-zinc-400">Fase *</label>
             <select value={form.phase_id} onChange={(event) => setForm({ ...form, phase_id: event.target.value })} className={INPUT}>
@@ -662,6 +706,44 @@ export default function ManageMatches() {
             </div>
           </div>
 
+          {isTwoLegged && (
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-zinc-400">Partido</label>
+              <select value={form.leg} onChange={(event) => setForm({ ...form, leg: event.target.value })} className={INPUT}>
+                <option value="1">Ida</option>
+                <option value="2">Vuelta</option>
+              </select>
+            </div>
+          )}
+
+          {form.mode === 'finished' && (
+            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3">
+              <p className="mb-3 text-sm font-black text-zinc-100">Resultado historico</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-zinc-400">Goles local *</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={form.home_score}
+                    onChange={(event) => setForm({ ...form, home_score: event.target.value })}
+                    className={`${INPUT} text-center text-lg font-black`}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-zinc-400">Goles visitante *</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={form.away_score}
+                    onChange={(event) => setForm({ ...form, away_score: event.target.value })}
+                    className={`${INPUT} text-center text-lg font-black`}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="mb-1 block text-xs font-semibold text-zinc-400">Cancha</label>
             <select value={form.venue_id} onChange={(event) => setForm({ ...form, venue_id: event.target.value })} className={INPUT}>
@@ -680,10 +762,10 @@ export default function ManageMatches() {
 
           <Button
             onClick={guardar}
-            disabled={guardando || !form.phase_id || !form.home_team_id || !form.away_team_id || !form.scheduledAtLocal}
+            disabled={guardando || !form.phase_id || !form.home_team_id || !form.away_team_id || !form.scheduledAtLocal || (form.mode === 'finished' && (form.home_score === '' || form.away_score === ''))}
             className="w-full"
           >
-            {guardando ? 'Guardando...' : 'Crear Partido'}
+            {guardando ? 'Guardando...' : form.mode === 'finished' ? 'Crear historico finalizado' : 'Crear partido'}
           </Button>
           {crearPartido.isError && (
             <p className="text-center text-xs text-red-400">Error al guardar. Verifica los datos.</p>
@@ -734,6 +816,16 @@ export default function ManageMatches() {
               />
             </div>
           </div>
+
+          {isTwoLegged && (
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-zinc-400">Partido</label>
+              <select value={editForm.leg} onChange={(event) => setEditForm({ ...editForm, leg: event.target.value })} className={INPUT}>
+                <option value="1">Ida</option>
+                <option value="2">Vuelta</option>
+              </select>
+            </div>
+          )}
 
           <div>
             <label className="mb-1 block text-xs font-semibold text-zinc-400">Cancha</label>

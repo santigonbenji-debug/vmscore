@@ -71,7 +71,7 @@ function duplicateKey(match) {
   const teams = pairKey(match)
   if (!teams) return null
   if (match.round != null) {
-    return `${match.league_id ?? 'sin-liga'}|${teams}|round-${match.round}`
+    return `${match.league_id ?? 'sin-liga'}|${teams}|round-${match.round}|leg-${match.leg ?? 1}`
   }
   if (match.scheduled_at) {
     const date = dayKey(toZonedTime(new Date(match.scheduled_at), TZ))

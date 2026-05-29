@@ -10,6 +10,16 @@ export const KNOCKOUT_PHASES = [
 
 export const KNOCKOUT_PHASE_NAMES = KNOCKOUT_PHASES.map((phase) => phase.name)
 
+export const LEG_MODES = [
+  { value: 'single', label: 'Partido unico', desc: 'Una sola definicion por cruce.' },
+  { value: 'two_legged', label: 'Ida y vuelta', desc: 'Cada cruce puede tener partido de ida y de vuelta.' },
+]
+
+export const LEG_LABELS = {
+  1: 'Ida',
+  2: 'Vuelta',
+}
+
 export function getNextKnockoutPhaseName(existingPhases = []) {
   const existingNames = new Set(existingPhases.map((phase) => phase.name))
   const firstExistingIndex = KNOCKOUT_PHASE_NAMES.findIndex((name) => existingNames.has(name))

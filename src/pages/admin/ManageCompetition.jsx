@@ -34,6 +34,11 @@ const FORMAT_LABEL = {
   championship: 'Grupos y definicion',
 }
 
+const LEG_MODE_LABEL = {
+  single: 'Partido unico',
+  two_legged: 'Ida y vuelta',
+}
+
 const PHASE_TYPES = [
   { value: 'round_robin', label: 'Tabla / todos contra todos' },
   { value: 'groups', label: 'Fase de grupos' },
@@ -211,6 +216,9 @@ export default function ManageCompetition() {
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
           <Badge variant="primary">{FORMAT_LABEL[league.format] ?? league.format}</Badge>
+          {league.format === 'playoffs' && (
+            <Badge variant="primary">{LEG_MODE_LABEL[league.leg_mode ?? 'single']}</Badge>
+          )}
           <Badge variant={league.approval_status === 'approved' ? 'success' : 'warning'}>
             {league.approval_status === 'approved' ? 'Aprobada' : 'Pendiente de aprobacion'}
           </Badge>
