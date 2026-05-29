@@ -29,6 +29,10 @@ const EVENT_LABEL = {
 
 const GOAL_EVENT_TYPES = new Set(['goal', 'own_goal', 'penalty_goal'])
 
+function teamDisplayName(shortName, name) {
+  return shortName?.trim() || name?.trim() || 'Equipo'
+}
+
 function InfoRow({ icon: Icon, label, children }) {
   return (
     <div className="flex items-start gap-2">
@@ -73,8 +77,8 @@ function EventsTimeline({ events, match }) {
       {ordered.map((event) => {
         const isHome = event.team_id === match.home_team_id
         const teamName = isHome
-          ? (match.home_team_short_name ?? match.home_team_name)
-          : (match.away_team_short_name ?? match.away_team_name)
+          ? teamDisplayName(match.home_team_short_name, match.home_team_name)
+          : teamDisplayName(match.away_team_short_name, match.away_team_name)
         const logoUrl = isHome ? match.home_team_logo_url : match.away_team_logo_url
         const color = isHome ? match.home_primary_color : match.away_primary_color
         const isGoalEvent = GOAL_EVENT_TYPES.has(event.event_type)
@@ -166,7 +170,7 @@ export default function MatchDetail() {
               <FavoriteButton teamId={match.home_team_id} className="absolute -right-3 -top-3 bg-surface-950/90 border border-surface-700 p-1.5" />
             </div>
             <span className="text-white font-bold text-sm text-center leading-tight">
-              {match.home_team_short_name ?? match.home_team_name}
+              {teamDisplayName(match.home_team_short_name, match.home_team_name)}
             </span>
           </div>
 
@@ -199,7 +203,7 @@ export default function MatchDetail() {
               <FavoriteButton teamId={match.away_team_id} className="absolute -right-3 -top-3 bg-surface-950/90 border border-surface-700 p-1.5" />
             </div>
             <span className="text-white font-bold text-sm text-center leading-tight">
-              {match.away_team_short_name ?? match.away_team_name}
+              {teamDisplayName(match.away_team_short_name, match.away_team_name)}
             </span>
           </div>
         </div>
@@ -270,8 +274,8 @@ export default function MatchDetail() {
                 <div className="flex items-start gap-2">
                   <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                   <div className="space-y-0.5">
-                    {match.home_technical_director && <p><span className="text-zinc-500">DT {match.home_team_short_name ?? match.home_team_name}:</span> {match.home_technical_director}</p>}
-                    {match.away_technical_director && <p><span className="text-zinc-500">DT {match.away_team_short_name ?? match.away_team_name}:</span> {match.away_technical_director}</p>}
+                    {match.home_technical_director && <p><span className="text-zinc-500">DT {teamDisplayName(match.home_team_short_name, match.home_team_name)}:</span> {match.home_technical_director}</p>}
+                    {match.away_technical_director && <p><span className="text-zinc-500">DT {teamDisplayName(match.away_team_short_name, match.away_team_name)}:</span> {match.away_technical_director}</p>}
                   </div>
                 </div>
               )}
@@ -291,8 +295,8 @@ export default function MatchDetail() {
                 {visibleLiveEvents.map((event) => {
                   const isHome = event.team_id === match.home_team_id
                   const liveTeamName = isHome
-                    ? (match.home_team_short_name ?? match.home_team_name)
-                    : (match.away_team_short_name ?? match.away_team_name)
+                    ? teamDisplayName(match.home_team_short_name, match.home_team_name)
+                    : teamDisplayName(match.away_team_short_name, match.away_team_name)
                   const liveLogoUrl = isHome ? match.home_team_logo_url : match.away_team_logo_url
                   const liveColor = isHome ? match.home_primary_color : match.away_primary_color
                   const isGoal = GOAL_EVENT_TYPES.has(event.event_type)
@@ -342,10 +346,10 @@ export default function MatchDetail() {
           ) : (
             <div className="grid grid-cols-2 gap-3">
               <LineupColumn
-                title={match.home_team_short_name ?? match.home_team_name}
+                title={teamDisplayName(match.home_team_short_name, match.home_team_name)}
                 lineups={lineups.filter((lineup) => lineup.team_id === match.home_team_id)} />
               <LineupColumn
-                title={match.away_team_short_name ?? match.away_team_name}
+                title={teamDisplayName(match.away_team_short_name, match.away_team_name)}
                 lineups={lineups.filter((lineup) => lineup.team_id === match.away_team_id)} />
             </div>
           )

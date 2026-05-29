@@ -33,7 +33,7 @@ begin
 
   insert into public.league_teams (league_id, team_id)
   values
-    (provincial_league_id, '13784493-7982-4706-a756-4e749967ea01'),
+    (provincial_league_id, '48796b2d-bf7f-4b06-8aa3-afe74d466801'),
     (provincial_league_id, '4e709f54-4cc0-4058-be5c-a52710400ad8'),
     (provincial_league_id, '5198a500-423d-4110-8c9b-5c02ce0657c3'),
     (provincial_league_id, '1173f19e-269e-4635-aa44-2d7c152d4ab2'),
@@ -45,7 +45,7 @@ begin
 
   insert into public.team_phases (team_id, phase_id, group_id)
   values
-    ('13784493-7982-4706-a756-4e749967ea01', phase_cuartos, null),
+    ('48796b2d-bf7f-4b06-8aa3-afe74d466801', phase_cuartos, null),
     ('4e709f54-4cc0-4058-be5c-a52710400ad8', phase_cuartos, null),
     ('5198a500-423d-4110-8c9b-5c02ce0657c3', phase_cuartos, null),
     ('1173f19e-269e-4635-aa44-2d7c152d4ab2', phase_cuartos, null),
@@ -60,7 +60,7 @@ begin
     from (
       values
         ('137321f4-421a-47d3-9186-9c39c45dc9ab'::uuid, '349ed249-9a67-419e-aaca-6039d1964184'::uuid, '2026-05-30 16:00:00-03'::timestamptz, 'Alianza - Candelaria'),
-        ('13784493-7982-4706-a756-4e749967ea01'::uuid, '4e709f54-4cc0-4058-be5c-a52710400ad8'::uuid, '2026-05-30 16:00:00-03'::timestamptz, 'Belgrano J. Daract'),
+        ('48796b2d-bf7f-4b06-8aa3-afe74d466801'::uuid, '4e709f54-4cc0-4058-be5c-a52710400ad8'::uuid, '2026-05-30 16:00:00-03'::timestamptz, 'Belgrano J. Daract'),
         ('e20876b7-6fa3-4d58-b63e-2341501ffdc2'::uuid, '8099c976-ddd4-448e-a165-c4f016d68c56'::uuid, '2026-05-31 16:00:00-03'::timestamptz, 'SP Mercedes'),
         ('5198a500-423d-4110-8c9b-5c02ce0657c3'::uuid, '1173f19e-269e-4635-aa44-2d7c152d4ab2'::uuid, '2026-05-31 16:00:00-03'::timestamptz, 'La Punta')
     ) as m(home_team_id, away_team_id, scheduled_at, venue_name)
