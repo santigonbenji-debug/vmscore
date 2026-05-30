@@ -16,6 +16,7 @@ export default function Modal({
   icon,
   guide = [],
   size = 'md',
+  contentClassName = '',
   children,
 }) {
   useEffect(() => {
@@ -34,7 +35,7 @@ export default function Modal({
 
   return (
     <div className="fixed inset-0 z-[80] flex items-end justify-center p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-md" onClick={onClose} />
       <div className={`relative flex max-h-[100dvh] min-h-0 w-full flex-col overflow-hidden rounded-t-2xl border border-surface-800 bg-surface-950 text-zinc-100 shadow-2xl sm:max-h-[92dvh] sm:rounded-2xl ${SIZE[size] ?? SIZE.md}`}>
         <div className="shrink-0 border-b border-surface-800 bg-surface-950/95 px-4 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))] backdrop-blur sm:px-5 sm:py-4">
           <div className="flex items-start justify-between gap-4">
@@ -71,7 +72,7 @@ export default function Modal({
             </div>
           )}
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 pb-[calc(8.5rem+env(safe-area-inset-bottom))] sm:px-5 sm:pb-6">
+        <div className={`min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 pb-[calc(8.5rem+env(safe-area-inset-bottom))] sm:px-5 sm:pb-6 ${contentClassName}`}>
           {children}
         </div>
       </div>

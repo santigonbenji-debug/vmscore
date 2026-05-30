@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { CalendarDays, ChevronLeft, GitBranch, Table2, Trophy } from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, GitBranch, Table2, Trophy } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { toZonedTime } from 'date-fns-tz'
@@ -9,10 +9,16 @@ import { useLeagueMatches } from '../hooks/useMatches'
 import { useFavorites } from '../hooks/useFavorites'
 import TeamLogo from '../components/teams/TeamLogo'
 import Badge from '../components/ui/Badge'
+import Modal from '../components/ui/Modal'
 import Spinner from '../components/ui/Spinner'
 import { matchStatusDetail } from '../lib/helpers'
 
 const TZ = 'America/Argentina/San_Luis'
+const BRACKET_CARD_WIDTH = 236
+const BRACKET_CARD_HEIGHT = 100
+const BRACKET_COLUMN_GAP = 76
+const BRACKET_SLOT_HEIGHT = 126
+const BRACKET_HEADER_HEIGHT = 48
 
 const TYPE_LABEL = {
   liga: 'Liga',
@@ -23,12 +29,12 @@ const TYPE_LABEL = {
 
 const FORMAT_LABEL = {
   round_robin: 'Todos contra todos',
-  playoffs: 'Eliminacion directa',
-  championship: 'Grupos y definicion',
+  playoffs: 'Eliminación directa',
+  championship: 'Grupos y definición',
 }
 
 const LEG_FILTERS = [
-  { value: 'all', label: 'Llave' },
+  { value: 'all', label: 'Resumen' },
   { value: '1', label: 'Ida' },
   { value: '2', label: 'Vuelta' },
 ]
@@ -44,6 +50,15 @@ function scoreValue(value) {
 function matchDateLabel(match) {
   if (!match.scheduled_at) return 'Fecha a definir'
   return format(toZonedTime(new Date(match.scheduled_at), TZ), "d MMM · HH:mm 'hs'", { locale: es })
+}
+
+function seriesDateLabel(match) {
+  if (!match.scheduled_at) return { day: 'A definir', time: '' }
+  const date = toZonedTime(new Date(match.scheduled_at), TZ)
+  return {
+    day: format(date, 'd MMM', { locale: es }),
+    time: format(date, 'HH:mm', { locale: es }),
+  }
 }
 
 function MatchCard({ match, onOpen }) {
@@ -130,94 +145,187 @@ function buildTies(phaseMatches) {
   })
 }
 
-function TieCard({ tie, legView, onOpen }) {
-  const visibleMatches = legView === 'all'
-    ? tie.matches
-    : tie.matches.filter((match) => String(match.leg ?? 1) === legView)
-  const status = tie.matches.some((match) => match.status === 'in_progress')
-    ? 'En vivo'
-    : tie.matches.every((match) => match.status === 'finished')
-      ? 'Finalizado'
-      : 'Programado'
+function tieStatus(tie) {
+  if (tie.matches.some((match) => match.status === 'in_progress')) return 'En vivo'
+  if (tie.matches.length > 0 && tie.matches.every((match) => match.status === 'finished')) return 'Finalizado'
+  return 'Programado'
+}
+
+function tieScore(tie, legView) {
+  if (legView === 'all') return tie.aggregate
+  const match = tie.matches.find((item) => String(item.leg ?? 1) === legView)
+  if (!match || match.home_score == null || match.away_score == null) return null
+  return match.home_team_id === tie.teams.a.id
+    ? { a: match.home_score, b: match.away_score }
+    : { a: match.away_score, b: match.home_score }
+}
+
+function BracketTieCard({ tie, legView, onSelect }) {
+  const score = tieScore(tie, legView)
+  const status = tieStatus(tie)
 
   return (
-    <article className="rounded-xl border border-surface-800 bg-surface-950 p-3 shadow-[0_10px_30px_rgba(0,0,0,0.18)]">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <Badge variant={status === 'En vivo' ? 'live' : status === 'Finalizado' ? 'success' : 'default'}>{status}</Badge>
-        {tie.aggregate && (
-          <span className="rounded-full bg-surface-800 px-2 py-1 text-[11px] font-black text-zinc-200">
-            Global {tie.aggregate.a} - {tie.aggregate.b}
-          </span>
-        )}
+    <button
+      type="button"
+      onClick={onSelect}
+      className="h-full w-full overflow-hidden rounded-lg border border-surface-700 bg-[#15191c] text-left shadow-[0_12px_28px_rgba(0,0,0,0.28)] transition-colors hover:border-primary/55"
+    >
+      <div className="flex h-6 items-center justify-between border-b border-surface-700/80 px-2">
+        <span className={`text-[9px] font-black uppercase ${status === 'En vivo' ? 'text-red-400' : 'text-zinc-500'}`}>{status}</span>
+        <span className="text-[9px] font-black uppercase text-zinc-500">{legView === 'all' ? 'Global' : legView === '1' ? 'Ida' : 'Vuelta'}</span>
       </div>
-
       {[tie.teams.a, tie.teams.b].map((team, index) => {
-        const aggregate = tie.aggregate ? (index === 0 ? tie.aggregate.a : tie.aggregate.b) : null
-        const winner = tie.aggregate && tie.aggregate.a !== tie.aggregate.b
-          ? (index === 0 ? tie.aggregate.a > tie.aggregate.b : tie.aggregate.b > tie.aggregate.a)
+        const value = score ? (index === 0 ? score.a : score.b) : null
+        const winner = score && score.a !== score.b
+          ? (index === 0 ? score.a > score.b : score.b > score.a)
           : false
 
         return (
-          <div key={team.id} className={`flex items-center gap-2 rounded-lg px-2 py-2 ${winner ? 'bg-emerald-500/10 text-white' : 'text-zinc-200'}`}>
+          <div key={team.id} className={`flex h-[37px] items-center gap-2 px-2 ${winner ? 'bg-white/[0.04] text-white' : 'text-zinc-400'}`}>
             <TeamLogo logoUrl={team.logo} name={team.name} color={team.color} size="sm" />
-            <span className="min-w-0 flex-1 truncate text-sm font-black">{team.name}</span>
-            <span className={`text-sm font-black tabular-nums ${winner ? 'text-emerald-300' : 'text-zinc-300'}`}>
-              {aggregate ?? '-'}
+            <span className="min-w-0 flex-1 truncate text-xs font-bold">{team.name}</span>
+            <span className={`text-sm font-black tabular-nums ${winner ? 'text-white' : 'text-zinc-500'}`}>
+              {value ?? '-'}
             </span>
           </div>
         )
       })}
-
-      <div className="mt-3 space-y-2 border-t border-surface-800 pt-3">
-        {visibleMatches.length === 0 ? (
-          <p className="rounded-lg bg-surface-900 px-3 py-3 text-center text-xs text-zinc-500">Partido a definir</p>
-        ) : visibleMatches.map((match) => (
-          <button
-            key={match.id}
-            type="button"
-            onClick={() => onOpen(match.id)}
-            className="flex w-full items-center justify-between gap-3 rounded-lg bg-surface-900 px-3 py-2 text-left transition-colors hover:bg-surface-800"
-          >
-            <div className="min-w-0">
-              <p className="text-[11px] font-black uppercase text-primary">{match.leg === 2 ? 'Vuelta' : 'Ida'}</p>
-              <p className="truncate text-xs text-zinc-400">{matchDateLabel(match)}</p>
-            </div>
-            <div className="shrink-0 text-sm font-black tabular-nums text-zinc-100">
-              {scoreValue(match.home_score)} - {scoreValue(match.away_score)}
-            </div>
-          </button>
-        ))}
-      </div>
-    </article>
+    </button>
   )
 }
 
-function Bracket({ phases, matches, legView, onOpen }) {
-  const knockout = phases.filter((phase) => phase.type === 'knockout')
+function SeriesModal({ selection, onClose, onOpenMatch }) {
+  if (!selection) return null
+  const { tie, phaseName } = selection
+  const status = tieStatus(tie)
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Serie"
+      description={phaseName}
+      eyebrow={status}
+      icon={<GitBranch className="h-5 w-5" />}
+      size="sm"
+      contentClassName="pb-[calc(1.5rem+env(safe-area-inset-bottom))] sm:pb-6"
+    >
+      <div className="space-y-4">
+        <div className="rounded-xl border border-surface-800 bg-surface-900 p-3">
+          <p className="mb-2 text-[10px] font-black uppercase text-zinc-500">Resultado global</p>
+          {[tie.teams.a, tie.teams.b].map((team, index) => (
+            <div key={team.id} className="flex items-center gap-3 py-2">
+              <TeamLogo logoUrl={team.logo} name={team.name} color={team.color} size="md" />
+              <span className="min-w-0 flex-1 truncate text-sm font-black text-zinc-100">{team.name}</span>
+              <span className="text-xl font-black tabular-nums text-zinc-100">
+                {tie.aggregate ? (index === 0 ? tie.aggregate.a : tie.aggregate.b) : '-'}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div className="overflow-hidden rounded-xl border border-surface-800 bg-surface-900">
+          {tie.matches.length === 0 ? (
+            <p className="px-4 py-5 text-center text-sm text-zinc-500">Partidos a definir</p>
+          ) : tie.matches.map((match) => {
+            const date = seriesDateLabel(match)
+            return (
+            <button
+              key={match.id}
+              type="button"
+              onClick={() => onOpenMatch(match.id)}
+              className="flex w-full items-center gap-3 border-b border-surface-800 px-3 py-3 text-left last:border-b-0 hover:bg-surface-800/70"
+            >
+              <div className="w-20 shrink-0">
+                <p className="text-[10px] font-black uppercase text-primary">{match.leg === 2 ? 'Vuelta' : 'Ida'}</p>
+                <p className="mt-1 text-[11px] leading-tight text-zinc-500">{date.day}</p>
+                {date.time && <p className="text-[11px] leading-tight text-zinc-500">{date.time} hs</p>}
+              </div>
+              <div className="min-w-0 flex-1 border-l border-surface-700 pl-3">
+                <p className="truncate text-xs font-bold text-zinc-200">{teamDisplayName(match.home_team_short_name, match.home_team_name)}</p>
+                <p className="mt-1 truncate text-xs font-bold text-zinc-200">{teamDisplayName(match.away_team_short_name, match.away_team_name)}</p>
+              </div>
+              <div className="shrink-0 text-right text-xs font-black tabular-nums text-zinc-100">
+                <p>{scoreValue(match.home_score)}</p>
+                <p className="mt-1">{scoreValue(match.away_score)}</p>
+              </div>
+              <ChevronRight className="h-4 w-4 shrink-0 text-zinc-600" />
+            </button>
+            )
+          })}
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function Bracket({ phases, matches, legView, onSelect }) {
+  const phaseData = phases
+    .filter((phase) => phase.type === 'knockout')
+    .map((phase) => ({ phase, ties: buildTies(matches.filter((match) => match.phase_id === phase.id)) }))
+  const baseCount = Math.max(1, ...phaseData.map(({ ties }) => ties.length))
+  const diagramHeight = Math.max(280, baseCount * BRACKET_SLOT_HEIGHT)
+  const diagramWidth = phaseData.length * BRACKET_CARD_WIDTH + Math.max(0, phaseData.length - 1) * BRACKET_COLUMN_GAP
+  const centerFor = (index, count) => ((index + 0.5) * baseCount * BRACKET_SLOT_HEIGHT) / Math.max(count, 1)
+  const connections = []
+
+  phaseData.slice(0, -1).forEach(({ ties }, phaseIndex) => {
+    const nextTies = phaseData[phaseIndex + 1].ties
+    ties.forEach((tie, tieIndex) => {
+      if (nextTies.length === 0) return
+      const teamIds = [tie.teams.a.id, tie.teams.b.id]
+      const detectedTarget = nextTies.findIndex((nextTie) => (
+        teamIds.includes(nextTie.teams.a.id) || teamIds.includes(nextTie.teams.b.id)
+      ))
+      const nextIndex = detectedTarget >= 0
+        ? detectedTarget
+        : Math.min(nextTies.length - 1, Math.floor((tieIndex * nextTies.length) / Math.max(ties.length, 1)))
+      const x1 = (phaseIndex + 1) * BRACKET_CARD_WIDTH + phaseIndex * BRACKET_COLUMN_GAP
+      const x2 = x1 + BRACKET_COLUMN_GAP
+      const y1 = BRACKET_HEADER_HEIGHT + centerFor(tieIndex, ties.length)
+      const y2 = BRACKET_HEADER_HEIGHT + centerFor(nextIndex, nextTies.length)
+      const mid = x1 + BRACKET_COLUMN_GAP / 2
+      connections.push(`M ${x1} ${y1} H ${mid} V ${y2} H ${x2}`)
+    })
+  })
 
   return (
     <div className="-mx-3 overflow-x-auto px-3 pb-2">
-      <div className="flex min-w-max items-stretch gap-3">
-        {knockout.map((phase) => {
-          const phaseMatches = matches.filter((match) => match.phase_id === phase.id)
-          const ties = buildTies(phaseMatches)
-
+      <div className="relative min-w-max" style={{ height: diagramHeight + BRACKET_HEADER_HEIGHT, width: diagramWidth }}>
+        <svg className="pointer-events-none absolute inset-0 overflow-visible" width={diagramWidth} height={diagramHeight + BRACKET_HEADER_HEIGHT} aria-hidden="true">
+          {connections.map((path, index) => (
+            <path key={`${path}-${index}`} d={path} fill="none" stroke="#34383c" strokeWidth="2" />
+          ))}
+        </svg>
+        {phaseData.map(({ phase, ties }, phaseIndex) => {
+          const left = phaseIndex * (BRACKET_CARD_WIDTH + BRACKET_COLUMN_GAP)
           return (
-            <section key={phase.id} className="w-[19rem] shrink-0 rounded-xl border border-surface-800 bg-surface-900 p-3">
-              <div className="mb-3 flex items-center gap-2">
+            <section key={phase.id}>
+              <div className="absolute top-0 flex items-center gap-2" style={{ left, width: BRACKET_CARD_WIDTH }}>
                 <GitBranch className="h-4 w-4 text-primary" />
                 <div className="min-w-0">
                   <h2 className="truncate text-sm font-black text-zinc-100">{phase.name}</h2>
-                  <p className="text-[11px] text-zinc-500">{ties.length || 'Sin'} cruces</p>
+                  <p className="text-[10px] font-bold uppercase text-zinc-600">{ties.length || 'Sin'} cruces</p>
                 </div>
               </div>
               {ties.length === 0 ? (
-                <p className="rounded-lg bg-surface-950 px-3 py-10 text-center text-xs text-zinc-500">Cruces a definir</p>
-              ) : (
-                <div className="space-y-2">
-                  {ties.map((tie) => <TieCard key={tie.key} tie={tie} legView={legView} onOpen={onOpen} />)}
+                <div className="absolute rounded-lg border border-dashed border-surface-700 bg-surface-900/60 p-4 text-center text-xs text-zinc-600" style={{ left, top: BRACKET_HEADER_HEIGHT + 80, width: BRACKET_CARD_WIDTH }}>
+                  Cruces a definir
                 </div>
-              )}
+              ) : ties.map((tie, tieIndex) => (
+                <div
+                  key={tie.key}
+                  className="absolute"
+                  style={{
+                    height: BRACKET_CARD_HEIGHT,
+                    left,
+                    top: BRACKET_HEADER_HEIGHT + centerFor(tieIndex, ties.length) - BRACKET_CARD_HEIGHT / 2,
+                    width: BRACKET_CARD_WIDTH,
+                  }}
+                >
+                  <BracketTieCard tie={tie} legView={legView} onSelect={() => onSelect(tie, phase.name)} />
+                </div>
+              ))}
             </section>
           )
         })}
@@ -230,6 +338,7 @@ export default function CompetitionDetail() {
   const { leagueId } = useParams()
   const navigate = useNavigate()
   const [legView, setLegView] = useState('all')
+  const [selectedTie, setSelectedTie] = useState(null)
   const { isLeagueFavorite, toggleLeagueFavorite } = useFavorites()
   const { data: league, isLoading: loadingLeague } = useLeague(leagueId)
   const { data: phases = [], isLoading: loadingPhases } = usePhases(leagueId)
@@ -301,7 +410,7 @@ export default function CompetitionDetail() {
               </div>
             )}
           </div>
-          <Bracket phases={phases} matches={matches} legView={legView} onOpen={(matchId) => navigate(`/partido/${matchId}`)} />
+          <Bracket phases={phases} matches={matches} legView={legView} onSelect={(tie, phaseName) => setSelectedTie({ tie, phaseName })} />
         </section>
       ) : (
         <Link to="/posiciones" className="flex items-center justify-between rounded-xl border border-surface-800 bg-surface-900 p-4">
@@ -325,6 +434,12 @@ export default function CompetitionDetail() {
           )}
         </section>
       ))}
+
+      <SeriesModal
+        selection={selectedTie}
+        onClose={() => setSelectedTie(null)}
+        onOpenMatch={(matchId) => navigate(`/partido/${matchId}`)}
+      />
     </div>
   )
 }

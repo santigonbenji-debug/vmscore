@@ -7,11 +7,13 @@ import PushNotificationsButton from './PushNotificationsButton'
 export default function Layout() {
   const location = useLocation()
   const isAdmin = location.pathname.startsWith('/admin')
+  const isCompetition = location.pathname.startsWith('/competencia/')
+  const contentWidth = isCompetition ? 'max-w-6xl' : 'max-w-lg'
 
   return (
     <div className="min-h-screen bg-surface-950 text-zinc-100 flex flex-col">
       <Navbar />
-      <main className={`flex-1 max-w-lg mx-auto w-full ${isAdmin ? 'pb-6' : 'pb-20'}`}>
+      <main className={`flex-1 ${contentWidth} mx-auto w-full ${isAdmin ? 'pb-6' : 'pb-20'}`}>
         <Outlet />
       </main>
 
