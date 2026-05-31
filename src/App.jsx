@@ -28,6 +28,8 @@ import ManageExternalSources from './pages/admin/ManageExternalSources'
 import ManageDeepScraping from './pages/admin/ManageDeepScraping'
 import ManageOrganizations from './pages/admin/ManageOrganizations'
 import ManageCompetition from './pages/admin/ManageCompetition'
+import ManageModerators from './pages/admin/ManageModerators'
+import ModeratorMatches from './pages/admin/ModeratorMatches'
 
 function ProtectedRoute({ children }) {
   const { isAdmin, loading } = useAuth()
@@ -40,6 +42,20 @@ function SuperAdminRoute({ children }) {
   const { isSuperAdmin, loading } = useAuth()
   if (loading) return null
   if (!isSuperAdmin) return <Navigate to="/admin" replace />
+  return children
+}
+
+function NonModeratorRoute({ children }) {
+  const { isMatchModerator, loading } = useAuth()
+  if (loading) return null
+  if (isMatchModerator) return <Navigate to="/admin/moderacion" replace />
+  return children
+}
+
+function ModeratorRoute({ children }) {
+  const { isSuperAdmin, isMatchModerator, loading } = useAuth()
+  if (loading) return null
+  if (!isSuperAdmin && !isMatchModerator) return <Navigate to="/admin" replace />
   return children
 }
 
@@ -64,16 +80,18 @@ export default function App() {
 
       <Route path="/admin" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route index                     element={<AdminDashboard />} />
-        <Route path="ligas"              element={<ManageLeagues />} />
-        <Route path="competencia/:leagueId" element={<ManageCompetition />} />
-        <Route path="equipos"            element={<ManageTeams />} />
-        <Route path="partidos"           element={<ManageMatches />} />
+        <Route path="ligas"              element={<NonModeratorRoute><ManageLeagues /></NonModeratorRoute>} />
+        <Route path="competencia/:leagueId" element={<NonModeratorRoute><ManageCompetition /></NonModeratorRoute>} />
+        <Route path="equipos"            element={<NonModeratorRoute><ManageTeams /></NonModeratorRoute>} />
+        <Route path="partidos"           element={<NonModeratorRoute><ManageMatches /></NonModeratorRoute>} />
         <Route path="arbitros"           element={<SuperAdminRoute><ManageReferees /></SuperAdminRoute>} />
-        <Route path="canchas"            element={<ManageVenues />} />
+        <Route path="canchas"            element={<NonModeratorRoute><ManageVenues /></NonModeratorRoute>} />
         <Route path="resultado/:matchId" element={<LoadResult />} />
-        <Route path="mis-partidos"       element={<MisPartidos />} />
-        <Route path="deportes"           element={<ManageSports />} />
+        <Route path="mis-partidos"       element={<NonModeratorRoute><MisPartidos /></NonModeratorRoute>} />
+        <Route path="deportes"           element={<NonModeratorRoute><ManageSports /></NonModeratorRoute>} />
         <Route path="organizaciones"     element={<SuperAdminRoute><ManageOrganizations /></SuperAdminRoute>} />
+        <Route path="moderadores"        element={<SuperAdminRoute><ManageModerators /></SuperAdminRoute>} />
+        <Route path="moderacion"         element={<ModeratorRoute><ModeratorMatches /></ModeratorRoute>} />
         <Route path="planteles"          element={<Navigate to="/admin/equipos" replace />} />
         <Route path="noticias"           element={<SuperAdminRoute><ManageNews /></SuperAdminRoute>} />
         <Route path="posiciones"         element={<SuperAdminRoute><ManageStandings /></SuperAdminRoute>} />

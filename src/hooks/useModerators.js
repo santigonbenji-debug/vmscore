@@ -1,0 +1,42 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { supabase } from '../lib/supabase'
+
+export function useMatchModerators() {
+  return useQuery({
+    queryKey: ['match-moderators'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('list_match_moderators')
+      if (error) throw error
+      return data ?? []
+    },
+  })
+}
+
+export function useCreateMatchModerator() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ leagueId, email, password, displayName }) => {
+      const { data, error } = await supabase.functions.invoke('create-match-moderator', {
+        body: { leagueId, email, password, displayName },
+      })
+      if (error) throw error
+      if (!data?.ok) throw new Error(data?.error || 'No se pudo crear el moderador.')
+      return data
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['match-moderators'] }),
+  })
+}
+
+export function useSetMatchModeratorStatus() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ userId, status }) => {
+      const { error } = await supabase.rpc('set_match_moderator_status', {
+        p_user_id: userId,
+        p_status: status,
+      })
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['match-moderators'] }),
+  })
+}

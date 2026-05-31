@@ -3,6 +3,7 @@ import { useAuth } from '../../hooks/useAuth'
 
 const ACCESOS_SUPER = [
   { to: '/admin/organizaciones', label: 'Organizaciones', icon: 'O', desc: 'Ubicacion, archivo y permisos' },
+  { to: '/admin/moderadores', label: 'Moderadores', icon: 'M', desc: 'Accesos limitados por liga' },
   { to: '/admin/ligas', label: 'Competiciones', icon: 'T', desc: 'Ligas, copas y torneos' },
   { to: '/admin/equipos', label: 'Equipos', icon: 'E', desc: 'Administrar clubes' },
   { to: '/admin/partidos', label: 'Partidos', icon: 'F', desc: 'Cargar fixture' },
@@ -27,18 +28,24 @@ const ACCESOS_CLUB = [
   { to: '/admin/mis-partidos', label: 'Mis Partidos', icon: 'M', desc: 'Cargar eventos de mi equipo' },
 ]
 
+const ACCESOS_MODERADOR = [
+  { to: '/admin/moderacion', label: 'Partidos de mi liga', icon: 'P', desc: 'Horarios, detalles, goles y resultados' },
+]
+
 export default function AdminDashboard() {
-  const { user, isSuperAdmin, isOrganizationAdmin, isLigaAdmin, isClubAdmin, organization, signOut } = useAuth()
+  const { user, isSuperAdmin, isOrganizationAdmin, isLigaAdmin, isClubAdmin, isMatchModerator, organization, signOut } = useAuth()
 
   const accesos = isSuperAdmin ? ACCESOS_SUPER
     : (isOrganizationAdmin || isLigaAdmin) ? ACCESOS_LIGA
     : isClubAdmin ? ACCESOS_CLUB
+    : isMatchModerator ? ACCESOS_MODERADOR
     : []
 
   const labelRol = isSuperAdmin ? 'Super Admin'
     : isOrganizationAdmin ? 'Admin de Organizacion'
     : isLigaAdmin ? 'Admin de Liga'
     : isClubAdmin ? 'Admin de Club'
+    : isMatchModerator ? 'Moderador de Partidos'
     : 'Sin rol'
 
   return (

@@ -76,6 +76,7 @@ export function useAuth() {
     isOrganizationAdmin: role === 'organization_admin',
     isLigaAdmin:  role === 'liga_admin',
     isClubAdmin:  role === 'club_admin',
+    isMatchModerator: role === 'match_moderator',
     loading,
     signIn,
     resetPassword,

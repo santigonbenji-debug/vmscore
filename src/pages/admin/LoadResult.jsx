@@ -78,7 +78,7 @@ export default function LoadResult() {
   const { matchId } = useParams()
   const navigate = useNavigate()
   const now = useNow()
-  const { isSuperAdmin, isOrganizationAdmin, isLigaAdmin, isClubAdmin, teamId } = useAuth()
+  const { isSuperAdmin, isOrganizationAdmin, isLigaAdmin, isClubAdmin, isMatchModerator, leagueId, teamId } = useAuth()
   const { data, isLoading } = useMatch(matchId)
   const guardarEnVivoMutation = useSaveLiveMatchData()
   const guardarResultado = useSaveResult()
@@ -98,9 +98,7 @@ export default function LoadResult() {
   const [manualLiveMessage, setManualLiveMessage] = useState('')
   const [lineupMessage, setLineupMessage] = useState('')
 
-  const puedeCargarResultado = isSuperAdmin || isOrganizationAdmin || isLigaAdmin
   const puedeSincronizar = isSuperAdmin
-  const puedePublicarEnVivo = isSuperAdmin || isOrganizationAdmin || isLigaAdmin
   const miEquipoId = isClubAdmin ? teamId : null
 
   const { data: lineups = [], isLoading: loadingLineups } = useMatchLineups(matchId)
@@ -146,6 +144,9 @@ export default function LoadResult() {
 
   // ⚠️ Todos los hooks DEBEN llamarse antes de cualquier return temprano.
   const match = data?.match
+  const moderadorPuedeEditar = isMatchModerator && leagueId === match?.league_id
+  const puedeCargarResultado = isSuperAdmin || isOrganizationAdmin || isLigaAdmin || moderadorPuedeEditar
+  const puedePublicarEnVivo = isSuperAdmin || isOrganizationAdmin || isLigaAdmin || moderadorPuedeEditar
   const miEquipoEsLocal = miEquipoId && match ? miEquipoId === match.home_team_id : false
   const miEquipoEsVisitante = miEquipoId && match ? miEquipoId === match.away_team_id : false
   const tengoAcceso = puedeCargarResultado || miEquipoEsLocal || miEquipoEsVisitante
