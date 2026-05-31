@@ -36,3 +36,22 @@
     @apply border-surface-800;
   }
 }
+
+@keyframes champion-shine {
+  0%, 68% { transform: translateX(-160%); opacity: 0; }
+  76% { opacity: 1; }
+  100% { transform: translateX(520%); opacity: 0; }
+}
+
+@keyframes champion-trophy {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-3px) rotate(-4deg); }
+}
+
+.champion-shine {
+  animation: champion-shine 5.5s ease-in-out infinite;
+}
+
+.champion-trophy {
+  animation: champion-trophy 2.8s ease-in-out infinite;
+}

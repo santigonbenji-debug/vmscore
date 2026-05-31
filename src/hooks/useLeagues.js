@@ -9,7 +9,7 @@ export function useLeagues({ sportSlug, gender, status, organizationId, includeA
     queryFn: async () => {
       let q = supabase
         .from('leagues')
-        .select('*, sports(id, name, slug, icon), organizations(id, name, slug, city, province, status)')
+        .select('*, sports(id, name, slug, icon), organizations(id, name, slug, city, province, status), champion_team:teams!leagues_champion_team_id_fkey(id, name, short_name, logo_url, primary_color, secondary_color)')
         .order('created_at', { ascending: false })
       if (gender) q = q.eq('gender', gender)
       if (status) q = q.eq('status', status)
@@ -30,7 +30,7 @@ export function useLeague(leagueId) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('leagues')
-        .select('*, sports(id, name, slug, icon), organizations(id, name, slug, city, province, status), phases(id, name, type, phase_order, groups(id, name))')
+        .select('*, sports(id, name, slug, icon), organizations(id, name, slug, city, province, status), champion_team:teams!leagues_champion_team_id_fkey(id, name, short_name, logo_url, primary_color, secondary_color), phases(id, name, type, phase_order, groups(id, name))')
         .eq('id', leagueId)
         .single()
       if (error) throw error
@@ -103,7 +103,10 @@ export function useUpdateLeague() {
       const { error } = await supabase.from('leagues').update(data).eq('id', id)
       if (error) throw error
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['leagues'] }),
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: ['leagues'] })
+      qc.invalidateQueries({ queryKey: ['league', id] })
+    },
   })
 }
 

@@ -6,6 +6,7 @@ import { useLeagues } from '../hooks/useLeagues'
 import TeamLogo from '../components/teams/TeamLogo'
 import Spinner from '../components/ui/Spinner'
 import Badge from '../components/ui/Badge'
+import ChampionCelebration from '../components/competition/ChampionCelebration'
 
 const COMP_LABELS = {
   liga:   { label: 'Liga',   icon: '🏆' },
@@ -228,6 +229,12 @@ export default function Standings() {
     (!ligaSel || league.id === ligaSel) &&
     (!organizationSel || league.organization_id === organizationSel)
   )), [comp, ligaSel, ligas, organizationSel])
+  const champions = useMemo(() => ligas.filter((league) => (
+    league.champion_team &&
+    (comp === 'all' || league.competition_type === comp) &&
+    (!ligaSel || league.id === ligaSel) &&
+    (!organizationSel || league.organization_id === organizationSel)
+  )), [comp, ligaSel, ligas, organizationSel])
 
   const isLoading = stLoading || scLoading
 
@@ -292,6 +299,10 @@ export default function Standings() {
       </div>
 
       {isLoading && <Spinner className="py-12" />}
+
+      {!isLoading && champions.map((league) => (
+        <ChampionCelebration key={league.id} team={league.champion_team} leagueName={league.name} compact />
+      ))}
 
       {!isLoading && bracketCompetitions.map((league) => (
         <button

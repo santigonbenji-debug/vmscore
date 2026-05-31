@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useMatch } from '../hooks/useMatches'
+import { useTeamMatches } from '../hooks/useMatches'
 import { useMatchLineups } from '../hooks/useLineups'
 import { useLiveSyncEvents, useMatchLiveLink } from '../hooks/useLiveSync'
 import { useNow } from '../hooks/useNow'
-import { CalendarDays, Clock3, MapPin, Trophy, UserRound } from 'lucide-react'
+import { ArrowLeft, CalendarDays, Clock3, MapPin, Trophy, UserRound } from 'lucide-react'
 import FavoriteButton from '../components/teams/FavoriteButton'
 import TeamLogo from '../components/teams/TeamLogo'
+import RecentForm from '../components/matches/RecentForm'
 import Spinner from '../components/ui/Spinner'
 import Badge from '../components/ui/Badge'
 import { formatFechaLarga, formatHora, isLocosHalftime, locosMinuteLabel, matchStartedByClock, matchStatusDetail } from '../lib/helpers'
@@ -122,6 +124,8 @@ export default function MatchDetail() {
   const { data: lineups = [] } = useMatchLineups(matchId)
   const { data: liveLink } = useMatchLiveLink(matchId, 'any')
   const { data: liveEvents = [] } = useLiveSyncEvents(matchId)
+  const { data: homeMatches = [] } = useTeamMatches(match?.home_team_id, 8)
+  const { data: awayMatches = [] } = useTeamMatches(match?.away_team_id, 8)
 
   if (isLoading) return <Spinner className="py-20" />
   if (!match) {
@@ -143,19 +147,22 @@ export default function MatchDetail() {
 
   return (
     <div>
-      <div className="bg-gradient-to-br from-surface-900 to-surface-800 px-4 py-6">
-        <button onClick={() => navigate(-1)} className="text-primary text-sm font-medium mb-4 inline-flex items-center gap-1 hover:underline">
-          Volver
+      <div className="relative overflow-hidden border-b border-white/5 bg-[#101419] px-4 py-6">
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-2/3 opacity-35 blur-3xl" style={{ backgroundColor: match.home_primary_color ?? '#E84E1B' }} />
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-2/3 opacity-25 blur-3xl" style={{ backgroundColor: match.away_primary_color ?? '#334155' }} />
+        <div className="pointer-events-none absolute inset-0 bg-black/35 backdrop-blur-[2px]" />
+        <button onClick={() => navigate(-1)} className="relative mb-4 inline-flex items-center gap-1 text-sm font-medium text-zinc-100 hover:text-primary">
+          <ArrowLeft className="h-4 w-4" /> Volver
         </button>
 
-        <div className="flex items-center justify-center gap-2 mb-3">
+        <div className="relative flex items-center justify-center gap-2 mb-3">
           <Badge variant={enVivo ? 'live' : finalizado ? 'success' : 'default'}>
             {finalPrimeraParte ? 'Final 1T' : enVivo ? 'En vivo' : matchStatusDetail(match)}
           </Badge>
           {match.round != null && <span className="text-xs text-zinc-500">Fecha {match.round}</span>}
         </div>
 
-        <div className="flex items-center gap-3 max-w-md mx-auto">
+        <div className="relative flex items-center gap-3 max-w-md mx-auto">
           <div
             role="button"
             tabIndex={0}
@@ -209,7 +216,7 @@ export default function MatchDetail() {
         </div>
 
         {match.mvp_player_name && (
-          <div className="mt-4 mx-auto max-w-md bg-amber-500/20 border border-amber-300/30 rounded-xl px-3 py-2 flex items-center gap-2">
+          <div className="relative mt-4 mx-auto max-w-md bg-amber-500/20 border border-amber-300/30 rounded-xl px-3 py-2 flex items-center gap-2">
             <span className="text-base">★</span>
             <div className="flex-1 min-w-0">
               <p className="text-[10px] text-amber-200 font-semibold uppercase tracking-wide leading-none mb-0.5">MVP del partido</p>
@@ -250,6 +257,34 @@ export default function MatchDetail() {
                   {locosMinuteLabel(liveLink, now) ?? (liveLink.last_minute !== null && liveLink.last_minute !== undefined ? `${liveLink.last_minute}'` : 'Minuto a definir')}
                 </p>
               </div>
+            </div>
+          </div>
+        )}
+
+        {tab === 'info' && (
+          <div className="bg-surface-900 rounded-xl border border-surface-800 p-4">
+            <h2 className="mb-3 text-xs font-black uppercase tracking-wide text-zinc-400">Forma reciente</h2>
+            <div className="space-y-3">
+              <RecentForm
+                team={{
+                  id: match.home_team_id,
+                  name: teamDisplayName(match.home_team_short_name, match.home_team_name),
+                  logoUrl: match.home_team_logo_url,
+                  color: match.home_primary_color,
+                }}
+                matches={homeMatches}
+                currentMatchId={match.id}
+              />
+              <RecentForm
+                team={{
+                  id: match.away_team_id,
+                  name: teamDisplayName(match.away_team_short_name, match.away_team_name),
+                  logoUrl: match.away_team_logo_url,
+                  color: match.away_primary_color,
+                }}
+                matches={awayMatches}
+                currentMatchId={match.id}
+              />
             </div>
           </div>
         )}

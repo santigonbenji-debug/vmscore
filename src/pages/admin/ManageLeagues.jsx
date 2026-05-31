@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Trophy } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useSports } from '../../hooks/useSports'
-import { useTeams } from '../../hooks/useTeams'
+import { useLeagueTeams } from '../../hooks/useRosters'
 import { useLeagues, useCreateLeague, useUpdateLeague, useDeleteLeague } from '../../hooks/useLeagues'
 import {
   useApproveLeague,
@@ -55,13 +55,18 @@ const EMPTY_FORM = {
 
 const INPUT = 'w-full rounded-lg border border-surface-700 bg-surface-800 px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-primary/30'
 
-function ChampionSelector({ sportId, organizationId, value, onChange }) {
-  const { data: teams = [] } = useTeams({ sportId, organizationId })
+function ChampionSelector({ leagueId, value, onChange }) {
+  const { data: teams = [], isLoading } = useLeagueTeams(leagueId)
+
+  if (!leagueId) {
+    return <p className="rounded-lg border border-surface-700 bg-surface-800 px-3 py-2.5 text-xs text-zinc-500">Primero crea la competencia e inscribe sus equipos.</p>
+  }
+
   return (
-    <select value={value} onChange={(event) => onChange(event.target.value)} className={INPUT}>
+    <select value={value} onChange={(event) => onChange(event.target.value)} className={INPUT} disabled={isLoading}>
       <option value="">Sin campeon asignado</option>
       {teams.map((team) => (
-        <option key={team.id} value={team.id}>{team.name}</option>
+        <option key={team.team_id} value={team.team_id}>{team.team_name}</option>
       ))}
     </select>
   )
@@ -239,6 +244,11 @@ export default function ManageLeagues() {
                     </p>
                     {league.archive_reason && (
                       <p className="mt-1 text-xs text-amber-300">Motivo: {league.archive_reason}</p>
+                    )}
+                    {league.champion_team && (
+                      <p className="mt-2 flex items-center gap-1 text-xs font-bold text-amber-300">
+                        <Trophy className="h-3.5 w-3.5" /> Campeon: {league.champion_team.short_name ?? league.champion_team.name}
+                      </p>
                     )}
                   </div>
                   <div className="ml-2 flex shrink-0 flex-col items-end gap-1.5">
@@ -468,15 +478,17 @@ export default function ManageLeagues() {
             </div>
           </div>
 
-          {form.status === 'finished' && (
+          {(editing || form.status === 'finished') && (
             <div>
               <label className="mb-1 block text-xs font-semibold text-zinc-400">Equipo campeon</label>
               <ChampionSelector
-                sportId={form.sport_id}
-                organizationId={form.organization_id}
+                leagueId={editing?.id}
                 value={form.champion_team_id ?? ''}
                 onChange={(value) => setForm({ ...form, champion_team_id: value })}
               />
+              <p className="mt-1.5 text-[11px] leading-snug text-zinc-500">
+                Solo aparecen los equipos inscriptos en esta competencia.
+              </p>
             </div>
           )}
 

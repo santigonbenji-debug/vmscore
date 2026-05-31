@@ -8,6 +8,7 @@ import { useLeague, usePhases } from '../hooks/useLeagues'
 import { useLeagueMatches } from '../hooks/useMatches'
 import { useFavorites } from '../hooks/useFavorites'
 import TeamLogo from '../components/teams/TeamLogo'
+import ChampionCelebration from '../components/competition/ChampionCelebration'
 import Badge from '../components/ui/Badge'
 import Modal from '../components/ui/Modal'
 import Spinner from '../components/ui/Spinner'
@@ -19,6 +20,7 @@ const BRACKET_CARD_HEIGHT = 100
 const BRACKET_COLUMN_GAP = 76
 const BRACKET_SLOT_HEIGHT = 126
 const BRACKET_HEADER_HEIGHT = 48
+const BRACKET_CUP_WIDTH = 96
 
 const TYPE_LABEL = {
   liga: 'Liga',
@@ -265,7 +267,7 @@ function Bracket({ phases, matches, legView, onSelect }) {
     .map((phase) => ({ phase, ties: buildTies(matches.filter((match) => match.phase_id === phase.id)) }))
   const baseCount = Math.max(1, ...phaseData.map(({ ties }) => ties.length))
   const diagramHeight = Math.max(280, baseCount * BRACKET_SLOT_HEIGHT)
-  const diagramWidth = phaseData.length * BRACKET_CARD_WIDTH + Math.max(0, phaseData.length - 1) * BRACKET_COLUMN_GAP
+  const diagramWidth = phaseData.length * BRACKET_CARD_WIDTH + Math.max(0, phaseData.length - 1) * BRACKET_COLUMN_GAP + (phaseData.length ? BRACKET_CUP_WIDTH : 0)
   const centerFor = (index, count) => ((index + 0.5) * baseCount * BRACKET_SLOT_HEIGHT) / Math.max(count, 1)
   const connections = []
 
@@ -288,6 +290,18 @@ function Bracket({ phases, matches, legView, onSelect }) {
       connections.push(`M ${x1} ${y1} H ${mid} V ${y2} H ${x2}`)
     })
   })
+  const lastPopulatedIndex = phaseData.findLastIndex(({ ties }) => ties.length > 0)
+  const lastPopulatedPhase = lastPopulatedIndex >= 0 ? phaseData[lastPopulatedIndex] : null
+  if (lastPopulatedPhase) {
+    const sourceX = (lastPopulatedIndex + 1) * BRACKET_CARD_WIDTH + lastPopulatedIndex * BRACKET_COLUMN_GAP
+    const targetX = diagramWidth - 48
+    const targetY = BRACKET_HEADER_HEIGHT + diagramHeight / 2
+    lastPopulatedPhase.ties.forEach((_, index) => {
+      const sourceY = BRACKET_HEADER_HEIGHT + centerFor(index, lastPopulatedPhase.ties.length)
+      const mid = sourceX + 24
+      connections.push(`M ${sourceX} ${sourceY} H ${mid} V ${targetY} H ${targetX}`)
+    })
+  }
 
   return (
     <div className="-mx-3 overflow-x-auto px-3 pb-2">
@@ -329,7 +343,52 @@ function Bracket({ phases, matches, legView, onSelect }) {
             </section>
           )
         })}
+        {phaseData.length > 0 && (
+          <div
+            className="absolute grid h-12 w-12 place-items-center rounded-full border border-amber-400/45 bg-amber-400/10 text-amber-300 shadow-[0_0_28px_rgba(251,191,36,0.16)]"
+            style={{
+              left: diagramWidth - 48,
+              top: BRACKET_HEADER_HEIGHT + diagramHeight / 2 - 24,
+            }}
+            title="Campeon"
+          >
+            <Trophy className="h-6 w-6" />
+          </div>
+        )}
       </div>
+    </div>
+  )
+}
+
+function BracketRounds({ phases, matches, legView, onSelect }) {
+  const phaseData = phases
+    .filter((phase) => phase.type === 'knockout')
+    .map((phase) => ({ phase, ties: buildTies(matches.filter((match) => match.phase_id === phase.id)) }))
+
+  return (
+    <div className="space-y-4">
+      {phaseData.map(({ phase, ties }) => (
+        <section key={phase.id} className="rounded-xl border border-surface-800 bg-surface-900 p-3">
+          <div className="mb-3 flex items-center gap-2">
+            <GitBranch className="h-4 w-4 text-primary" />
+            <div className="min-w-0">
+              <h3 className="text-sm font-black text-zinc-100">{phase.name}</h3>
+              <p className="text-[10px] font-bold uppercase text-zinc-600">{ties.length || 'Sin'} cruces</p>
+            </div>
+          </div>
+          {ties.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-surface-700 px-3 py-5 text-center text-xs text-zinc-600">Cruces a definir</p>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {ties.map((tie) => (
+                <div key={tie.key} className="h-[100px]">
+                  <BracketTieCard tie={tie} legView={legView} onSelect={() => onSelect(tie, phase.name)} />
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      ))}
     </div>
   )
 }
@@ -338,6 +397,7 @@ export default function CompetitionDetail() {
   const { leagueId } = useParams()
   const navigate = useNavigate()
   const [legView, setLegView] = useState('all')
+  const [bracketView, setBracketView] = useState('path')
   const [selectedTie, setSelectedTie] = useState(null)
   const { isLeagueFavorite, toggleLeagueFavorite } = useFavorites()
   const { data: league, isLoading: loadingLeague } = useLeague(leagueId)
@@ -386,6 +446,8 @@ export default function CompetitionDetail() {
         </div>
       </header>
 
+      <ChampionCelebration team={league.champion_team} leagueName={league.name} />
+
       {knockout ? (
         <section>
           <div className="mb-3 flex flex-col gap-3 px-1 sm:flex-row sm:items-center sm:justify-between">
@@ -393,6 +455,24 @@ export default function CompetitionDetail() {
               <GitBranch className="h-4 w-4 text-primary" />
               <h2 className="text-sm font-black text-zinc-100">Llaves</h2>
             </div>
+            <div className="flex flex-wrap gap-2">
+              <div className="grid grid-cols-2 rounded-xl border border-surface-800 bg-surface-900 p-1">
+                {[
+                  { value: 'path', label: 'Camino' },
+                  { value: 'rounds', label: 'Rondas' },
+                ].map((filter) => (
+                  <button
+                    key={filter.value}
+                    type="button"
+                    onClick={() => setBracketView(filter.value)}
+                    className={`rounded-lg px-3 py-2 text-xs font-black transition-colors ${
+                      bracketView === filter.value ? 'bg-primary text-white' : 'text-zinc-400 hover:text-zinc-100'
+                    }`}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
             {league.leg_mode === 'two_legged' && (
               <div className="grid grid-cols-3 rounded-xl border border-surface-800 bg-surface-900 p-1">
                 {LEG_FILTERS.map((filter) => (
@@ -409,8 +489,13 @@ export default function CompetitionDetail() {
                 ))}
               </div>
             )}
+            </div>
           </div>
-          <Bracket phases={phases} matches={matches} legView={legView} onSelect={(tie, phaseName) => setSelectedTie({ tie, phaseName })} />
+          {bracketView === 'path' ? (
+            <Bracket phases={phases} matches={matches} legView={legView} onSelect={(tie, phaseName) => setSelectedTie({ tie, phaseName })} />
+          ) : (
+            <BracketRounds phases={phases} matches={matches} legView={legView} onSelect={(tie, phaseName) => setSelectedTie({ tie, phaseName })} />
+          )}
         </section>
       ) : (
         <Link to="/posiciones" className="flex items-center justify-between rounded-xl border border-surface-800 bg-surface-900 p-4">
