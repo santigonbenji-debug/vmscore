@@ -4,7 +4,6 @@ const RESULT_STYLES = {
   G: 'bg-emerald-500 text-emerald-950',
   E: 'bg-zinc-500 text-white',
   P: 'bg-red-500 text-white',
-  '?': 'bg-surface-700 text-zinc-400',
 }
 
 function resultForTeam(match, teamId) {
@@ -21,7 +20,7 @@ function resultLabel(result) {
   if (result === 'G') return 'Ganado'
   if (result === 'E') return 'Empatado'
   if (result === 'P') return 'Perdido'
-  return 'Sin partido'
+  return ''
 }
 
 export default function RecentForm({ team, matches = [], currentMatchId, limit = 5 }) {
@@ -30,23 +29,29 @@ export default function RecentForm({ team, matches = [], currentMatchId, limit =
     .map((match) => resultForTeam(match, team.id))
     .filter(Boolean)
     .slice(0, limit)
-  const results = [...recent, ...Array(Math.max(0, limit - recent.length)).fill('?')]
 
   return (
     <div className="flex items-center gap-3">
       <TeamLogo logoUrl={team.logoUrl} name={team.name} color={team.color} size="sm" />
       <span className="min-w-0 flex-1 truncate text-xs font-bold text-zinc-200">{team.name}</span>
-      <div className="flex w-40 max-w-[46%] overflow-hidden rounded-full border border-surface-700">
-        {results.map((result, index) => (
-          <span
-            key={`${result}-${index}`}
-            title={resultLabel(result)}
-            className={`grid h-7 min-w-0 flex-1 place-items-center border-r border-surface-950/60 text-[10px] font-black last:border-r-0 ${RESULT_STYLES[result]}`}
-          >
-            {result}
-          </span>
-        ))}
-      </div>
+      {recent.length === 0 ? (
+        <span className="text-[11px] font-semibold text-zinc-600">Sin partidos previos</span>
+      ) : (
+        <div
+          className="flex max-w-[46%] overflow-hidden rounded-full border border-surface-700"
+          style={{ width: `${recent.length * 34}px` }}
+        >
+          {recent.map((result, index) => (
+            <span
+              key={`${result}-${index}`}
+              title={resultLabel(result)}
+              className={`grid h-7 min-w-[34px] flex-1 place-items-center border-r border-surface-950/60 text-[10px] font-black last:border-r-0 ${RESULT_STYLES[result]}`}
+            >
+              {result}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

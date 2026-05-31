@@ -24,7 +24,6 @@ export function useTeamStandings(teamId) {
         .from('v_standings')
         .select('*')
         .eq('team_id', teamId)
-        .order('year', { ascending: false, nullsFirst: false })
         .order('position', { ascending: true })
       if (error) throw error
       return data ?? []
@@ -41,7 +40,6 @@ export function useTeamStandingsTables(teamId) {
         .from('v_standings')
         .select('*')
         .eq('team_id', teamId)
-        .order('year', { ascending: false, nullsFirst: false })
         .order('position', { ascending: true })
       if (teamError) throw teamError
 

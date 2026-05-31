@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { ChevronRight, GitBranch, Table2, Trophy } from 'lucide-react'
 import FavoriteButton from '../components/teams/FavoriteButton'
 import TeamLogo from '../components/teams/TeamLogo'
 import Spinner from '../components/ui/Spinner'
 import { useTeam } from '../hooks/useTeams'
 import { useTeamMatchesWithExternal } from '../hooks/useMatches'
-import { useTeamPlayers } from '../hooks/useRosters'
+import { useTeamCompetitions, useTeamPlayers } from '../hooks/useRosters'
 import { useStandingsTablesByPhase, useTeamStandingsTables } from '../hooks/useStandings'
 import { formatFechaLarga, formatHora, matchStatusDetail } from '../lib/helpers'
 
@@ -272,17 +273,65 @@ function StandingsTable({ table, teamId }) {
   )
 }
 
-function StandingsTab({ teamId, tables, isLoading, filter, onFilterChange, filterOptions }) {
+const COMPETITION_TYPE_LABELS = {
+  liga: 'Liga',
+  copa: 'Copa',
+  torneo: 'Torneo',
+  campeonato: 'Campeonato',
+}
+
+function TeamCompetitions({ competitions, onOpenCompetition }) {
+  if (competitions.length === 0) return null
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-surface-800 bg-surface-900">
+      <div className="border-b border-surface-800 px-4 py-3">
+        <h2 className="text-sm font-black text-zinc-100">Competencias</h2>
+        <p className="mt-0.5 text-xs text-zinc-500">Torneos y ligas en los que participa el equipo.</p>
+      </div>
+      <div className="divide-y divide-surface-800">
+        {competitions.map((competition) => {
+          const knockout = competition.format === 'playoffs'
+          const Icon = knockout ? GitBranch : Table2
+          return (
+            <button
+              key={competition.id}
+              type="button"
+              onClick={() => onOpenCompetition(competition.id)}
+              className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-800/70"
+            >
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+                <Icon className="h-5 w-5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-black text-zinc-100">{competition.name}</span>
+                <span className="mt-0.5 block truncate text-xs capitalize text-zinc-500">
+                  {competition.sports?.icon} {competition.sports?.name ?? 'Deporte'} · {COMPETITION_TYPE_LABELS[competition.competition_type] ?? 'Competencia'}{competition.year ? ` · ${competition.year}` : ''}
+                </span>
+              </span>
+              {knockout && <Trophy className="h-4 w-4 shrink-0 text-amber-400" />}
+              <ChevronRight className="h-4 w-4 shrink-0 text-zinc-600" />
+            </button>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+function StandingsTab({ teamId, tables, competitions, isLoading, filter, onFilterChange, filterOptions, onOpenCompetition }) {
   const visible = filter === 'all' ? tables : tables.filter((table) => table.league_id === filter)
+  const visibleCompetitions = filter === 'all' ? competitions : competitions.filter((competition) => competition.id === filter)
 
   if (isLoading) return <Spinner className="py-10" />
 
   return (
     <div className="space-y-3">
       <CompetitionFilter value={filter} onChange={onFilterChange} options={filterOptions} />
-      {visible.length === 0 ? (
+      <TeamCompetitions competitions={visibleCompetitions} onOpenCompetition={onOpenCompetition} />
+      {visible.length === 0 && visibleCompetitions.length === 0 ? (
         <p className="rounded-xl border border-surface-800 bg-surface-900 px-3 py-8 text-center text-sm text-zinc-500">
-          Todavia no hay tabla para este equipo.
+          Todavia no hay competencias cargadas para este equipo.
         </p>
       ) : (
         visible.map((table) => <StandingsTable key={table.key} table={table} teamId={teamId} />)
@@ -315,6 +364,7 @@ export default function TeamProfile() {
 
   const { data: team, isLoading: loadingTeam } = useTeam(teamId)
   const { data: players = [], isLoading: loadingPlayers } = useTeamPlayers(teamId)
+  const { data: competitions = [], isLoading: loadingCompetitions } = useTeamCompetitions(teamId)
   const { data: matches = [], isLoading: loadingMatches } = useTeamMatchesWithExternal(teamId)
   const phaseIdsFromMatches = useMemo(() => (
     [...new Set(matches.map((match) => match.phase_id).filter(Boolean))]
@@ -331,7 +381,7 @@ export default function TeamProfile() {
     })
     return [...byKey.values()]
   }, [teamStandingsTables, phaseStandingsTables])
-  const loadingStandings = loadingTeamStandings || loadingPhaseStandings
+  const loadingStandings = loadingTeamStandings || loadingPhaseStandings || loadingCompetitions
 
   const matchFilterOptions = useMemo(() => {
     const map = new Map()
@@ -344,11 +394,11 @@ export default function TeamProfile() {
 
   const tableFilterOptions = useMemo(() => {
     const map = new Map()
-    standingsTables.forEach((table) => {
-      if (!map.has(table.league_id)) map.set(table.league_id, { id: table.league_id, label: table.league_name })
+    competitions.forEach((competition) => {
+      if (!map.has(competition.id)) map.set(competition.id, { id: competition.id, label: competition.name })
     })
     return [...map.values()].sort((a, b) => a.label.localeCompare(b.label))
-  }, [standingsTables])
+  }, [competitions])
 
   if (loadingTeam) return <Spinner className="py-16" />
 
@@ -410,10 +460,12 @@ export default function TeamProfile() {
           <StandingsTab
             teamId={team.id}
             tables={standingsTables}
+            competitions={competitions}
             isLoading={loadingStandings}
             filter={tableFilter}
             onFilterChange={setTableFilter}
             filterOptions={tableFilterOptions}
+            onOpenCompetition={(competitionId) => navigate(`/competencia/${competitionId}`)}
           />
         )}
 

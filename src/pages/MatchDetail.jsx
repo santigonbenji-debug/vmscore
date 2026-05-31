@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useMatch } from '../hooks/useMatches'
-import { useTeamMatches } from '../hooks/useMatches'
+import { useTeamRecentMatches } from '../hooks/useMatches'
 import { useMatchLineups } from '../hooks/useLineups'
 import { useLiveSyncEvents, useMatchLiveLink } from '../hooks/useLiveSync'
 import { useNow } from '../hooks/useNow'
@@ -124,8 +124,8 @@ export default function MatchDetail() {
   const { data: lineups = [] } = useMatchLineups(matchId)
   const { data: liveLink } = useMatchLiveLink(matchId, 'any')
   const { data: liveEvents = [] } = useLiveSyncEvents(matchId)
-  const { data: homeMatches = [] } = useTeamMatches(match?.home_team_id, 8)
-  const { data: awayMatches = [] } = useTeamMatches(match?.away_team_id, 8)
+  const { data: homeMatches = [] } = useTeamRecentMatches(match?.home_team_id, 6)
+  const { data: awayMatches = [] } = useTeamRecentMatches(match?.away_team_id, 6)
 
   if (isLoading) return <Spinner className="py-20" />
   if (!match) {
@@ -147,10 +147,10 @@ export default function MatchDetail() {
 
   return (
     <div>
-      <div className="relative overflow-hidden border-b border-white/5 bg-[#101419] px-4 py-6">
-        <div className="pointer-events-none absolute inset-y-0 left-0 w-2/3 opacity-35 blur-3xl" style={{ backgroundColor: match.home_primary_color ?? '#E84E1B' }} />
-        <div className="pointer-events-none absolute inset-y-0 right-0 w-2/3 opacity-25 blur-3xl" style={{ backgroundColor: match.away_primary_color ?? '#334155' }} />
-        <div className="pointer-events-none absolute inset-0 bg-black/35 backdrop-blur-[2px]" />
+      <div className="relative overflow-hidden border-b border-white/5 bg-[#121416] px-4 py-6">
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-1/2 opacity-[0.12] blur-3xl" style={{ backgroundColor: match.home_primary_color ?? '#64748b' }} />
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-1/2 opacity-[0.10] blur-3xl" style={{ backgroundColor: match.away_primary_color ?? '#64748b' }} />
+        <div className="pointer-events-none absolute inset-0 bg-black/50 backdrop-blur-[3px]" />
         <button onClick={() => navigate(-1)} className="relative mb-4 inline-flex items-center gap-1 text-sm font-medium text-zinc-100 hover:text-primary">
           <ArrowLeft className="h-4 w-4" /> Volver
         </button>

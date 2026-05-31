@@ -393,6 +393,76 @@ function BracketRounds({ phases, matches, legView, onSelect }) {
   )
 }
 
+function CupTieCard({ tie, legView, onSelect }) {
+  const score = tieScore(tie, legView)
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className="w-full rounded-lg border border-surface-700 bg-surface-900 p-2 text-left transition-colors hover:border-primary/60"
+    >
+      {[tie.teams.a, tie.teams.b].map((team, index) => (
+        <span key={team.id} className="flex items-center gap-1.5 py-0.5">
+          <TeamLogo logoUrl={team.logo} name={team.name} color={team.color} size="xs" />
+          <span className="min-w-0 flex-1 truncate text-xs font-bold text-zinc-200">{team.name}</span>
+          <span className="text-xs font-black tabular-nums text-zinc-100">
+            {score ? (index === 0 ? score.a : score.b) : '-'}
+          </span>
+        </span>
+      ))}
+    </button>
+  )
+}
+
+function CupBracket({ phases, matches, legView, onSelect }) {
+  const phaseData = phases
+    .filter((phase) => phase.type === 'knockout')
+    .map((phase) => ({ phase, ties: buildTies(matches.filter((match) => match.phase_id === phase.id)) }))
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-surface-800 bg-[#0c0e10] px-3 py-4">
+      {phaseData.map(({ phase, ties }, phaseIndex) => {
+        const columns = ties.length === 1
+          ? 'mx-auto max-w-56 grid-cols-1'
+          : ties.length === 2
+            ? 'mx-auto max-w-lg grid-cols-2'
+            : 'grid-cols-2 sm:grid-cols-4'
+
+        return (
+          <section key={phase.id}>
+            {phaseIndex > 0 && <div className="mx-auto h-7 w-px bg-surface-700" />}
+            <div className="mb-2 text-center">
+              <h3 className="text-xs font-black uppercase text-zinc-300">{phase.name}</h3>
+              <p className="text-[10px] font-bold uppercase text-zinc-600">{ties.length || 'Sin'} cruces</p>
+            </div>
+            {ties.length === 0 ? (
+              <p className="mx-auto max-w-56 rounded-lg border border-dashed border-surface-700 px-3 py-4 text-center text-xs text-zinc-600">
+                Cruces a definir
+              </p>
+            ) : (
+              <div className={`grid gap-2 ${columns}`}>
+                {ties.map((tie) => (
+                  <CupTieCard
+                    key={tie.key}
+                    tie={tie}
+                    legView={legView}
+                    onSelect={() => onSelect(tie, phase.name)}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        )
+      })}
+      <div className="mx-auto h-8 w-px bg-amber-400/35" />
+      <div className="mx-auto grid h-14 w-14 place-items-center rounded-full border border-amber-400/50 bg-amber-400/10 text-amber-300 shadow-[0_0_30px_rgba(251,191,36,0.14)]">
+        <Trophy className="h-7 w-7" />
+      </div>
+      <p className="mt-2 text-center text-[10px] font-black uppercase text-amber-300">Campeon</p>
+    </div>
+  )
+}
+
 export default function CompetitionDetail() {
   const { leagueId } = useParams()
   const navigate = useNavigate()
@@ -456,10 +526,11 @@ export default function CompetitionDetail() {
               <h2 className="text-sm font-black text-zinc-100">Llaves</h2>
             </div>
             <div className="flex flex-wrap gap-2">
-              <div className="grid grid-cols-2 rounded-xl border border-surface-800 bg-surface-900 p-1">
+              <div className="grid grid-cols-3 rounded-xl border border-surface-800 bg-surface-900 p-1">
                 {[
                   { value: 'path', label: 'Camino' },
                   { value: 'rounds', label: 'Rondas' },
+                  { value: 'cup', label: 'Copa' },
                 ].map((filter) => (
                   <button
                     key={filter.value}
@@ -493,8 +564,10 @@ export default function CompetitionDetail() {
           </div>
           {bracketView === 'path' ? (
             <Bracket phases={phases} matches={matches} legView={legView} onSelect={(tie, phaseName) => setSelectedTie({ tie, phaseName })} />
-          ) : (
+          ) : bracketView === 'rounds' ? (
             <BracketRounds phases={phases} matches={matches} legView={legView} onSelect={(tie, phaseName) => setSelectedTie({ tie, phaseName })} />
+          ) : (
+            <CupBracket phases={phases} matches={matches} legView={legView} onSelect={(tie, phaseName) => setSelectedTie({ tie, phaseName })} />
           )}
         </section>
       ) : (

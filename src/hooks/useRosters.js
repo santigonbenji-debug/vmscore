@@ -18,6 +18,27 @@ export function useLeagueTeams(leagueId) {
   })
 }
 
+export function useTeamCompetitions(teamId) {
+  return useQuery({
+    queryKey: ['team-competitions', teamId],
+    queryFn: async () => {
+      if (!teamId) return []
+      const { data, error } = await supabase
+        .from('league_teams')
+        .select('league_id, leagues!inner(id, name, season, year, gender, status, format, competition_type, is_archived, approval_status, sports(id, name, icon))')
+        .eq('team_id', teamId)
+        .eq('leagues.is_archived', false)
+        .eq('leagues.approval_status', 'approved')
+      if (error) throw error
+      return (data ?? [])
+        .map((row) => row.leagues)
+        .filter(Boolean)
+        .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+    },
+    enabled: !!teamId,
+  })
+}
+
 export function useAddTeamToLeague() {
   const qc = useQueryClient()
   return useMutation({

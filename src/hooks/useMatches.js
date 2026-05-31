@@ -183,6 +183,57 @@ export function useTeamMatchesWithExternal(teamId, limit = 80) {
   })
 }
 
+export function useTeamRecentMatches(teamId, limit = 5) {
+  return useQuery({
+    queryKey: ['team-recent-matches', teamId, limit],
+    queryFn: async () => {
+      const fetchLimit = Math.max(12, limit * 3)
+      const [{ data: official, error: officialError }, { data: external, error: externalError }] = await Promise.all([
+        supabase
+          .from('v_matches')
+          .select('*')
+          .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
+          .eq('status', 'finished')
+          .order('scheduled_at', { ascending: false, nullsFirst: false })
+          .limit(fetchLimit),
+        supabase
+          .from('v_external_matches_public')
+          .select('*')
+          .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
+          .eq('status', 'finished')
+          .order('scheduled_at', { ascending: false, nullsFirst: false })
+          .limit(fetchLimit),
+      ])
+      if (officialError) throw officialError
+      if (externalError) throw externalError
+
+      const officialRows = (official ?? []).map((match) => ({
+        ...match,
+        app_id: `official-${match.id}`,
+        source_kind: 'official',
+      }))
+      const externalRows = (external ?? []).map((match) => ({
+        ...match,
+        id: `external-${match.archive_id}`,
+        app_id: `external-${match.archive_id}`,
+        source_kind: 'external',
+      }))
+
+      return removeDuplicateTeamMatches([...officialRows, ...externalRows])
+        .filter(
+          (match) =>
+            match.status === 'finished' &&
+            match.scheduled_at &&
+            match.home_score != null &&
+            match.away_score != null,
+        )
+        .sort((a, b) => new Date(b.scheduled_at) - new Date(a.scheduled_at))
+        .slice(0, limit)
+    },
+    enabled: !!teamId,
+  })
+}
+
 export function useMatch(matchId) {
   return useQuery({
     queryKey: ['match', matchId],
