@@ -183,6 +183,9 @@ function extractLocosCategory(description) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
 
+  if (normalized.includes('torneo provincial')) return 'Torneo Provincial'
+  if (normalized.includes('apertura')) return 'Apertura'
+
   const division = normalized.match(/\b(\d{1,2})(?:ra|da|ta|na|ma|va)?\s*division\b/)
   if (division) return `${division[1]} division`
 
@@ -233,12 +236,29 @@ function sortSummary(rows) {
   return [...rows].sort((a, b) => b.count - a.count || String(a.key).localeCompare(String(b.key)))
 }
 
+async function fetchLocosVmLiveStates(matches) {
+  const rows = await Promise.all(matches.map(async (match) => {
+    try {
+      return {
+        matchId: match.id,
+        state: firestoreDocToObject(await fetchFirestorePath(`matches/${match.id}/liveState/state`)),
+      }
+    } catch {
+      return null
+    }
+  }))
+  return rows.filter(Boolean)
+}
+
 export async function fetchLocosVmPublicSnapshot() {
-  const [teams, matches, creditPlans] = await Promise.all([
+  const [teams, matches, creditPlans, sponsors] = await Promise.all([
     fetchFirestoreCollection('teams', 100, 4),
     fetchLocosVmMatchesDeep(),
     fetchFirestoreCollection('creditPlans', 50, 2),
+    fetchFirestoreCollection('sponsors', 100, 4),
   ])
+  const liveStateRows = await fetchLocosVmLiveStates(matches)
+  const liveStatesByMatchId = new Map(liveStateRows.map((row) => [row.matchId, row.state]))
 
   const activeCreditPlans = creditPlans.filter((plan) => plan.active === true)
   const finishedMatches = matches.filter((match) => match.status === 'finished')
@@ -256,6 +276,7 @@ export async function fetchLocosVmPublicSnapshot() {
     scheduledAt: toLocosDateTime(match),
     hasScore: match.homeScore != null || match.awayScore != null,
     hasVenue: Boolean(cleanText(match.venue)),
+    liveState: liveStatesByMatchId.get(match.id) ?? null,
   }))
 
   const categories = new Map()
@@ -273,6 +294,15 @@ export async function fetchLocosVmPublicSnapshot() {
       withStream: match.streamUrl ? 1 : 0,
     })
     if (!category.sample) category.sample = match.description
+    if (!category.teamIds) category.teamIds = new Set()
+    if (!category.venues) category.venues = new Set()
+    if (!category.dates) category.dates = new Set()
+    if (!category.rounds) category.rounds = new Set()
+    if (match.homeTeamId) category.teamIds.add(match.homeTeamId)
+    if (match.awayTeamId) category.teamIds.add(match.awayTeamId)
+    if (match.venue) category.venues.add(cleanText(match.venue))
+    if (match.date) category.dates.add(match.date)
+    if (match.round != null) category.rounds.add(match.round)
 
     increment(venues, cleanText(match.venue) || 'Sin sede', {
       finished: match.status === 'finished' ? 1 : 0,
@@ -291,7 +321,17 @@ export async function fetchLocosVmPublicSnapshot() {
     matches_with_category: enrichedMatches.filter((match) => match.category !== 'Sin categoria').length,
     matches_with_round: enrichedMatches.filter((match) => match.round != null).length,
     matches_with_score: enrichedMatches.filter((match) => match.hasScore).length,
+    matches_with_live_state: liveStateRows.length,
   }
+  const categorySummary = sortSummary(categories.values()).map((category) => ({
+    ...category,
+    teamIds: [...category.teamIds],
+    venues: [...category.venues],
+    dates: [...category.dates].sort(),
+    rounds: [...category.rounds].sort((a, b) => a - b),
+    teams: category.teamIds.size,
+  }))
+  const sponsorLinks = matches.reduce((sum, match) => sum + (match.sponsorIds?.length ?? 0), 0)
 
   return {
     counts: {
@@ -307,6 +347,9 @@ export async function fetchLocosVmPublicSnapshot() {
       upcoming_matches: upcomingMatches.length,
       matches_with_stream_url: matchesWithStream.length,
       matches_with_vod_url: matchesWithVod.length,
+      matches_with_live_state: liveStateRows.length,
+      sponsors: sponsors.length,
+      sponsor_links: sponsorLinks,
     },
     capabilities: {
       teams: teams.length > 0,
@@ -316,13 +359,14 @@ export async function fetchLocosVmPublicSnapshot() {
       streams: matchesWithStream.length > 0,
       vods: matchesWithVod.length > 0,
       credit_plans: creditPlans.length > 0,
-      live_state: liveMatches.length > 0,
+      live_state: liveStateRows.length > 0,
+      sponsors: sponsors.length > 0,
       categories: categories.size > 0,
       rounds: rounds.size > 0,
       dates: dates.size > 0,
     },
     summaries: {
-      categories: sortSummary(categories.values()),
+      categories: categorySummary,
       venues: sortSummary(venues.values()),
       statuses: sortSummary(statuses.values()),
       dates: [...dates.values()].sort((a, b) => String(b.key).localeCompare(String(a.key))).slice(0, 12),
@@ -345,15 +389,17 @@ export async function fetchLocosVmPublicSnapshot() {
         .sort((a, b) => String(b.scheduledAt ?? b.date ?? '').localeCompare(String(a.scheduledAt ?? a.date ?? '')))
         .slice(0, 8),
       credit_plans: activeCreditPlans.slice(0, 6),
+      sponsors: sponsors.slice(0, 8),
     },
     data: {
       teams,
       matches: enrichedMatches,
       credit_plans: activeCreditPlans,
+      sponsors,
     },
     recommendation: {
       importable: fieldCoverage.matches_with_date > 0 && teams.length > 0,
-      safest_use: 'Fixture, resultados cerrados, equipos, escudos, sedes y categorias detectadas.',
+      safest_use: 'Fixture, resultados cerrados, equipos, escudos, sedes, categorias y estado en vivo publico.',
       needs_review: 'Las categorias salen de la descripcion del partido; antes de importar hay que mapearlas contra ligas/fases de VMScore.',
       not_free_access: 'Los links de transmision y planes visibles no implican permiso ni acceso libre al video.',
     },

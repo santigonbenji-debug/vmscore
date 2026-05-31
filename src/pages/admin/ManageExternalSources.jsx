@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { fromZonedTime, toZonedTime } from 'date-fns-tz'
-import { DatabaseZap } from 'lucide-react'
+import { CalendarDays, DatabaseZap, MapPin, RefreshCw, Shield, Trophy } from 'lucide-react'
 import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
 import Spinner from '../../components/ui/Spinner'
@@ -75,21 +75,7 @@ function normalizedTime(value) {
   return Number.isFinite(time) ? time : null
 }
 
-function CapabilityPill({ enabled, label, tone = 'ok' }) {
-  const styles = enabled
-    ? tone === 'warn'
-      ? 'bg-amber-500/15 text-amber-300'
-      : 'bg-emerald-500/15 text-emerald-300'
-    : 'bg-surface-800 text-zinc-500'
-
-  return (
-    <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${styles}`}>
-      {enabled ? 'Disponible' : 'No detectado'} - {label}
-    </span>
-  )
-}
-
-function findPreviewChanges(previewRows, archiveRows) {
+function findPreviewChanges(previewRows, archiveRows, providerLabel = 'Copa Facil') {
   const archiveByExternalId = new Map(
     archiveRows.map((row) => [row.external_match_id, row])
   )
@@ -102,7 +88,7 @@ function findPreviewChanges(previewRows, archiveRows) {
           type: 'new_match',
           priority: 2,
           label: 'Nuevo cruce',
-          description: 'Copa Facil tiene este partido y todavia no esta en el archivo.',
+          description: `${providerLabel} tiene este partido y todavia no esta en el archivo.`,
           match,
           archived: null,
         }
@@ -133,7 +119,7 @@ function findPreviewChanges(previewRows, archiveRows) {
           type: 'date_changed',
           priority: 3,
           label: match.scheduled_at ? 'Fecha u horario actualizado' : 'Fecha pendiente',
-          description: 'Copa Facil cambio el dato de dia u horario.',
+          description: `${providerLabel} cambio el dato de dia u horario.`,
           match,
           archived,
         }
@@ -143,7 +129,7 @@ function findPreviewChanges(previewRows, archiveRows) {
         type: 'status_changed',
         priority: 1,
         label: 'Estado actualizado',
-        description: 'Copa Facil cambio el estado del partido.',
+        description: `${providerLabel} cambio el estado del partido.`,
         match,
         archived,
       }
@@ -158,6 +144,287 @@ function findPreviewChanges(previewRows, archiveRows) {
 function externalProviderLabel(source) {
   if (source?.provider === 'locos_vm') return 'Locos VM'
   return 'Copa Facil'
+}
+
+const LOCOS_TABS = [
+  ['categories', 'Categorias'],
+  ['matches', 'Partidos'],
+  ['teams', 'Equipos'],
+  ['venues', 'Sedes'],
+  ['coverage', 'Cobertura'],
+]
+
+function locosStatusLabel(status) {
+  if (status === 'finished') return 'Finalizado'
+  if (status === 'live') return 'En vivo'
+  if (status === 'upcoming') return 'Programado'
+  return status || 'Sin estado'
+}
+
+function LocosVmReviewPanel({
+  snapshot,
+  loading,
+  error,
+  onScan,
+  categoryFilter,
+  onCategoryChange,
+  onPrepare,
+  preparing,
+  canPrepare,
+  destination,
+}) {
+  const [activeTab, setActiveTab] = useState('categories')
+  const categories = snapshot?.summaries?.categories ?? []
+  const matches = useMemo(() => snapshot?.data?.matches ?? [], [snapshot])
+  const selectedKey = locosCategoryKey(categoryFilter)
+  const scopedMatches = useMemo(() => {
+    if (selectedKey === 'all') return matches
+    return matches.filter((match) => locosCategoryKey(match.category) === selectedKey)
+  }, [matches, selectedKey])
+  const scopedTeamIds = useMemo(() => {
+    const ids = new Set()
+    scopedMatches.forEach((match) => {
+      if (match.homeTeamId) ids.add(match.homeTeamId)
+      if (match.awayTeamId) ids.add(match.awayTeamId)
+    })
+    return ids
+  }, [scopedMatches])
+  const scopedTeams = useMemo(
+    () => (snapshot?.data?.teams ?? []).filter((team) => selectedKey === 'all' || scopedTeamIds.has(team.id)),
+    [scopedTeamIds, selectedKey, snapshot]
+  )
+  const scopedVenues = useMemo(() => {
+    const venues = new Map()
+    scopedMatches.forEach((match) => {
+      const key = String(match.venue ?? '').trim() || 'Sin sede'
+      venues.set(key, (venues.get(key) ?? 0) + 1)
+    })
+    return [...venues.entries()]
+      .map(([key, count]) => ({ key, count }))
+      .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key))
+  }, [scopedMatches])
+  const visibleMatches = useMemo(
+    () => [...scopedMatches].sort((a, b) => String(b.scheduledAt ?? b.date ?? '').localeCompare(String(a.scheduledAt ?? a.date ?? ''))),
+    [scopedMatches]
+  )
+  const chosenCategory = categoryFilter === 'all' ? 'Todas las categorias' : categoryFilter
+
+  return (
+    <section className="rounded-xl border border-surface-800 bg-surface-900 p-4">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-bold text-zinc-100">Bandeja Locos VM</h2>
+          <p className="mt-1 max-w-2xl text-xs text-zinc-500">
+            Revisa datos deportivos publicos y prepara una categoria. Nada modifica VMScore hasta que guardes la importacion.
+          </p>
+        </div>
+        <Button size="sm" variant="secondary" onClick={onScan} disabled={loading}>
+          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          {loading ? 'Leyendo...' : 'Actualizar'}
+        </Button>
+      </div>
+
+      {error && (
+        <p className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
+          {error}
+        </p>
+      )}
+
+      {!snapshot ? (
+        <div className="rounded-lg border border-dashed border-surface-700 bg-surface-950 px-4 py-5 text-center">
+          <DatabaseZap className="mx-auto h-5 w-5 text-primary" />
+          <p className="mt-2 text-sm font-bold text-zinc-200">Todavia no hiciste el barrido</p>
+          <p className="mt-1 text-xs text-zinc-500">
+            Vamos a leer equipos, escudos, partidos, resultados, sedes y estado en vivo publicado.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+            {[
+              ['Categorias', snapshot.counts.categories ?? 0],
+              ['Partidos', snapshot.counts.matches ?? 0],
+              ['Finalizados', snapshot.counts.finished_matches ?? 0],
+              ['Programados', snapshot.counts.upcoming_matches ?? 0],
+              ['Equipos', snapshot.counts.teams ?? 0],
+              ['Sedes', snapshot.counts.venues ?? 0],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-lg border border-surface-800 bg-surface-950 px-3 py-2.5">
+                <p className="text-[10px] font-bold uppercase text-zinc-500">{label}</p>
+                <p className="mt-1 text-lg font-black text-zinc-100">{value}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="rounded-lg border border-primary/25 bg-primary/10 p-3">
+            <div className="grid gap-3 lg:grid-cols-[1fr,auto]">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-zinc-300">Categoria a preparar</label>
+                <select
+                  value={categoryFilter}
+                  onChange={(event) => onCategoryChange(event.target.value)}
+                  className={INPUT}
+                >
+                  <option value="all">Todas las categorias detectadas</option>
+                  {categories.map((category) => (
+                    <option key={category.key} value={category.key}>
+                      {category.key} - {category.count} partidos
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-2 text-[11px] text-zinc-500">
+                  Destino: {destination}. Primero queda en revision; despues elegis que publicar o computar.
+                </p>
+              </div>
+              <div className="flex items-end">
+                <Button onClick={onPrepare} disabled={preparing || !canPrepare} className="w-full lg:w-auto">
+                  {preparing ? 'Preparando...' : `Preparar ${chosenCategory}`}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-1 overflow-x-auto border-b border-surface-800 pb-2">
+            {LOCOS_TABS.map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setActiveTab(key)}
+                className={`shrink-0 rounded-lg px-3 py-2 text-xs font-bold transition-colors ${
+                  activeTab === key ? 'bg-primary text-white' : 'text-zinc-400 hover:bg-surface-800 hover:text-zinc-200'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {activeTab === 'categories' && (
+            <div className="grid gap-2 md:grid-cols-2">
+              {categories.map((category) => {
+                const selected = locosCategoryKey(categoryFilter) === locosCategoryKey(category.key)
+                return (
+                  <button
+                    key={category.key}
+                    type="button"
+                    onClick={() => onCategoryChange(category.key)}
+                    className={`rounded-lg border p-3 text-left transition-colors ${
+                      selected ? 'border-primary bg-primary/10' : 'border-surface-800 bg-surface-950 hover:border-surface-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-sm font-bold text-zinc-100">{category.key}</span>
+                      <span className="rounded-full bg-surface-800 px-2 py-0.5 text-[11px] font-black text-zinc-200">
+                        {category.count}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-zinc-500">
+                      <span>{category.teams ?? 0} equipos</span>
+                      <span>{category.finished ?? 0} finalizados</span>
+                      <span>{category.upcoming ?? 0} programados</span>
+                      <span>{category.rounds?.length ?? 0} fechas</span>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+          {activeTab === 'matches' && (
+            <div className="max-h-[34rem] space-y-2 overflow-y-auto pr-1">
+              {visibleMatches.map((match) => (
+                <div key={match.id} className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+                  <div className="mb-2 flex items-center justify-between gap-2 text-[11px]">
+                    <span className="text-zinc-500">
+                      {match.date || 'Sin fecha'} {match.time || ''} {match.round != null ? `- Fecha ${match.round}` : ''}
+                    </span>
+                    <span className={`rounded-full px-2 py-0.5 font-bold ${
+                      match.status === 'finished'
+                        ? 'bg-emerald-500/15 text-emerald-300'
+                        : match.status === 'live'
+                          ? 'bg-red-500/15 text-red-300'
+                          : 'bg-sky-500/15 text-sky-300'
+                    }`}>
+                      {locosStatusLabel(match.status)}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-[1fr,auto,1fr] items-center gap-2 text-sm">
+                    <span className="truncate font-semibold text-zinc-100">{match.homeTeam?.shortName || match.homeTeam?.name || 'Local'}</span>
+                    <span className="font-black text-zinc-100">
+                      {match.homeScore != null && match.awayScore != null ? `${match.homeScore} - ${match.awayScore}` : 'vs'}
+                    </span>
+                    <span className="truncate text-right font-semibold text-zinc-100">{match.awayTeam?.shortName || match.awayTeam?.name || 'Visitante'}</span>
+                  </div>
+                  <p className="mt-2 truncate text-[11px] text-zinc-500">
+                    {match.category} - {match.venue || 'Sede sin informar'}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {activeTab === 'teams' && (
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {scopedTeams.map((team) => (
+                <div key={team.id} className="flex items-center gap-3 rounded-lg border border-surface-800 bg-surface-950 p-3">
+                  {team.logoUrl ? (
+                    <img src={team.logoUrl} alt="" className="h-9 w-9 shrink-0 rounded-full bg-white object-contain p-1" />
+                  ) : (
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-800">
+                      <Shield className="h-4 w-4 text-zinc-500" />
+                    </span>
+                  )}
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-zinc-100">{team.name || team.shortName}</p>
+                    <p className="truncate text-[11px] text-zinc-500">{team.shortName || 'Sin nombre corto'}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {activeTab === 'venues' && (
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {scopedVenues.map((venue) => (
+                <div key={venue.key} className="flex items-center justify-between gap-3 rounded-lg border border-surface-800 bg-surface-950 p-3">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <MapPin className="h-4 w-4 shrink-0 text-primary" />
+                    <span className="truncate text-sm font-semibold text-zinc-200">{venue.key}</span>
+                  </div>
+                  <span className="shrink-0 text-xs font-black text-zinc-400">{venue.count}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {activeTab === 'coverage' && (
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {[
+                [Shield, 'Escudos', snapshot.summaries?.field_coverage?.teams_with_logo ?? 0, snapshot.counts.teams ?? 0],
+                [CalendarDays, 'Partidos con fecha', snapshot.summaries?.field_coverage?.matches_with_date ?? 0, snapshot.counts.matches ?? 0],
+                [MapPin, 'Partidos con sede', snapshot.summaries?.field_coverage?.matches_with_venue ?? 0, snapshot.counts.matches ?? 0],
+                [Trophy, 'Partidos con resultado', snapshot.summaries?.field_coverage?.matches_with_score ?? 0, snapshot.counts.matches ?? 0],
+                [DatabaseZap, 'Estados en vivo publicados', snapshot.counts.matches_with_live_state ?? 0, snapshot.counts.matches ?? 0],
+                [RefreshCw, 'Repeticiones publicadas', snapshot.counts.matches_with_vod_url ?? 0, snapshot.counts.matches ?? 0],
+              ].map(([Icon, label, value, total]) => (
+                <div key={label} className="flex items-center gap-3 rounded-lg border border-surface-800 bg-surface-950 p-3">
+                  <Icon className="h-4 w-4 shrink-0 text-primary" />
+                  <div>
+                    <p className="text-xs font-bold text-zinc-200">{label}</p>
+                    <p className="mt-0.5 text-[11px] text-zinc-500">{value} de {total}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <p className="text-[11px] text-zinc-600">
+            Tambien se detectaron {snapshot.counts.sponsors ?? 0} patrocinadores publicos y {snapshot.counts.sponsor_links ?? 0} asociaciones con partidos. Los videos y creditos quedan fuera de la importacion deportiva.
+          </p>
+        </div>
+      )}
+    </section>
+  )
 }
 
 export default function ManageExternalSources() {
@@ -225,7 +492,6 @@ export default function ManageExternalSources() {
   }, [savedMappings])
 
   const externalTeams = useMemo(() => summarizeExternalTeams(preview), [preview])
-  const locosCategories = useMemo(() => locosSnapshot?.summaries?.categories ?? [], [locosSnapshot])
   const teamMap = useMemo(() => new Map(teams.map((team) => [team.id, team])), [teams])
   const mappedCount = externalTeams.filter((team) => localMappings[team.external_team_id]).length
   const archiveCounts = useMemo(() => ({
@@ -263,7 +529,10 @@ export default function ManageExternalSources() {
     if (previewRoundFilter === 'all') return preview
     return preview.filter((match) => Number(match.round) === Number(previewRoundFilter))
   }, [preview, previewRoundFilter])
-  const previewChanges = useMemo(() => findPreviewChanges(previewForReview, archive), [previewForReview, archive])
+  const previewChanges = useMemo(
+    () => findPreviewChanges(previewForReview, archive, externalProviderLabel(selectedSource)),
+    [archive, previewForReview, selectedSource]
+  )
   const importableCount = previewForReview.filter((match) =>
     localMappings[match.external_home_team_id] && localMappings[match.external_away_team_id]
   ).length
@@ -889,223 +1158,18 @@ export default function ManageExternalSources() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-surface-800 bg-surface-900 p-4">
-          <div className="mb-3 flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-bold text-zinc-100">Explorar y usar Locos VM</h2>
-              <p className="mt-1 text-xs text-zinc-500">
-                Lee solo datos publicos para mostrar que puede aportar esta fuente.
-              </p>
-            </div>
-            <Button size="sm" variant="secondary" onClick={scanLocosVm} disabled={locosLoading}>
-              {locosLoading ? 'Leyendo...' : 'Hacer barrido'}
-            </Button>
-          </div>
-
-          {locosError && (
-            <p className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
-              {locosError}
-            </p>
-          )}
-
-          {locosSnapshot ? (
-            <div className="space-y-3">
-              <div className="rounded-lg border border-primary/20 bg-primary/10 p-3">
-                <div className="grid gap-2 md:grid-cols-[1fr,auto]">
-                  <div>
-                    <label className="mb-1 block text-xs font-semibold text-zinc-300">Categoria a usar</label>
-                    <select
-                      value={locosCategoryFilter}
-                      onChange={(event) => setLocosCategoryFilter(event.target.value)}
-                      className={INPUT}
-                    >
-                      <option value="all">Todas las categorias detectadas</option>
-                      {locosCategories.map((category) => (
-                        <option key={category.key} value={category.key}>
-                          {category.key} · {category.count} partidos
-                        </option>
-                      ))}
-                    </select>
-                    <p className="mt-1 text-[11px] text-zinc-500">
-                      Usa la liga/fase elegida arriba. Primero queda como historico externo; despues decidis que publicar o computar.
-                    </p>
-                    <p className="mt-1 text-[11px] text-amber-200/80">
-                      Lectura profunda: se revisan documentos directos, estados y rangos de fecha. Si una categoria muestra pocos partidos, eso es lo que Locos VM expone publicamente hoy.
-                    </p>
-                  </div>
-                  <div className="flex items-end">
-                    <Button
-                      onClick={loadLocosPreview}
-                      disabled={previewLoading || upsertSource.isPending || !form.league_id || !form.phase_id}
-                      className="w-full md:w-auto"
-                    >
-                      {previewLoading ? 'Preparando...' : 'Usar datos de Locos VM'}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
-                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
-                  <p className="text-[11px] uppercase text-zinc-500">Equipos</p>
-                  <p className="mt-1 text-lg font-black text-zinc-100">{locosSnapshot.counts.teams}</p>
-                </div>
-                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
-                  <p className="text-[11px] uppercase text-zinc-500">Partidos</p>
-                  <p className="mt-1 text-lg font-black text-zinc-100">{locosSnapshot.counts.matches}</p>
-                </div>
-                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
-                  <p className="text-[11px] uppercase text-zinc-500">Streams</p>
-                  <p className="mt-1 text-lg font-black text-zinc-100">{locosSnapshot.counts.matches_with_stream_url}</p>
-                </div>
-                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
-                  <p className="text-[11px] uppercase text-zinc-500">Planes</p>
-                  <p className="mt-1 text-lg font-black text-zinc-100">{locosSnapshot.counts.active_credit_plans}</p>
-                </div>
-                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
-                  <p className="text-[11px] uppercase text-zinc-500">Categorias</p>
-                  <p className="mt-1 text-lg font-black text-zinc-100">{locosSnapshot.counts.categories ?? 0}</p>
-                </div>
-                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
-                  <p className="text-[11px] uppercase text-zinc-500">Sedes</p>
-                  <p className="mt-1 text-lg font-black text-zinc-100">{locosSnapshot.counts.venues ?? 0}</p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <CapabilityPill enabled={locosSnapshot.capabilities.teams} label="equipos" />
-                <CapabilityPill enabled={locosSnapshot.capabilities.fixtures} label="fixture" />
-                <CapabilityPill enabled={locosSnapshot.capabilities.scores} label="resultados" />
-                <CapabilityPill enabled={locosSnapshot.capabilities.venues} label="sedes" />
-                <CapabilityPill enabled={locosSnapshot.capabilities.categories} label="categorias" />
-                <CapabilityPill enabled={locosSnapshot.capabilities.rounds} label="fechas" />
-                <CapabilityPill enabled={locosSnapshot.capabilities.streams} label="links publicados" tone="warn" />
-                <CapabilityPill enabled={locosSnapshot.capabilities.vods} label="repeticiones" tone="warn" />
-                <CapabilityPill enabled={locosSnapshot.capabilities.credit_plans} label="planes" tone="warn" />
-                <CapabilityPill enabled={locosSnapshot.capabilities.live_state} label="vivo real" tone="warn" />
-              </div>
-
-              <div className="grid gap-2 sm:grid-cols-3">
-                <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3">
-                  <p className="text-xs font-bold text-emerald-300">Podemos usar</p>
-                  <p className="mt-1 text-[11px] text-zinc-400">
-                    Equipos, fixture, sedes y marcadores como referencia/importacion.
-                  </p>
-                </div>
-                <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3">
-                  <p className="text-xs font-bold text-amber-300">Requiere decision</p>
-                  <p className="mt-1 text-[11px] text-zinc-400">
-                    Links de video y planes son visibles, pero no significan acceso libre.
-                  </p>
-                </div>
-                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
-                  <p className="text-xs font-bold text-zinc-300">No confirmado</p>
-                  <p className="mt-1 text-[11px] text-zinc-500">
-                    Vivo minuto a minuto solo si aparece un partido live con datos cambiantes.
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid gap-2 md:grid-cols-2">
-                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
-                  <h3 className="text-xs font-bold text-zinc-100">Cobertura detectada</h3>
-                  <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-zinc-400">
-                    <p>Escudos: <span className="font-bold text-zinc-100">{locosSnapshot.summaries?.field_coverage?.teams_with_logo ?? 0}</span></p>
-                    <p>Con fecha: <span className="font-bold text-zinc-100">{locosSnapshot.summaries?.field_coverage?.matches_with_date ?? 0}</span></p>
-                    <p>Con hora: <span className="font-bold text-zinc-100">{locosSnapshot.summaries?.field_coverage?.matches_with_time ?? 0}</span></p>
-                    <p>Con sede: <span className="font-bold text-zinc-100">{locosSnapshot.summaries?.field_coverage?.matches_with_venue ?? 0}</span></p>
-                    <p>Con categoria: <span className="font-bold text-zinc-100">{locosSnapshot.summaries?.field_coverage?.matches_with_category ?? 0}</span></p>
-                    <p>Con resultado: <span className="font-bold text-zinc-100">{locosSnapshot.summaries?.field_coverage?.matches_with_score ?? 0}</span></p>
-                  </div>
-                </div>
-                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
-                  <h3 className="text-xs font-bold text-zinc-100">Estados</h3>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {(locosSnapshot.summaries?.statuses ?? []).map((status) => (
-                      <span key={status.key} className="rounded-full bg-surface-800 px-2 py-1 text-[11px] font-bold text-zinc-300">
-                        {status.key}: {status.count}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid gap-3 lg:grid-cols-3">
-                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
-                  <h3 className="text-xs font-bold text-zinc-100">Categorias detectadas</h3>
-                  <div className="mt-2 space-y-2">
-                    {(locosSnapshot.summaries?.categories ?? []).slice(0, 8).map((category) => (
-                      <div key={category.key} className="flex items-center justify-between gap-2 rounded-lg bg-surface-900 px-2 py-1.5 text-xs">
-                        <span className="truncate text-zinc-300">{category.key}</span>
-                        <span className="shrink-0 font-black text-zinc-100">{category.count}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
-                  <h3 className="text-xs font-bold text-zinc-100">Sedes detectadas</h3>
-                  <div className="mt-2 space-y-2">
-                    {(locosSnapshot.summaries?.venues ?? []).slice(0, 8).map((venue) => (
-                      <div key={venue.key} className="flex items-center justify-between gap-2 rounded-lg bg-surface-900 px-2 py-1.5 text-xs">
-                        <span className="truncate text-zinc-300">{venue.key}</span>
-                        <span className="shrink-0 font-black text-zinc-100">{venue.count}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
-                  <h3 className="text-xs font-bold text-zinc-100">Dias con partidos</h3>
-                  <div className="mt-2 space-y-2">
-                    {(locosSnapshot.summaries?.dates ?? []).slice(0, 8).map((date) => (
-                      <div key={date.key} className="flex items-center justify-between gap-2 rounded-lg bg-surface-900 px-2 py-1.5 text-xs">
-                        <span className="truncate text-zinc-300">{date.key}</span>
-                        <span className="shrink-0 font-black text-zinc-100">{date.count}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid gap-3 lg:grid-cols-3">
-                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
-                  <h3 className="text-xs font-bold text-zinc-100">Equipos visibles</h3>
-                  <div className="mt-2 space-y-1.5">
-                    {locosSnapshot.samples.teams.map((team) => (
-                      <p key={team.id} className="truncate text-xs text-zinc-400">
-                        {team.shortName || team.name}
-                      </p>
-                    ))}
-                  </div>
-                </div>
-                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
-                  <h3 className="text-xs font-bold text-zinc-100">Programados visibles</h3>
-                  <div className="mt-2 space-y-1.5">
-                    {(locosSnapshot.samples.upcoming_matches?.length ? locosSnapshot.samples.upcoming_matches : locosSnapshot.samples.matches).map((match) => (
-                      <p key={match.id} className="truncate text-xs text-zinc-400">
-                        {(match.homeTeam?.shortName || match.homeTeam?.name || 'Local')} vs {(match.awayTeam?.shortName || match.awayTeam?.name || 'Visitante')}
-                        {' - '}{match.date || 'sin fecha'} {match.time || ''} - {match.category || match.status || 'sin estado'}
-                      </p>
-                    ))}
-                  </div>
-                </div>
-                <div className="rounded-lg border border-surface-800 bg-surface-950 p-3">
-                  <h3 className="text-xs font-bold text-zinc-100">Planes visibles</h3>
-                  <div className="mt-2 space-y-1.5">
-                    {locosSnapshot.samples.credit_plans.map((plan) => (
-                      <p key={plan.id} className="truncate text-xs text-zinc-400">
-                        {plan.name} - {plan.matches} partido{plan.matches === 1 ? '' : 's'}
-                      </p>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <p className="rounded-lg border border-surface-800 bg-surface-950 p-3 text-xs text-zinc-500">
-              El barrido mostrara equipos, partidos, sedes, resultados, links publicados y planes de creditos visibles sin iniciar sesion.
-            </p>
-          )}
-        </section>
+        <LocosVmReviewPanel
+          snapshot={locosSnapshot}
+          loading={locosLoading}
+          error={locosError}
+          onScan={scanLocosVm}
+          categoryFilter={locosCategoryFilter}
+          onCategoryChange={setLocosCategoryFilter}
+          onPrepare={loadLocosPreview}
+          preparing={previewLoading || upsertSource.isPending}
+          canPrepare={Boolean(form.league_id && form.phase_id)}
+          destination={`${selectedLeague?.name || 'Selecciona una liga'} - ${phases.find((phase) => phase.id === form.phase_id)?.name || 'selecciona una fase'}`}
+        />
 
         {previewError && (
           <p className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
