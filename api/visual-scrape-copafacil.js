@@ -2,7 +2,7 @@ import chromium from '@sparticuz/chromium'
 import { chromium as playwrightChromium } from 'playwright-core'
 
 export const config = {
-  maxDuration: 45,
+  maxDuration: 60,
 }
 
 function normalizeSourceUrl(value) {
@@ -15,6 +15,10 @@ function normalizeSourceUrl(value) {
 
 function unique(values) {
   return [...new Set(values.filter(Boolean))]
+}
+
+function withRoute(sourceUrl, route) {
+  return `${sourceUrl.replace(/\/+$/, '')}/${route.replace(/^\/+/, '')}`
 }
 
 function summarizeNetwork(entries) {
@@ -109,7 +113,7 @@ async function captureScrolledView(page, route) {
 
   captures.push(await captureShot(page, 'arriba', 0))
 
-  for (let index = 1; index <= 2; index += 1) {
+  for (let index = 1; index <= 4; index += 1) {
     await page.mouse.move(840, 500)
     await page.mouse.wheel(0, 860)
     await page.waitForTimeout(800)
@@ -141,6 +145,28 @@ async function clickFlutterNav(page, target) {
   await page.waitForTimeout(2400)
 }
 
+async function openVisualRoute(page, sourceUrl, step) {
+  const candidates = [
+    step.path ? withRoute(sourceUrl, step.path) : sourceUrl,
+    sourceUrl,
+  ]
+
+  let lastError = null
+  for (const candidate of candidates) {
+    try {
+      await page.goto(candidate, { waitUntil: 'domcontentloaded', timeout: 45000 })
+      await page.waitForTimeout(5000)
+      if (step.action) {
+        await clickFlutterNav(page, step.action)
+      }
+      return
+    } catch (error) {
+      lastError = error
+    }
+  }
+  if (lastError) throw lastError
+}
+
 async function resetFlutterScroll(page) {
   await page.mouse.move(840, 500)
   for (let i = 0; i < 4; i += 1) {
@@ -162,7 +188,7 @@ export default async function handler(request, response) {
 
     browser = await launchBrowser()
     const page = await browser.newPage({
-      viewport: { width: 1180, height: 760 },
+      viewport: { width: 1360, height: 920 },
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122 Safari/537.36 VMScoreBot/1.0',
     })
 
@@ -183,20 +209,15 @@ export default async function handler(request, response) {
       }
     })
 
-    const routes = []
-    await page.goto(sourceUrl, { waitUntil: 'domcontentloaded', timeout: 45000 })
-    await page.waitForTimeout(4500)
-
     const captureSteps = [
-      { key: 'classification', label: 'Clasificacion', action: 'classification', scroll: true },
-      { key: 'rankings', label: 'Rankings', action: 'rankings', scroll: true },
+      { key: 'classification', label: 'Clasificacion', path: 'classification', action: null, scroll: true },
+      { key: 'rankings', label: 'Rankings', path: 'rankings', action: null, scroll: true },
     ]
 
+    const routes = []
     for (const step of captureSteps) {
       try {
-        if (step.action) {
-          await clickFlutterNav(page, step.action)
-        }
+        await openVisualRoute(page, sourceUrl, step)
         await resetFlutterScroll(page)
         routes.push(step.scroll
           ? await captureScrolledView(page, step)
@@ -219,8 +240,8 @@ export default async function handler(request, response) {
       routes,
       network: networkSummary,
       findings: [
-        'La web de Copa Facil navega dentro del mismo link; el worker usa clicks reales sobre el menu lateral.',
-        'El worker visual captura Clasificacion y Rankings con scroll por seccion.',
+        'El worker intenta abrir rutas internas reales de Copa Facil antes de usar capturas.',
+        'Captura Clasificacion y Rankings con varias posiciones de scroll por seccion.',
         'Si goleadores/eventos no aparecen como JSON, el siguiente paso es OCR/click dirigido sobre las pantallas capturadas.',
       ],
       capabilities: {

@@ -357,6 +357,7 @@ export default function ManageDeepScraping() {
                   <Capability enabled={capabilities.fixture} label="fixture" />
                   <Capability enabled={capabilities.results} label="resultados" />
                   <Capability enabled={capabilities.venues} label="sedes" />
+                  <Capability enabled={capabilities.official_standings} label="tabla oficial" />
                   <Capability enabled={capabilities.computed_standings} label="tabla calculada" />
                   <Capability enabled={capabilities.team_logos} label="escudos" />
                   <Capability enabled={capabilities.player_rankings} label="goleadores" />
@@ -557,9 +558,17 @@ export default function ManageDeepScraping() {
                   <h3 className="mb-3 text-sm font-bold text-zinc-100">Equipos a mapear</h3>
                   <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
                     {teamPreview.map((team) => (
-                      <div key={team.external_team_id} className="rounded-lg border border-surface-800 bg-surface-950 p-3">
-                        <p className="font-mono text-xs text-zinc-300">{team.external_team_id}</p>
-                        <p className="mt-1 text-[11px] text-zinc-500">{team.matches} partidos detectados</p>
+                      <div key={team.external_team_id} className="flex items-center gap-3 rounded-lg border border-surface-800 bg-surface-950 p-3">
+                        {team.logo_url ? (
+                          <img src={team.logo_url} alt="" className="h-9 w-9 shrink-0 rounded-full bg-white object-contain p-1" />
+                        ) : (
+                          <div className="h-9 w-9 shrink-0 rounded-full bg-surface-800" />
+                        )}
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-bold text-zinc-100">{team.name || 'Equipo sin nombre'}</p>
+                          <p className="mt-0.5 truncate font-mono text-[11px] text-zinc-500">{team.external_team_id}</p>
+                          <p className="text-[11px] text-zinc-500">{team.matches} partidos detectados</p>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -568,7 +577,9 @@ export default function ManageDeepScraping() {
 
               <div className="min-w-0 rounded-xl border border-surface-800 bg-surface-900 p-4">
                 <div className="mb-3 flex items-center justify-between gap-3">
-                  <h3 className="text-sm font-bold text-zinc-100">Tabla calculada desde resultados</h3>
+                  <h3 className="text-sm font-bold text-zinc-100">
+                    {capabilities.official_standings ? 'Tabla oficial detectada' : 'Tabla calculada desde resultados'}
+                  </h3>
                   <span className="hidden text-[11px] text-zinc-500 sm:inline">Desliza para ver columnas</span>
                 </div>
 
@@ -577,8 +588,13 @@ export default function ManageDeepScraping() {
                     <div key={row.external_team_id} className="rounded-lg border border-surface-800 bg-surface-950 p-3">
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="text-sm font-black text-zinc-100">#{row.position}</p>
-                          <p className="truncate font-mono text-xs text-zinc-400">{row.external_team_id}</p>
+                          <div className="flex items-center gap-2">
+                            {row.team_logo_url && <img src={row.team_logo_url} alt="" className="h-8 w-8 rounded-full bg-white object-contain p-1" />}
+                            <div className="min-w-0">
+                              <p className="text-sm font-black text-zinc-100">#{row.position}</p>
+                              <p className="truncate text-xs font-bold text-zinc-300">{row.team_name || row.external_team_id}</p>
+                            </div>
+                          </div>
                         </div>
                         <div className="text-right">
                           <p className="text-xl font-black text-zinc-100">{row.points}</p>
@@ -614,7 +630,12 @@ export default function ManageDeepScraping() {
                       {standingsPreview.map((row) => (
                         <tr key={row.external_team_id} className="border-t border-surface-800">
                           <td className="px-2 py-2 font-bold text-zinc-100">{row.position}</td>
-                          <td className="truncate px-2 py-2 font-mono text-xs text-zinc-300">{row.external_team_id}</td>
+                          <td className="px-2 py-2">
+                            <div className="flex min-w-0 items-center gap-2">
+                              {row.team_logo_url && <img src={row.team_logo_url} alt="" className="h-7 w-7 rounded-full bg-white object-contain p-1" />}
+                              <span className="truncate text-xs font-bold text-zinc-300">{row.team_name || row.external_team_id}</span>
+                            </div>
+                          </td>
                           <td className="px-2 py-2 text-right font-black text-zinc-100">{row.points}</td>
                           <td className="px-2 py-2 text-right text-zinc-400">{row.played}</td>
                           <td className="px-2 py-2 text-right text-zinc-400">{row.won}</td>
@@ -638,11 +659,11 @@ export default function ManageDeepScraping() {
                         <span className="text-xs text-zinc-500">{match.scheduled_at ? new Date(match.scheduled_at).toLocaleString('es-AR') : 'Sin horario'}</span>
                       </div>
                       <div className="grid grid-cols-[1fr,auto,1fr] items-center gap-2">
-                        <span className="truncate font-mono text-xs text-zinc-300">{match.external_home_team_id}</span>
+                        <span className="truncate text-xs font-bold text-zinc-300">{match.external_home_team_name || match.external_home_team_id}</span>
                         <span className="font-black text-zinc-100">
                           {match.home_score !== null && match.away_score !== null ? `${match.home_score} - ${match.away_score}` : 'vs'}
                         </span>
-                        <span className="truncate text-right font-mono text-xs text-zinc-300">{match.external_away_team_id}</span>
+                        <span className="truncate text-right text-xs font-bold text-zinc-300">{match.external_away_team_name || match.external_away_team_id}</span>
                       </div>
                     </div>
                   ))}
