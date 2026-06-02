@@ -9,6 +9,7 @@ import { useLeagues, usePhases } from '../../hooks/useLeagues'
 import { useTeams } from '../../hooks/useTeams'
 import { useVenues } from '../../hooks/useVenues'
 import { useReferees } from '../../hooks/useReferees'
+import { useLeagueTeams } from '../../hooks/useRosters'
 import {
   useComputeExternalArchiveMatch,
   useExternalMatchArchive,
@@ -21,7 +22,8 @@ import {
   useUpdateExternalArchiveMatch,
   useUpsertExternalSource,
 } from '../../hooks/useExternalSources'
-import { fetchCopaFacilMatches, parseCopaFacilUrl, summarizeExternalTeams } from '../../lib/copaFacil'
+import { parseCopaFacilUrl, summarizeExternalTeams } from '../../lib/copaFacil'
+import { deepScrapeCopaFacil } from '../../lib/copaFacilDeepScrape'
 import {
   fetchLocosVmPublicSnapshot,
   locosCategoryKey,
@@ -464,6 +466,7 @@ export default function ManageExternalSources() {
   const selectedSource = sources.find((source) => source.id === selectedSourceId) ?? selectedSourceDraft
   const selectedLeague = leagues.find((league) => league.id === (selectedSource?.league_id ?? form.league_id))
   const { data: teams = [] } = useTeams({ sportId: selectedLeague?.sport_id })
+  const { data: leagueTeams = [] } = useLeagueTeams(selectedSource?.league_id ?? form.league_id)
   const { data: canchas = [] } = useVenues()
   const { data: arbitros = [] } = useReferees()
   const { data: savedMappings = [] } = useExternalTeamMappings(selectedSourceId)
@@ -492,7 +495,27 @@ export default function ManageExternalSources() {
   }, [savedMappings])
 
   const externalTeams = useMemo(() => summarizeExternalTeams(preview), [preview])
-  const teamMap = useMemo(() => new Map(teams.map((team) => [team.id, team])), [teams])
+  const mappingTeams = useMemo(() => {
+    const leagueOptions = leagueTeams.map((team) => ({
+      id: team.team_id,
+      name: team.team_name,
+      short_name: team.team_short_name,
+      logo_url: team.team_logo_url,
+      fromLeague: true,
+    }))
+    const leagueIds = new Set(leagueOptions.map((team) => team.id))
+    const sportOptions = teams
+      .filter((team) => !leagueIds.has(team.id))
+      .map((team) => ({
+        id: team.id,
+        name: team.name,
+        short_name: team.short_name,
+        logo_url: team.logo_url,
+        fromLeague: false,
+      }))
+    return [...leagueOptions, ...sportOptions]
+  }, [leagueTeams, teams])
+  const teamMap = useMemo(() => new Map(mappingTeams.map((team) => [team.id, team])), [mappingTeams])
   const mappedCount = externalTeams.filter((team) => localMappings[team.external_team_id]).length
   const archiveCounts = useMemo(() => ({
     all: archive.length,
@@ -656,11 +679,8 @@ export default function ManageExternalSources() {
         setLocosSnapshot(snapshot)
         matches = locosSnapshotToExternalMatches(snapshot, { category: sourceLike.division_code || locosCategoryFilter })
       } else {
-        matches = await fetchCopaFacilMatches({
-          eventCode: sourceLike.event_code,
-          divisionCode: sourceLike.division_code,
-          fresh: true,
-        })
+        const snapshot = await deepScrapeCopaFacil(sourceLike.source_url ?? form.source_url)
+        matches = snapshot?.extracted?.matches ?? []
       }
       setPreview(matches)
       setLastCheckedAt(new Date())
@@ -1246,7 +1266,7 @@ export default function ManageExternalSources() {
                 <div>
                   <h2 className="text-sm font-bold text-zinc-100">Mapeo de equipos</h2>
                   <p className="mt-1 text-xs text-zinc-500">
-                    {mappedCount}/{externalTeams.length} equipos vinculados. Se guardan todas las fechas.
+                    {mappedCount}/{externalTeams.length} equipos vinculados. Primero aparecen los equipos de esta liga.
                   </p>
                 </div>
                 <Button size="sm" variant="secondary" onClick={saveMappingChanges} disabled={!selectedSourceId || saveMappings.isPending}>
@@ -1274,9 +1294,9 @@ export default function ManageExternalSources() {
                       className={INPUT}
                     >
                       <option value="">Sin mapear</option>
-                      {teams.map((vmTeam) => (
+                      {mappingTeams.map((vmTeam) => (
                         <option key={vmTeam.id} value={vmTeam.id}>
-                          {vmTeam.name}
+                          {vmTeam.fromLeague ? 'Liga - ' : 'Otro - '}{vmTeam.name}
                         </option>
                       ))}
                     </select>
