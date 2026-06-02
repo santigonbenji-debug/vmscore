@@ -7,7 +7,7 @@ export const config = {
 
 function normalizeSourceUrl(value) {
   const raw = String(value ?? '').trim()
-  if (!/^https:\/\/copafacil\.com\/[^@/?#]+@[^/?#]+/i.test(raw)) {
+  if (!/^https:\/\/copafacil\.com\/[^@/?#]+(?:@[^/?#]+)?/i.test(raw)) {
     throw new Error('El link de Copa Facil no es valido.')
   }
   return raw.replace(/\/+$/, '')

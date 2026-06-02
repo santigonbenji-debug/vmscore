@@ -1,13 +1,14 @@
 const FIREBASE_BASE = 'https://copafacil-web.firebaseio.com'
+const COPA_FACIL_ROOT_DIVISION = '__root__'
 
 export function parseCopaFacilDeepUrl(value) {
   const raw = String(value ?? '').trim()
-  const match = raw.match(/copafacil\.com\/([^@/?#]+)@([^/?#]+)/i)
+  const match = raw.match(/copafacil\.com\/([^@/?#]+)(?:@([^/?#]+))?/i)
   if (!match) return null
 
   return {
     eventCode: decodeURIComponent(match[1]),
-    divisionCode: decodeURIComponent(match[2]),
+    divisionCode: match[2] ? decodeURIComponent(match[2]) : COPA_FACIL_ROOT_DIVISION,
   }
 }
 
@@ -80,7 +81,7 @@ function assignRounds(matches) {
   return matches
 }
 
-function summarizeTeams(matches) {
+function summarizeTeams(matches, rawTeams) {
   const teams = new Map()
   matches.forEach((match) => {
     ;[
@@ -91,8 +92,8 @@ function summarizeTeams(matches) {
       const current = teams.get(teamId) ?? {
         external_team_id: teamId,
         matches: 0,
-        name: null,
-        logo_url: null,
+        name: rawTeams?.[teamId]?.name ?? null,
+        logo_url: rawTeams?.[teamId]?.url ?? null,
       }
       current.matches += 1
       teams.set(teamId, current)
@@ -199,7 +200,11 @@ function extractMatches(rawMatches, eventCode, divisionCode) {
   const eventKey = `${eventCode}@${divisionCode}`
   return assignRounds(
     Object.entries(rawMatches ?? {})
-      .filter(([, match]) => match?.evt === eventKey)
+      .filter(([, match]) => (
+        divisionCode === COPA_FACIL_ROOT_DIVISION
+          ? !match?.evt || match.evt === eventCode
+          : match?.evt === eventKey
+      ))
       .map(([id, match]) => {
         const { homeScore, awayScore, isFinished } = parseScore(match)
         const status = isFinishedStatus(match) || isFinished
@@ -235,14 +240,15 @@ export async function deepScrapeCopaFacil(sourceUrl) {
     throw new Error('El link de Copa Facil no es valido.')
   }
 
-  const [info, places, rawMatches] = await Promise.all([
+  const [info, places, rawMatches, rawTeams] = await Promise.all([
     readJson(`/events/${encodeURIComponent(parsed.eventCode)}/info.json`).catch(() => null),
     readJson(`/events/${encodeURIComponent(parsed.eventCode)}/places.json`).catch(() => null),
     readJson(`/events/${encodeURIComponent(parsed.eventCode)}/matchs.json`),
+    readJson(`/events/${encodeURIComponent(parsed.eventCode)}/teams.json`).catch(() => null),
   ])
 
   const matches = extractMatches(rawMatches, parsed.eventCode, parsed.divisionCode)
-  const teams = summarizeTeams(matches)
+  const teams = summarizeTeams(matches, rawTeams)
   const rounds = summarizeRounds(matches)
   const standings = buildStandings(matches)
   const venues = Object.entries(places ?? {}).map(([external_venue_id, venue]) => ({
@@ -269,8 +275,8 @@ export async function deepScrapeCopaFacil(sourceUrl) {
         results: true,
         venues: venues.length > 0,
         computed_standings: true,
-        team_names: false,
-        team_logos: false,
+        team_names: teams.some((team) => team.name),
+        team_logos: teams.some((team) => team.logo_url),
         player_rankings: false,
         match_events: false,
         lineups: false,
@@ -290,7 +296,9 @@ export async function deepScrapeCopaFacil(sourceUrl) {
       standings,
       matches,
       missing: [
-        'Nombres y escudos de equipos requieren worker visual o mapeo manual.',
+        ...(!teams.some((team) => team.name) || !teams.some((team) => team.logo_url)
+          ? ['Algunos nombres o escudos de equipos requieren worker visual o mapeo manual.']
+          : []),
         'Goleadores por jugador requieren worker visual o importacion asistida.',
         'Eventos, tarjetas y alineaciones requieren worker visual por detalle de partido.',
       ],

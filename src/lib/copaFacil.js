@@ -1,13 +1,14 @@
 const FIREBASE_BASE = 'https://copafacil-web.firebaseio.com'
+export const COPA_FACIL_ROOT_DIVISION = '__root__'
 
 export function parseCopaFacilUrl(value) {
   const raw = String(value ?? '').trim()
-  const match = raw.match(/copafacil\.com\/([^@/?#]+)@([^/?#]+)/i)
+  const match = raw.match(/copafacil\.com\/([^@/?#]+)(?:@([^/?#]+))?/i)
   if (!match) return null
 
   return {
     eventCode: decodeURIComponent(match[1]),
-    divisionCode: decodeURIComponent(match[2]),
+    divisionCode: match[2] ? decodeURIComponent(match[2]) : COPA_FACIL_ROOT_DIVISION,
   }
 }
 
@@ -66,35 +67,55 @@ export async function fetchCopaFacilMatches({ eventCode, divisionCode, fresh = t
   }
 
   const url = new URL(`${FIREBASE_BASE}/events/${encodeURIComponent(eventCode)}/matchs.json`)
+  const teamsUrl = new URL(`${FIREBASE_BASE}/events/${encodeURIComponent(eventCode)}/teams.json`)
   if (fresh) {
-    url.searchParams.set('_', String(Date.now()))
+    const freshKey = String(Date.now())
+    url.searchParams.set('_', freshKey)
+    teamsUrl.searchParams.set('_', freshKey)
   }
 
-  const response = await fetch(url.toString(), {
+  const fetchOptions = {
     cache: 'no-store',
     headers: {
       Pragma: 'no-cache',
       'Cache-Control': 'no-cache',
     },
-  })
+  }
+  const [response, teamsResponse] = await Promise.all([
+    fetch(url.toString(), fetchOptions),
+    fetch(teamsUrl.toString(), fetchOptions).catch(() => null),
+  ])
   if (!response.ok) {
     throw new Error(`Copa Facil respondio ${response.status}.`)
   }
 
   const payload = await response.json()
+  const teams = teamsResponse?.ok ? await teamsResponse.json() : {}
   const eventKey = `${eventCode}@${divisionCode}`
   const rawMatches = Object.entries(payload ?? {})
-    .filter(([, match]) => match?.evt === eventKey)
+    .filter(([, match]) => (
+      divisionCode === COPA_FACIL_ROOT_DIVISION
+        ? !match?.evt || match.evt === eventCode
+        : match?.evt === eventKey
+    ))
     .map(([id, match]) => {
       const { homeScore, awayScore, isFinished } = parseScore(match)
       const hasScore = homeScore !== null || awayScore !== null
       const rawDate = Number.isFinite(Number(match.d_i)) ? new Date(Number(match.d_i)).toISOString() : null
       const status = parseStatus(match, hasScore, isFinished)
+      const homeTeam = teams?.[match.team1] ?? {}
+      const awayTeam = teams?.[match.team2] ?? {}
 
       return {
         external_match_id: id,
         external_home_team_id: match.team1,
         external_away_team_id: match.team2,
+        external_home_team_name: homeTeam.name ?? null,
+        external_home_team_short_name: homeTeam.short_name ?? null,
+        external_home_team_logo_url: homeTeam.url ?? null,
+        external_away_team_name: awayTeam.name ?? null,
+        external_away_team_short_name: awayTeam.short_name ?? null,
+        external_away_team_logo_url: awayTeam.url ?? null,
         scheduled_at: rawDate,
         date_tbd: !rawDate,
         copa_facil_raw_date: rawDate,

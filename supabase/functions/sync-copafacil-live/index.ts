@@ -9,6 +9,7 @@ const corsHeaders = {
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const firebaseBase = 'https://copafacil-web.firebaseio.com'
+const rootDivisionCode = '__root__'
 
 const supabase = createClient(supabaseUrl, serviceRoleKey)
 
@@ -255,7 +256,10 @@ async function ensureLink(match: Record<string, unknown>, currentLink?: Record<s
 async function syncMatch(match: Record<string, unknown>, source: Record<string, unknown>, rawPayload: Record<string, Record<string, unknown>>, currentLink?: Record<string, unknown>) {
   const raw = rawPayload[String(match.external_match_id)]
   if (!raw) return { id: match.id, skipped: 'missing_external_match' }
-  if (raw.evt !== `${source.event_code}@${source.division_code}`) {
+  const matchesSource = source.division_code === rootDivisionCode
+    ? !raw.evt || raw.evt === source.event_code
+    : raw.evt === `${source.event_code}@${source.division_code}`
+  if (!matchesSource) {
     return { id: match.id, skipped: 'division_mismatch' }
   }
 
