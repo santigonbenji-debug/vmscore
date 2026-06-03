@@ -32,6 +32,7 @@ import {
 
 const TZ = 'America/Argentina/San_Luis'
 const INPUT = 'w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none bg-surface-800 text-zinc-100 border border-surface-700'
+const EMPTY_MAPPINGS = []
 
 const EMPTY_FORM = {
   league_id: '',
@@ -469,7 +470,8 @@ export default function ManageExternalSources() {
   const { data: leagueTeams = [] } = useLeagueTeams(selectedSource?.league_id ?? form.league_id)
   const { data: canchas = [] } = useVenues()
   const { data: arbitros = [] } = useReferees()
-  const { data: savedMappings = [] } = useExternalTeamMappings(selectedSourceId)
+  const { data: savedMappingsData } = useExternalTeamMappings(selectedSourceId)
+  const savedMappings = savedMappingsData ?? EMPTY_MAPPINGS
   const { data: archive = [], isLoading: loadingArchive } = useExternalMatchArchive(selectedSourceId)
   const { data: officialMatches = [] } = useOfficialMatchesForLeague(selectedSource?.league_id)
 
@@ -487,12 +489,13 @@ export default function ManageExternalSources() {
   }, [phases, form.phase_id])
 
   useEffect(() => {
+    if (!selectedSourceId) return
     const next = {}
     savedMappings.forEach((mapping) => {
       next[mapping.external_team_id] = mapping.team_id
     })
     setLocalMappings(next)
-  }, [savedMappings])
+  }, [savedMappings, selectedSourceId])
 
   const externalTeams = useMemo(() => summarizeExternalTeams(preview), [preview])
   const mappingTeams = useMemo(() => {
@@ -1287,10 +1290,13 @@ export default function ManageExternalSources() {
                     </div>
                     <select
                       value={localMappings[team.external_team_id] ?? ''}
-                      onChange={(event) => setLocalMappings({
-                        ...localMappings,
-                        [team.external_team_id]: event.target.value,
-                      })}
+                      onChange={(event) => {
+                        const teamId = event.target.value
+                        setLocalMappings((current) => ({
+                          ...current,
+                          [team.external_team_id]: teamId,
+                        }))
+                      }}
                       className={INPUT}
                     >
                       <option value="">Sin mapear</option>
