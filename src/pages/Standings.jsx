@@ -8,6 +8,23 @@ import Spinner from '../components/ui/Spinner'
 import Badge from '../components/ui/Badge'
 import ChampionCelebration from '../components/competition/ChampionCelebration'
 
+function normalizeText(value = '') {
+  return value
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
+
+function competitionOrder(table) {
+  const name = normalizeText(table.league_name ?? table.name)
+  if (name.includes('primera division a') || name.includes('primera a')) return 10
+  if (name.includes('primera division b') || name.includes('primera b')) return 20
+  if (name.includes('segunda')) return 30
+  if (name.includes('tercera')) return 40
+  return 100
+}
+
 const COMP_LABELS = {
   liga:   { label: 'Liga',   icon: '🏆' },
   copa:   { label: 'Copa',   icon: '🥇' },
@@ -118,22 +135,12 @@ function ScorersList({ scorers }) {
   )
 }
 
-const COMP_FILTERS = [
-  { key: 'all',    label: 'Todas' },
-  { key: 'liga',   label: 'Ligas' },
-  { key: 'copa',   label: 'Copas' },
-  { key: 'torneo', label: 'Torneos' },
-  { key: 'campeonato', label: 'Campeonatos' },
-]
-
 export default function Standings() {
   const navigate = useNavigate()
   const { data: ligas = [] }     = useLeagues()
   const { data: standings = [], isLoading: stLoading } = useAllStandings()
   const { data: events = [],    isLoading: scLoading } = useAllScorers()
 
-  const [comp, setComp] = useState('all') // all/liga/copa/torneo
-  const [ligaSel, setLigaSel] = useState('') // filtro especifico de liga (opcional)
   const [organizationSel, setOrganizationSel] = useState('')
 
   // Mapa league_id → liga (con competition_type, sport, etc.)
@@ -183,17 +190,13 @@ export default function Standings() {
     return out
   }, [events])
 
-  // Agrupar standings por phase_id, filtrado por competicion / liga seleccionada
+  // Agrupar standings por phase_id, filtrado solo por localidad.
   const tablas = useMemo(() => {
     const byPhase = {}
     for (const row of standings) {
       const liga = ligaById[row.league_id]
       if (liga?.format === 'playoffs') continue
       if (organizationSel && row.organization_id !== organizationSel) continue
-      // Filtro por tipo de competicion
-      if (comp !== 'all' && liga?.competition_type !== comp) continue
-      // Filtro por liga especifica
-      if (ligaSel && row.league_id !== ligaSel) continue
 
       if (!byPhase[row.phase_id]) {
         byPhase[row.phase_id] = {
@@ -220,21 +223,25 @@ export default function Standings() {
     return Object.values(byPhase).map((t) => ({
       ...t,
       rows: [...t.rows].sort((a, b) => (a.position ?? 99) - (b.position ?? 99)),
-    }))
-  }, [standings, ligaById, comp, ligaSel, organizationSel])
+    })).sort((a, b) => (
+      competitionOrder(a) - competitionOrder(b) ||
+      (a.organization_city ?? '').localeCompare(b.organization_city ?? '') ||
+      (a.league_name ?? '').localeCompare(b.league_name ?? '') ||
+      (a.phase_name ?? '').localeCompare(b.phase_name ?? '')
+    ))
+  }, [standings, ligaById, organizationSel])
 
   const bracketCompetitions = useMemo(() => ligas.filter((league) => (
     league.format === 'playoffs' &&
-    (comp === 'all' || league.competition_type === comp) &&
-    (!ligaSel || league.id === ligaSel) &&
     (!organizationSel || league.organization_id === organizationSel)
-  )), [comp, ligaSel, ligas, organizationSel])
+  )).sort((a, b) => (
+    competitionOrder(a) - competitionOrder(b) ||
+    (a.name ?? '').localeCompare(b.name ?? '')
+  )), [ligas, organizationSel])
   const champions = useMemo(() => ligas.filter((league) => (
     league.champion_team &&
-    (comp === 'all' || league.competition_type === comp) &&
-    (!ligaSel || league.id === ligaSel) &&
     (!organizationSel || league.organization_id === organizationSel)
-  )), [comp, ligaSel, ligas, organizationSel])
+  )), [ligas, organizationSel])
 
   const isLoading = stLoading || scLoading
 
@@ -245,24 +252,12 @@ export default function Standings() {
         <p className="text-xs text-zinc-500">{tablas.length} tabla{tablas.length === 1 ? '' : 's'}</p>
       </div>
 
-      {/* Filtros opcionales */}
+      {/* Filtros por localidad */}
       <div className="space-y-2">
-        <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-3 px-3 scrollbar-none">
-          {COMP_FILTERS.map((f) => (
-            <button key={f.key} onClick={() => { setComp(f.key); setLigaSel('') }}
-              className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors
-                ${comp === f.key
-                  ? 'bg-primary text-white'
-                  : 'bg-surface-800 text-zinc-400 hover:bg-surface-700 hover:text-zinc-200'}`}>
-              {f.label}
-            </button>
-          ))}
-        </div>
-
         {organizations.length > 1 && (
           <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-3 px-3 scrollbar-none">
             <button
-              onClick={() => { setOrganizationSel(''); setLigaSel('') }}
+              onClick={() => setOrganizationSel('')}
               className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors ${
                 organizationSel === '' ? 'bg-primary text-white' : 'bg-surface-800 text-zinc-400 hover:bg-surface-700 hover:text-zinc-200'
               }`}
@@ -272,7 +267,7 @@ export default function Standings() {
             {organizations.map((org) => (
               <button
                 key={org.id}
-                onClick={() => { setOrganizationSel(org.id); setLigaSel('') }}
+                onClick={() => setOrganizationSel(org.id)}
                 className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors ${
                   organizationSel === org.id ? 'bg-primary text-white' : 'bg-surface-800 text-zinc-400 hover:bg-surface-700 hover:text-zinc-200'
                 }`}
@@ -283,19 +278,6 @@ export default function Standings() {
           </div>
         )}
 
-        {ligas.length > 0 && (
-          <select value={ligaSel} onChange={(e) => setLigaSel(e.target.value)}
-            className="w-full rounded-lg px-3 py-2 text-sm">
-            <option value="">Todas las competiciones</option>
-            {ligas
-              .filter((l) => (comp === 'all' || l.competition_type === comp) && (!organizationSel || l.organization_id === organizationSel))
-              .map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.sports?.icon} {l.name}{l.season ? ` · ${l.season}` : ''}
-                </option>
-              ))}
-          </select>
-        )}
       </div>
 
       {isLoading && <Spinner className="py-12" />}
