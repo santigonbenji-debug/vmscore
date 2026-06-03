@@ -145,8 +145,11 @@ export function useApproveLeague() {
 export function useCreateOrganizationAdmin() {
   return useMutation({
     mutationFn: async ({ organizationId, email, password }) => {
+      const { data: sessionData } = await supabase.auth.getSession()
+      const token = sessionData?.session?.access_token
       const { data, error } = await supabase.functions.invoke('create-organization-admin', {
         body: { organizationId, email, password },
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       })
       if (error) {
         let message = error.message

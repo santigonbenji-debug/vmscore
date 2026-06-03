@@ -28,15 +28,19 @@ serve(async (req) => {
     const { data: authData, error: authError } = await supabase.auth.getUser(token)
     if (authError || !authData.user) return json({ ok: false, error: 'Sesion invalida.' }, 401)
 
-    const { data: role } = await supabase
+    const { data: roles, error: roleLookupError } = await supabase
       .from('admin_roles')
       .select('id')
       .eq('user_id', authData.user.id)
       .eq('role', 'superadmin')
       .eq('status', 'active')
-      .maybeSingle()
+      .limit(1)
 
-    if (!role) return json({ ok: false, error: 'Solo el superadmin puede crear moderadores.' }, 403)
+    if (roleLookupError) {
+      return json({ ok: false, error: `No se pudo validar el superadmin: ${roleLookupError.message}` }, 500)
+    }
+
+    if (!roles?.length) return json({ ok: false, error: 'Solo el superadmin puede crear moderadores.' }, 403)
 
     const { leagueId, email, password, displayName } = await req.json()
     const normalizedEmail = String(email ?? '').trim().toLowerCase()

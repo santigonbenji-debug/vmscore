@@ -16,10 +16,22 @@ export function useCreateMatchModerator() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async ({ leagueId, email, password, displayName }) => {
+      const { data: sessionData } = await supabase.auth.getSession()
+      const token = sessionData?.session?.access_token
       const { data, error } = await supabase.functions.invoke('create-match-moderator', {
         body: { leagueId, email, password, displayName },
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       })
-      if (error) throw error
+      if (error) {
+        let message = error.message
+        try {
+          const payload = await error.context?.json?.()
+          message = payload?.error || payload?.message || message
+        } catch {
+          // Keep Supabase's fallback message when the function did not return JSON.
+        }
+        throw new Error(message || 'No se pudo crear el moderador.')
+      }
       if (!data?.ok) throw new Error(data?.error || 'No se pudo crear el moderador.')
       return data
     },
