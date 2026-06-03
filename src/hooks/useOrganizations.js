@@ -148,7 +148,16 @@ export function useCreateOrganizationAdmin() {
       const { data, error } = await supabase.functions.invoke('create-organization-admin', {
         body: { organizationId, email, password },
       })
-      if (error) throw error
+      if (error) {
+        let message = error.message
+        try {
+          const payload = await error.context?.json?.()
+          message = payload?.error || payload?.message || message
+        } catch {
+          // Keep Supabase's fallback message when the function did not return JSON.
+        }
+        throw new Error(message || 'No se pudo crear el acceso.')
+      }
       if (!data?.ok) throw new Error(data?.error || 'No se pudo crear el acceso.')
       return data
     },

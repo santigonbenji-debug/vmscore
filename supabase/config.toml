@@ -6,3 +6,9 @@ verify_jwt = false
 
 [functions.send-push]
 verify_jwt = false
+
+[functions.create-organization-admin]
+verify_jwt = false
+
+[functions.create-match-moderator]
+verify_jwt = false
