@@ -23,6 +23,7 @@ const ACCESOS_LIGA = [
   { to: '/admin/partidos', label: 'Partidos', icon: 'F', desc: 'Fixture, eventos y resultados' },
   { to: '/admin/posiciones', label: 'Posiciones', icon: 'P', desc: 'Tabla de tus competiciones' },
   { to: '/admin/canchas', label: 'Canchas', icon: 'C', desc: 'Sedes propias de la organizacion' },
+  { to: '/admin/arbitros', label: 'Arbitros', icon: 'A', desc: 'Arbitros de la organizacion' },
 ]
 
 const ACCESOS_CLUB = [

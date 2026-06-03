@@ -17,6 +17,7 @@ import {
 } from '../../hooks/useLiveSync'
 import Button from '../../components/ui/Button'
 import Spinner from '../../components/ui/Spinner'
+import TeamLogo from '../../components/teams/TeamLogo'
 import { isLocosHalftime, locosMinuteLabel } from '../../lib/helpers'
 
 const TIPOS_EVENTO = [
@@ -671,37 +672,68 @@ export default function LoadResult() {
       )}
 
       {puedePublicarEnVivo && (
-        <div className="bg-surface-900 rounded-xl border border-surface-800 shadow-sm p-5 space-y-4">
-          <div>
-            <h2 className="font-bold text-sm text-zinc-100">Eventos en vivo manuales</h2>
-            <p className="text-xs text-zinc-500 mt-1">
-              Publica el gol, incrementa el marcador en vivo y envia push a quienes siguen cualquiera de los equipos.
-            </p>
+        <div className="rounded-2xl border border-primary/25 bg-gradient-to-b from-primary/10 to-surface-900 shadow-sm p-4 sm:p-5 space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-primary">Vivo manual</p>
+              <h2 className="mt-1 font-black text-base text-zinc-100">Publicar gol y notificar</h2>
+              <p className="text-xs text-zinc-500 mt-1">
+                Suma el gol al marcador en vivo y envia push a favoritos del equipo.
+              </p>
+            </div>
+            <div className="rounded-2xl border border-surface-700 bg-surface-950 px-3 py-2 text-center">
+              <p className="text-[10px] font-bold uppercase text-zinc-500">Marcador</p>
+              <p className="text-xl font-black tabular-nums text-zinc-50">
+                {homeScore || 0} - {awayScore || 0}
+              </p>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_6rem_auto]">
-            <select
-              value={manualLiveEvent.teamId}
-              onChange={(event) => setManualLiveEvent({ ...manualLiveEvent, teamId: event.target.value })}
-              className="w-full border border-surface-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-            >
-              <option value="">Equipo que marco</option>
-              <option value={match.home_team_id}>{teamLabel(match, match.home_team_id)}</option>
-              <option value={match.away_team_id}>{teamLabel(match, match.away_team_id)}</option>
-            </select>
+          <div className="grid grid-cols-2 gap-2">
+            {[match.home_team_id, match.away_team_id].map((id) => {
+              const isHome = id === match.home_team_id
+              const selected = manualLiveEvent.teamId === id
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setManualLiveEvent({ ...manualLiveEvent, teamId: id })}
+                  className={`min-h-24 rounded-2xl border p-3 text-left transition-all active:scale-[0.98] ${
+                    selected
+                      ? 'border-primary bg-primary/20 shadow-[0_0_24px_rgba(232,78,27,0.14)]'
+                      : 'border-surface-700 bg-surface-950/70'
+                  }`}
+                >
+                  <TeamLogo
+                    logoUrl={isHome ? match.home_team_logo_url : match.away_team_logo_url}
+                    name={teamLabel(match, id)}
+                    color={isHome ? match.home_primary_color : match.away_primary_color}
+                    size="md"
+                  />
+                  <p className="mt-2 truncate text-sm font-black text-zinc-100">{teamLabel(match, id)}</p>
+                  <p className={`mt-1 text-[10px] font-black uppercase ${selected ? 'text-primary' : 'text-zinc-500'}`}>
+                    {selected ? 'Seleccionado' : 'Tocar si marco'}
+                  </p>
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="grid grid-cols-[1fr_1.25fr] gap-2 sm:grid-cols-[7rem_1fr]">
             <input
               type="number"
               min="0"
               max="150"
               value={manualLiveEvent.minute}
               onChange={(event) => setManualLiveEvent({ ...manualLiveEvent, minute: event.target.value })}
-              placeholder="Min."
-              className="w-full border border-surface-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              placeholder="Minuto"
+              inputMode="numeric"
+              className="w-full rounded-xl border border-surface-700 bg-surface-950 px-3 py-3 text-sm font-bold text-zinc-100 focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
             <Button
-              size="sm"
               onClick={publicarGolEnVivo}
               disabled={!manualLiveEvent.teamId || createManualLiveEvent.isPending}
+              className="min-h-12"
             >
               {createManualLiveEvent.isPending ? 'Publicando...' : 'Publicar gol'}
             </Button>

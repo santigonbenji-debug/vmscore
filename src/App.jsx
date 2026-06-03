@@ -84,7 +84,7 @@ export default function App() {
         <Route path="competencia/:leagueId" element={<NonModeratorRoute><ManageCompetition /></NonModeratorRoute>} />
         <Route path="equipos"            element={<NonModeratorRoute><ManageTeams /></NonModeratorRoute>} />
         <Route path="partidos"           element={<NonModeratorRoute><ManageMatches /></NonModeratorRoute>} />
-        <Route path="arbitros"           element={<SuperAdminRoute><ManageReferees /></SuperAdminRoute>} />
+        <Route path="arbitros"           element={<NonModeratorRoute><ManageReferees /></NonModeratorRoute>} />
         <Route path="canchas"            element={<NonModeratorRoute><ManageVenues /></NonModeratorRoute>} />
         <Route path="resultado/:matchId" element={<LoadResult />} />
         <Route path="mis-partidos"       element={<NonModeratorRoute><MisPartidos /></NonModeratorRoute>} />
