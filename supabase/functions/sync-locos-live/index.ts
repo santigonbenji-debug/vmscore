@@ -48,10 +48,17 @@ async function fetchLocosState(externalMatchId: string) {
 }
 
 function normalizeStatus(status: unknown) {
-  if (status === 'live') return 'in_progress'
-  if (status === 'finished') return 'finished'
-  if (status === 'upcoming') return 'scheduled'
-  return String(status || 'scheduled')
+  const value = String(status || 'scheduled')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+
+  if (['live', 'playing', 'in_progress', 'in progress', 'en vivo'].includes(value)) return 'in_progress'
+  if (['paused', 'halftime', 'half_time', 'break', 'entretiempo'].includes(value)) return 'paused'
+  if (['finished', 'full_time', 'full time', 'ft', 'finalizado', 'final'].includes(value)) return 'finished'
+  if (['upcoming', 'scheduled', 'programado'].includes(value)) return 'scheduled'
+  return value || 'scheduled'
 }
 
 function teamName(match: Record<string, unknown>, side: 'home' | 'away') {
@@ -202,8 +209,24 @@ async function syncLink(link: Record<string, unknown>) {
   const second = numberOrNull(raw.second)
   const nextHome = numberOrNull(raw.homeScore)
   const nextAway = numberOrNull(raw.awayScore)
-  const previousHome = Math.max(numberOrNull(link.last_home_score) ?? 0, numberOrNull(match.home_score) ?? 0)
-  const previousAway = Math.max(numberOrNull(link.last_away_score) ?? 0, numberOrNull(match.away_score) ?? 0)
+  const { data: existingGoalEvents, error: existingGoalError } = await supabase
+    .from('live_sync_events')
+    .select('team_side, goal_number')
+    .eq('match_id', match.id)
+    .eq('event_type', 'goal')
+  if (existingGoalError) throw existingGoalError
+  const previousHome = Math.max(
+    0,
+    ...((existingGoalEvents ?? [])
+      .filter((event) => event.team_side === 'home')
+      .map((event) => numberOrNull(event.goal_number) ?? 0)),
+  )
+  const previousAway = Math.max(
+    0,
+    ...((existingGoalEvents ?? [])
+      .filter((event) => event.team_side === 'away')
+      .map((event) => numberOrNull(event.goal_number) ?? 0)),
+  )
   const now = new Date().toISOString()
   const isStarted = ['in_progress', 'paused', 'finished'].includes(status)
   const liveStartedAt = link.live_started_at ?? (isStarted ? now : null)
@@ -211,8 +234,8 @@ async function syncLink(link: Record<string, unknown>) {
   const halftimeAt = link.halftime_at ?? (halftimeNow ? now : null)
   const secondHalfNow = status === 'in_progress' && Boolean(halftimeAt) && !link.second_half_started_at
   const secondHalfStartedAt = link.second_half_started_at ?? (secondHalfNow ? now : null)
-  const publishedHome = status === 'finished' ? nextHome : nextHome === null ? numberOrNull(match.home_score) : Math.max(nextHome, previousHome)
-  const publishedAway = status === 'finished' ? nextAway : nextAway === null ? numberOrNull(match.away_score) : Math.max(nextAway, previousAway)
+  const publishedHome = status === 'finished' ? nextHome : nextHome === null ? numberOrNull(match.home_score) : Math.max(nextHome, numberOrNull(link.last_home_score) ?? 0, numberOrNull(match.home_score) ?? 0)
+  const publishedAway = status === 'finished' ? nextAway : nextAway === null ? numberOrNull(match.away_score) : Math.max(nextAway, numberOrNull(link.last_away_score) ?? 0, numberOrNull(match.away_score) ?? 0)
 
   const events: Record<string, unknown>[] = []
   const startedNow = !link.last_start_notified_at && ['in_progress', 'paused'].includes(status)
@@ -348,7 +371,14 @@ serve(async (req) => {
       try {
         results.push(await syncLink(link))
       } catch (error) {
-        results.push({ id: link.id, error: error?.message ?? 'sync failed' })
+        const message = error?.message ?? 'sync failed'
+        if (message.includes('Locos VM 404')) {
+          await supabase
+            .from('match_live_links')
+            .update({ enabled: false, updated_at: new Date().toISOString() })
+            .eq('id', link.id)
+        }
+        results.push({ id: link.id, error: message })
       }
     }
 
