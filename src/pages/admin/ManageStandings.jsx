@@ -88,6 +88,11 @@ export default function ManageStandings() {
     })
   }, [rows])
 
+  const computedMatchesCount = useMemo(() => {
+    const played = rows.reduce((sum, row) => sum + Math.max(0, num(row.played) - num(row.base_played)), 0)
+    return Math.floor(played / 2)
+  }, [rows])
+
   function setBase(rowId, key, raw) {
     setEdits((prev) => ({
       ...prev,
@@ -293,6 +298,64 @@ export default function ManageStandings() {
       {faseId && (
         <>
           {(lLoading || fLoading || rLoading) && <Spinner className="py-12" />}
+          {rowsOrdenadas.length > 0 && (
+            <section className="rounded-xl border border-surface-800 bg-surface-900 overflow-hidden">
+              <div className="flex items-center justify-between gap-3 border-b border-surface-800 px-4 py-3">
+                <div>
+                  <h2 className="text-sm font-extrabold text-zinc-100">Tabla actual</h2>
+                  <p className="text-[11px] text-zinc-500">
+                    {computedMatchesCount} partido{computedMatchesCount === 1 ? '' : 's'} computado{computedMatchesCount === 1 ? '' : 's'} desde resultados finalizados.
+                  </p>
+                </div>
+                <span className="rounded-full bg-primary/15 px-3 py-1 text-[10px] font-bold uppercase text-primary">
+                  Calculada
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-surface-950 text-zinc-500 text-[10px] uppercase tracking-wide">
+                    <tr>
+                      <th className="px-3 py-2 text-left">#</th>
+                      <th className="px-2 py-2 text-left">Equipo</th>
+                      <th className="px-2 py-2 text-center">PJ</th>
+                      <th className="px-2 py-2 text-center">G</th>
+                      <th className="px-2 py-2 text-center">E</th>
+                      <th className="px-2 py-2 text-center">P</th>
+                      <th className="px-2 py-2 text-center">GF</th>
+                      <th className="px-2 py-2 text-center">GC</th>
+                      <th className="px-2 py-2 text-center">DG</th>
+                      <th className="px-3 py-2 text-center font-bold">PTS</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rowsOrdenadas.map((row) => (
+                      <tr key={`actual-${row.id}`} className="border-t border-surface-800">
+                        <td className="px-3 py-2 text-xs font-black text-zinc-400">{row.position ?? '-'}</td>
+                        <td className="px-2 py-2">
+                          <div className="flex min-w-[150px] items-center gap-2">
+                            <TeamLogo logoUrl={row.team_logo_url} name={row.team_name} color={row.primary_color} />
+                            <span className="truncate text-xs font-bold text-zinc-100">
+                              {row.team_short_name ?? row.team_name}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-2 py-2 text-center text-xs tabular-nums text-zinc-300">{row.played ?? 0}</td>
+                        <td className="px-2 py-2 text-center text-xs tabular-nums text-zinc-300">{row.won ?? 0}</td>
+                        <td className="px-2 py-2 text-center text-xs tabular-nums text-zinc-300">{row.drawn ?? 0}</td>
+                        <td className="px-2 py-2 text-center text-xs tabular-nums text-zinc-300">{row.lost ?? 0}</td>
+                        <td className="px-2 py-2 text-center text-xs tabular-nums text-zinc-300">{row.goals_for ?? 0}</td>
+                        <td className="px-2 py-2 text-center text-xs tabular-nums text-zinc-300">{row.goals_against ?? 0}</td>
+                        <td className="px-2 py-2 text-center text-xs tabular-nums text-zinc-300">
+                          {row.goal_diff > 0 ? `+${row.goal_diff}` : row.goal_diff ?? 0}
+                        </td>
+                        <td className="px-3 py-2 text-center text-sm font-black tabular-nums text-zinc-100">{row.points ?? 0}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
           {!rLoading && rowsOrdenadas.length === 0 && (
             <div className="text-center py-10 text-zinc-500 text-sm">
               <p>No hay equipos en esta fase todavía.</p>
@@ -300,7 +363,14 @@ export default function ManageStandings() {
             </div>
           )}
           {rowsOrdenadas.length > 0 && (
-            <div className="bg-surface-900 rounded-xl border border-surface-800 overflow-hidden overflow-x-auto">
+            <div className="bg-surface-900 rounded-xl border border-surface-800 overflow-hidden">
+              <div className="border-b border-surface-800 px-4 py-3">
+                <h2 className="text-sm font-bold text-zinc-100">Ajuste historico manual</h2>
+                <p className="text-[11px] text-zinc-500">
+                  Estos campos pueden quedar en 0. Solo suman partidos anteriores que no esten cargados como encuentros.
+                </p>
+              </div>
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-surface-800 text-zinc-400 text-[10px] uppercase tracking-wide">
                   <tr>
@@ -393,6 +463,7 @@ export default function ManageStandings() {
                   })}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
 
