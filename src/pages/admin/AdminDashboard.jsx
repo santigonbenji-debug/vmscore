@@ -7,6 +7,7 @@ const ACCESOS_SUPER = [
   { to: '/admin/ligas', label: 'Competiciones', icon: 'T', desc: 'Ligas, copas y torneos' },
   { to: '/admin/equipos', label: 'Equipos', icon: 'E', desc: 'Administrar clubes' },
   { to: '/admin/partidos', label: 'Partidos', icon: 'F', desc: 'Cargar fixture' },
+  { to: '/admin/posiciones', label: 'Posiciones', icon: 'P', desc: 'Editar tablas y valores base' },
   { to: '/admin/importar', label: 'Importar', icon: 'I', desc: 'Copa Facil y fuentes externas' },
   { to: '/admin/scraping', label: 'Scraping', icon: 'S', desc: 'Capturar torneos completos' },
   { to: '/admin/noticias', label: 'Noticias', icon: 'N', desc: 'Publicar novedades en Home' },
@@ -20,6 +21,7 @@ const ACCESOS_LIGA = [
   { to: '/admin/deportes', label: 'Deportes', icon: 'D', desc: 'Disciplinas de la organizacion' },
   { to: '/admin/equipos', label: 'Equipos', icon: 'E', desc: 'Clubes, escudo, DT y plantel' },
   { to: '/admin/partidos', label: 'Partidos', icon: 'F', desc: 'Fixture, eventos y resultados' },
+  { to: '/admin/posiciones', label: 'Posiciones', icon: 'P', desc: 'Tabla de tus competiciones' },
   { to: '/admin/canchas', label: 'Canchas', icon: 'C', desc: 'Sedes propias de la organizacion' },
 ]
 

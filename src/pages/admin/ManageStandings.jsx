@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useAuth } from '../../hooks/useAuth'
 import { useLeagues, usePhases } from '../../hooks/useLeagues'
 import { useTeams } from '../../hooks/useTeams'
 import { useAddTeamToLeague, useLeagueTeams } from '../../hooks/useRosters'
@@ -21,6 +22,7 @@ function num(v) { return v === '' || v == null ? 0 : Number(v) }
 export default function ManageStandings() {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
+  const { isSuperAdmin, organizationId } = useAuth()
 
   const ligaParam = params.get('liga') ?? ''
   const faseParam = params.get('fase') ?? ''
@@ -28,7 +30,10 @@ export default function ManageStandings() {
   const [ligaId, setLigaId] = useState(ligaParam)
   const [faseId, setFaseId] = useState(faseParam)
 
-  const { data: ligas = [], isLoading: lLoading } = useLeagues()
+  const { data: ligas = [], isLoading: lLoading } = useLeagues({
+    organizationId: isSuperAdmin ? undefined : organizationId,
+    approvalStatus: 'approved',
+  })
   const { data: fases = [], isLoading: fLoading } = usePhases(ligaId)
   const { data: rows = [],  isLoading: rLoading } = useStandingsRows(faseId)
   const liga = useMemo(() => ligas.find((l) => l.id === ligaId), [ligas, ligaId])
@@ -45,7 +50,10 @@ export default function ManageStandings() {
   const [teamToEnroll, setTeamToEnroll] = useState('')
 
   // Auto seleccion inicial
-  useEffect(() => { if (!ligaId && ligas.length > 0) setLigaId(ligas[0].id) }, [ligas, ligaId])
+  useEffect(() => {
+    if (ligas.length === 0) return
+    if (!ligaId || !ligas.some((ligaItem) => ligaItem.id === ligaId)) setLigaId(ligas[0].id)
+  }, [ligas, ligaId])
   useEffect(() => {
     if (fases.length > 0 && !fases.some((f) => f.id === faseId)) setFaseId(fases[0].id)
   }, [fases, faseId])

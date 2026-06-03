@@ -67,7 +67,7 @@ const STATUS_VARIANT = {
 
 export default function ManageMatches() {
   const { isSuperAdmin, organizationId } = useAuth()
-  const [params] = useSearchParams()
+  const [params, setParams] = useSearchParams()
   const [ligaId, setLigaId] = useState(() => params.get('liga') ?? '')
   const [faseid, setFaseId] = useState(() => params.get('fase') ?? '')
   const [fechaFiltro, setFechaFiltro] = useState('all')
@@ -198,6 +198,23 @@ export default function ManageMatches() {
       return Number(a.key) - Number(b.key)
     })
   }, [faseSeleccionada?.id, faseSeleccionada?.name, isKnockout, partidosFiltrados])
+
+  useEffect(() => {
+    if (ligas.length === 0) return
+    if (ligaId && !ligas.some((liga) => liga.id === ligaId)) {
+      setLigaId('')
+      setFaseId('')
+    }
+  }, [ligaId, ligas])
+
+  useEffect(() => {
+    const next = new URLSearchParams(params)
+    if (ligaId) next.set('liga', ligaId)
+    else next.delete('liga')
+    if (faseid) next.set('fase', faseid)
+    else next.delete('fase')
+    if (next.toString() !== params.toString()) setParams(next, { replace: true })
+  }, [faseid, ligaId, params, setParams])
 
   useEffect(() => {
     if (!ligaId || faseid || fases.length === 0) return

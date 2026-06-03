@@ -94,7 +94,7 @@ export default function App() {
         <Route path="moderacion"         element={<ModeratorRoute><ModeratorMatches /></ModeratorRoute>} />
         <Route path="planteles"          element={<Navigate to="/admin/equipos" replace />} />
         <Route path="noticias"           element={<SuperAdminRoute><ManageNews /></SuperAdminRoute>} />
-        <Route path="posiciones"         element={<SuperAdminRoute><ManageStandings /></SuperAdminRoute>} />
+        <Route path="posiciones"         element={<NonModeratorRoute><ManageStandings /></NonModeratorRoute>} />
         <Route path="goleadores"         element={<SuperAdminRoute><ManageScorers /></SuperAdminRoute>} />
         <Route path="importar"           element={<SuperAdminRoute><ManageExternalSources /></SuperAdminRoute>} />
         <Route path="scraping"           element={<SuperAdminRoute><ManageDeepScraping /></SuperAdminRoute>} />

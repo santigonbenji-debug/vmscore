@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Shield } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
@@ -6,7 +6,7 @@ import { useOrganizations } from '../../hooks/useOrganizations'
 import { useSports } from '../../hooks/useSports'
 import { useLeagues } from '../../hooks/useLeagues'
 import { useTeams, useCreateTeam, useUpdateTeam, useDeleteTeam } from '../../hooks/useTeams'
-import { useAddTeamToLeague, useTeamPlayers, useCreatePlayer, useUpdatePlayer, useDeletePlayer } from '../../hooks/useRosters'
+import { useAddTeamToLeague, useLeagueTeams, useTeamPlayers, useCreatePlayer, useUpdatePlayer, useDeletePlayer } from '../../hooks/useRosters'
 import Modal from '../../components/ui/Modal'
 import Button from '../../components/ui/Button'
 import Spinner from '../../components/ui/Spinner'
@@ -90,8 +90,10 @@ function PlayersEditor({ teamId }) {
   return (
     <div className="border-t border-surface-800 pt-4 space-y-3">
       <div>
-        <h3 className="font-bold text-sm">Jugadores</h3>
-        <p className="text-xs text-zinc-500">El deporte lo define el equipo; el plantel se separa por genero.</p>
+        <h3 className="font-bold text-sm">Plantel base</h3>
+        <p className="text-xs text-zinc-500">
+          Carga los jugadores habituales del equipo. En cada partido podes elegir convocados, quitar excepciones o escribir un jugador manual.
+        </p>
       </div>
 
       <div className="flex gap-1.5 overflow-x-auto pb-1">
@@ -171,30 +173,54 @@ function PlayersEditor({ teamId }) {
 
 export default function ManageTeams() {
   const { isSuperAdmin, organizationId, organization } = useAuth()
-  const [searchParams] = useSearchParams()
-  const prefillLeagueId = searchParams.get('liga') ?? ''
+  const [searchParams, setSearchParams] = useSearchParams()
+  const leagueParam = searchParams.get('liga') ?? ''
   const [modal, setModal] = useState(false)
   const [editando, setEditando] = useState(null)
   const [form, setForm] = useState(FORM_VACIO)
   const [logoFile, setLogoFile] = useState(null)
   const [filtro, setFiltro] = useState('')
-  const [prefillHandled, setPrefillHandled] = useState(false)
+  const [selectedLeagueId, setSelectedLeagueId] = useState(leagueParam)
 
   const scopedOrgId = isSuperAdmin ? undefined : organizationId
   const { data: organizations = [] } = useOrganizations({ includeArchived: isSuperAdmin })
   const { data: sports = [] } = useSports({ organizationId: scopedOrgId })
   const { data: leagues = [] } = useLeagues({ organizationId: scopedOrgId, approvalStatus: 'approved' })
-  const sportId = sports.find((sport) => sport.slug === filtro)?.id
+  const selectedLeague = useMemo(
+    () => leagues.find((league) => league.id === selectedLeagueId),
+    [leagues, selectedLeagueId],
+  )
+  const selectedSport = sports.find((sport) => sport.slug === filtro)
+  const sportId = selectedLeague?.sport_id ?? selectedSport?.id
   const { data: equipos = [], isLoading } = useTeams({ sportId, organizationId: scopedOrgId })
+  const { data: leagueTeams = [], isLoading: loadingLeagueTeams } = useLeagueTeams(selectedLeagueId)
 
   const crearEquipo = useCreateTeam()
   const editarEquipo = useUpdateTeam()
   const borrarEquipo = useDeleteTeam()
   const addTeamToLeague = useAddTeamToLeague()
 
-  function abrirCrear() {
+  const leagueTeamIds = useMemo(
+    () => new Set(leagueTeams.map((team) => team.team_id)),
+    [leagueTeams],
+  )
+  const visibleTeams = useMemo(() => {
+    if (!selectedLeagueId) return []
+    return equipos.filter((team) => leagueTeamIds.has(team.id))
+  }, [equipos, leagueTeamIds, selectedLeagueId])
+  const leaguesForFilter = useMemo(() => {
+    const filtroSportId = selectedSport?.id
+    return leagues.filter((league) => !filtroSportId || league.sport_id === filtroSportId)
+  }, [leagues, selectedSport])
+
+  function abrirCrear(league = selectedLeague) {
     setEditando(null)
-    setForm({ ...FORM_VACIO, organization_id: isSuperAdmin ? '' : organizationId })
+    setForm({
+      ...FORM_VACIO,
+      organization_id: league?.organization_id ?? (isSuperAdmin ? '' : organizationId),
+      sport_id: league?.sport_id ?? '',
+      league_id: league?.id ?? '',
+    })
     setLogoFile(null)
     setModal(true)
   }
@@ -204,7 +230,7 @@ export default function ManageTeams() {
     setForm({
       organization_id: team.organization_id ?? organizationId ?? '',
       sport_id: team.sport_id,
-      league_id: '',
+      league_id: selectedLeagueId || '',
       name: team.name,
       short_name: team.short_name ?? '',
       technical_director: team.technical_director ?? '',
@@ -243,6 +269,13 @@ export default function ManageTeams() {
     await borrarEquipo.mutateAsync(team.id)
   }
 
+  function cambiarDeporte(slug) {
+    setFiltro(slug)
+    if (!slug) return
+    const nextSportId = sports.find((sport) => sport.slug === slug)?.id
+    if (selectedLeague && selectedLeague.sport_id !== nextSportId) setSelectedLeagueId('')
+  }
+
   const guardando = crearEquipo.isPending || editarEquipo.isPending || addTeamToLeague.isPending
   const modalSports = isSuperAdmin && form.organization_id
     ? sports.filter((sport) => sport.organization_id === form.organization_id)
@@ -252,20 +285,28 @@ export default function ManageTeams() {
   ))
 
   useEffect(() => {
-    if (!prefillLeagueId || prefillHandled || leagues.length === 0) return
-    const league = leagues.find((item) => item.id === prefillLeagueId)
-    if (!league) return
-    setEditando(null)
-    setForm({
-      ...FORM_VACIO,
-      organization_id: league.organization_id,
-      sport_id: league.sport_id,
-      league_id: league.id,
-    })
-    setLogoFile(null)
-    setModal(true)
-    setPrefillHandled(true)
-  }, [leagues, prefillHandled, prefillLeagueId])
+    setSelectedLeagueId(leagueParam)
+  }, [leagueParam])
+
+  useEffect(() => {
+    if ((searchParams.get('liga') ?? '') === selectedLeagueId) return
+    const params = new URLSearchParams(searchParams)
+    if (selectedLeagueId) params.set('liga', selectedLeagueId)
+    else params.delete('liga')
+    setSearchParams(params, { replace: true })
+  }, [selectedLeagueId, searchParams, setSearchParams])
+
+  useEffect(() => {
+    if (!selectedLeagueId || leagues.length === 0) return
+    const leagueExists = leagues.some((league) => league.id === selectedLeagueId)
+    if (!leagueExists) setSelectedLeagueId('')
+  }, [leagues, selectedLeagueId])
+
+  useEffect(() => {
+    if (!selectedLeague || sports.length === 0) return
+    const sport = sports.find((item) => item.id === selectedLeague.sport_id)
+    if (sport && filtro !== sport.slug) setFiltro(sport.slug)
+  }, [filtro, selectedLeague, sports])
 
   return (
     <div className="px-4 py-6">
@@ -276,12 +317,12 @@ export default function ManageTeams() {
             <p className="mt-1 text-xs text-zinc-500">{organization.city}, {organization.province}</p>
           )}
         </div>
-        <Button size="sm" onClick={abrirCrear}>+ Nuevo Equipo</Button>
+        <Button size="sm" onClick={() => abrirCrear()}>+ Nuevo Equipo</Button>
       </div>
 
       <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
         {[{ slug: '', name: 'Todos', icon: '👕' }, ...sports].map((sport) => (
-          <button key={sport.slug} onClick={() => setFiltro(sport.slug)}
+          <button key={sport.slug} onClick={() => cambiarDeporte(sport.slug)}
             className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap
               ${filtro === sport.slug ? 'bg-primary text-white' : 'bg-surface-800 text-zinc-300'}`}>
             {sport.icon} {sport.name}
@@ -289,11 +330,50 @@ export default function ManageTeams() {
         ))}
       </div>
 
-      {isLoading ? <Spinner className="py-12" /> : equipos.length === 0 ? (
-        <p className="text-center text-zinc-500 py-16 text-sm">No hay equipos todavia</p>
+      <div className="mb-4 rounded-2xl border border-surface-800 bg-surface-900 p-4">
+        <label className="mb-1 block text-xs font-semibold text-zinc-400">Competencia</label>
+        <select
+          value={selectedLeagueId}
+          onChange={(event) => setSelectedLeagueId(event.target.value)}
+          className="w-full rounded-xl border border-surface-700 bg-surface-800 px-3 py-3 text-sm font-semibold text-zinc-100 focus:border-primary focus:outline-none"
+        >
+          <option value="">Seleccionar competencia...</option>
+          {leaguesForFilter.map((league) => (
+            <option key={league.id} value={league.id}>
+              {league.sports?.icon} {league.name}{league.season ? ` - ${league.season}` : ''}
+            </option>
+          ))}
+        </select>
+        {selectedLeague ? (
+          <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/10 px-3 py-2">
+            <div className="min-w-0">
+              <p className="text-xs font-bold uppercase text-primary">Trabajando en</p>
+              <p className="truncate text-sm font-bold text-zinc-100">{selectedLeague.name}</p>
+              <p className="text-xs text-zinc-500">{selectedLeague.sports?.name} - {selectedLeague.gender}</p>
+            </div>
+            <Button size="sm" onClick={() => abrirCrear(selectedLeague)}>
+              + Equipo
+            </Button>
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-zinc-500">
+            Elegi una competencia para ver solo sus equipos y cargar plantel sin perder el contexto.
+          </p>
+        )}
+      </div>
+
+      {(isLoading || loadingLeagueTeams) ? <Spinner className="py-12" /> : visibleTeams.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-surface-800 bg-surface-900/40 px-4 py-12 text-center">
+          <p className="text-sm font-semibold text-zinc-300">
+            {selectedLeague ? 'Todavia no hay equipos en esta competencia.' : 'Selecciona una competencia para ver sus equipos.'}
+          </p>
+          <p className="mt-1 text-xs text-zinc-500">
+            {selectedLeague ? 'Crea un equipo o inscribi uno existente desde Posiciones.' : 'Asi cada organizacion trabaja sin mezclar equipos de otras ligas.'}
+          </p>
+        </div>
       ) : (
         <div className="space-y-3">
-          {equipos.map((team) => (
+          {visibleTeams.map((team) => (
             <div key={team.id} className="bg-surface-900 rounded-xl border border-surface-800 shadow-sm p-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3 min-w-0">
@@ -311,7 +391,7 @@ export default function ManageTeams() {
                   </div>
                 </div>
                 <div className="flex gap-3 shrink-0">
-                  <button onClick={() => abrirEditar(team)} className="text-xs text-primary font-medium">Editar</button>
+                  <button onClick={() => abrirEditar(team)} className="text-xs text-primary font-medium">Editar / jugadores</button>
                   <button onClick={() => borrar(team)} className="text-xs text-red-400 font-medium">Borrar</button>
                 </div>
               </div>
