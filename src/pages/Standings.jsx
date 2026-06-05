@@ -89,8 +89,10 @@ function TopThreeRow({ row, index }) {
       <span className="min-w-0 flex-1 truncate text-sm font-bold text-zinc-100">
         {row.team_short_name ?? row.team_name}
       </span>
-      <span className="w-8 text-right text-sm font-black tabular-nums text-zinc-100">
-        {row.points ?? 0}
+      <span className="w-8 text-right text-sm font-black tabular-nums text-zinc-100">{row.points ?? 0}</span>
+      <span className="w-8 text-right text-xs font-bold tabular-nums text-zinc-500">{row.played ?? 0}</span>
+      <span className="w-9 text-right text-xs font-bold tabular-nums text-zinc-500">
+        {row.goal_diff > 0 ? '+' : ''}{row.goal_diff ?? 0}
       </span>
     </div>
   )
@@ -119,7 +121,15 @@ function StandingsSummaryCard({ table, scorers, onOpen }) {
           {typeLabel && <Badge>{typeLabel}</Badge>}
         </div>
 
-        <div className="mt-3 divide-y divide-surface-800/70">
+        <div className="mt-3 flex items-center gap-2 border-b border-surface-800/70 pb-1 text-[9px] font-black uppercase tracking-wide text-zinc-600">
+          <span className="w-5 shrink-0 text-center">#</span>
+          <span className="flex-1">Equipo</span>
+          <span className="w-8 text-right text-zinc-500">PTS</span>
+          <span className="w-8 text-right">PJ</span>
+          <span className="w-9 text-right">DG</span>
+        </div>
+
+        <div className="divide-y divide-surface-800/70">
           {topRows.map((row, index) => (
             <TopThreeRow key={row.team_id ?? index} row={row} index={index} />
           ))}

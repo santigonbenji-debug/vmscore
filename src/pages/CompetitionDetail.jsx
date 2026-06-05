@@ -109,13 +109,18 @@ function CompetitionStandingsTable({ title, rows, onTeamClick }) {
         <Table2 className="h-4 w-4 text-primary" />
       </div>
       <div className="overflow-x-auto" dir="ltr">
-        <table className="w-full min-w-[25rem] text-sm">
+        <table className="w-full min-w-[34rem] text-sm">
           <thead className="text-[10px] uppercase tracking-wide text-zinc-500">
             <tr>
               <th className="px-3 py-2 text-left">#</th>
               <th className="px-2 py-2 text-left">Equipo</th>
               <th className="px-2 py-2 text-center text-zinc-300">PTS</th>
               <th className="px-2 py-2 text-center">PJ</th>
+              <th className="px-2 py-2 text-center">G</th>
+              <th className="px-2 py-2 text-center">E</th>
+              <th className="px-2 py-2 text-center">P</th>
+              <th className="px-2 py-2 text-center">GF</th>
+              <th className="px-2 py-2 text-center">GC</th>
               <th className="px-2 py-2 text-center">DG</th>
             </tr>
           </thead>
@@ -139,6 +144,11 @@ function CompetitionStandingsTable({ title, rows, onTeamClick }) {
                   </td>
                   <td className="px-2 py-2 text-center font-black tabular-nums text-zinc-100">{row.points ?? 0}</td>
                   <td className="px-2 py-2 text-center text-zinc-500">{row.played ?? 0}</td>
+                  <td className="px-2 py-2 text-center text-zinc-500">{row.won ?? 0}</td>
+                  <td className="px-2 py-2 text-center text-zinc-500">{row.drawn ?? 0}</td>
+                  <td className="px-2 py-2 text-center text-zinc-500">{row.lost ?? 0}</td>
+                  <td className="px-2 py-2 text-center text-zinc-500">{row.goals_for ?? 0}</td>
+                  <td className="px-2 py-2 text-center text-zinc-500">{row.goals_against ?? 0}</td>
                   <td className="px-2 py-2 text-center text-zinc-500">{row.goal_diff > 0 ? '+' : ''}{row.goal_diff ?? 0}</td>
                 </tr>
               )
