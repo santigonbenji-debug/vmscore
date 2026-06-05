@@ -137,6 +137,17 @@ export function useUpdateLocosClock() {
         .select()
         .single()
       if (error) throw error
+
+      if (['start', 'halftime', 'second_half', 'stop', 'set_minute'].includes(action) &&
+        match.status !== 'postponed' &&
+        match.status !== 'cancelled' &&
+        match.status !== 'finished') {
+        const { error: matchError } = await supabase
+          .from('matches')
+          .update({ status: 'in_progress', updated_at: now })
+          .eq('id', match.id)
+        if (matchError) throw matchError
+      }
       return { link: data, matchId: match.id }
     },
     onSuccess: ({ matchId }) => {
