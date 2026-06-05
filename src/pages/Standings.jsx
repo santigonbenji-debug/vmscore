@@ -1,11 +1,13 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { ChevronRight, Table2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useLeagues } from '../hooks/useLeagues'
 import TeamLogo from '../components/teams/TeamLogo'
 import Spinner from '../components/ui/Spinner'
 import Badge from '../components/ui/Badge'
+import Modal from '../components/ui/Modal'
 import ChampionCelebration from '../components/competition/ChampionCelebration'
 
 function normalizeText(value = '') {
@@ -135,6 +137,108 @@ function ScorersList({ scorers }) {
   )
 }
 
+function tableTitle(table) {
+  return [
+    table.league_name,
+    table.phase_name && table.phase_name !== 'Fase Regular' ? table.phase_name : '',
+    table.group_name,
+  ].filter(Boolean).join(' · ')
+}
+
+function tableSubtitle(table) {
+  return [
+    table.organization_city,
+    table.season,
+    table.gender,
+  ].filter(Boolean).join(' · ')
+}
+
+function PodiumRow({ row, index }) {
+  const pos = row.position ?? index + 1
+  const posStyle = pos === 1
+    ? 'bg-amber-400 text-amber-950'
+    : pos === 2
+      ? 'bg-zinc-300 text-zinc-950'
+      : 'bg-orange-700 text-white'
+
+  return (
+    <div className="flex items-center gap-3 rounded-xl bg-surface-950/70 px-3 py-2">
+      <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-black ${posStyle}`}>
+        {pos}
+      </span>
+      <TeamLogo logoUrl={row.team_logo_url} name={row.team_name} color={row.primary_color} />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-black text-zinc-100">{row.team_short_name ?? row.team_name}</p>
+        <p className="text-[11px] font-semibold text-zinc-500">{row.played ?? 0} PJ · {row.goal_diff > 0 ? '+' : ''}{row.goal_diff ?? 0} DIF</p>
+      </div>
+      <div className="text-right">
+        <p className="text-lg font-black tabular-nums text-zinc-50">{row.points ?? 0}</p>
+        <p className="text-[10px] font-bold uppercase text-zinc-500">PTS</p>
+      </div>
+    </div>
+  )
+}
+
+function StandingsSummaryCard({ table, scorers, onOpen }) {
+  const compInfo = COMP_LABELS[table.competition_type]
+  const topRows = table.rows.slice(0, 3)
+  const topScorer = scorers[0]
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="group w-full overflow-hidden rounded-2xl border border-surface-800 bg-surface-900 text-left shadow-sm transition-colors hover:border-primary/50"
+    >
+      <div className="grid gap-0 sm:grid-cols-[1fr_auto]">
+        <div className="min-w-0 p-4">
+          <div className="flex items-start gap-3">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-primary/20 bg-primary/10 text-lg">
+              {table.sport_icon}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-base font-black text-zinc-50">{tableTitle(table)}</p>
+              <p className="mt-0.5 truncate text-xs font-semibold text-zinc-500">{tableSubtitle(table)}</p>
+            </div>
+            {compInfo && (
+              <Badge variant="primary">
+                {compInfo.icon} {compInfo.label}
+              </Badge>
+            )}
+          </div>
+
+          <div className="mt-4 space-y-2">
+            {topRows.map((row, index) => (
+              <PodiumRow key={row.team_id ?? index} row={row} index={index} />
+            ))}
+          </div>
+
+          {topScorer && (
+            <div className="mt-3 flex items-center justify-between rounded-xl border border-surface-800 bg-surface-950/50 px-3 py-2">
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-wide text-zinc-500">Goleador</p>
+                <p className="truncate text-xs font-bold text-zinc-100">{topScorer.player_name}</p>
+              </div>
+              <span className="rounded-full bg-primary/15 px-2 py-1 text-xs font-black text-primary">
+                {topScorer.goals} gol{topScorer.goals === 1 ? '' : 'es'}
+              </span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between gap-3 border-t border-surface-800 bg-surface-950/50 px-4 py-3 sm:w-24 sm:flex-col sm:justify-center sm:border-l sm:border-t-0">
+          <span className="text-xs font-black uppercase tracking-wide text-zinc-500 sm:[writing-mode:vertical-rl] sm:rotate-180">
+            Ver torneo
+          </span>
+          <span className="grid h-10 w-10 place-items-center rounded-full bg-primary text-white shadow-[0_0_28px_rgba(232,78,27,0.22)] transition-transform group-hover:translate-x-1 sm:group-hover:translate-x-0 sm:group-hover:translate-y-1">
+            <ChevronRight className="h-5 w-5" />
+          </span>
+        </div>
+      </div>
+    </button>
+  )
+}
+
 export default function Standings() {
   const navigate = useNavigate()
   const { data: ligas = [] }     = useLeagues()
@@ -142,6 +246,7 @@ export default function Standings() {
   const { data: events = [],    isLoading: scLoading } = useAllScorers()
 
   const [organizationSel, setOrganizationSel] = useState('')
+  const [selectedTable, setSelectedTable] = useState(null)
 
   // Mapa league_id → liga (con competition_type, sport, etc.)
   const ligaById = useMemo(() => {
@@ -308,7 +413,46 @@ export default function Standings() {
         </p>
       )}
 
-      {/* Renderizar cada tabla con sus goleadores */}
+      {tablas.map((t) => (
+        <StandingsSummaryCard
+          key={t.phase_id}
+          table={t}
+          scorers={scorersByPhase[t.phase_id] ?? []}
+          onOpen={() => setSelectedTable(t)}
+        />
+      ))}
+
+      <Modal
+        open={!!selectedTable}
+        onClose={() => setSelectedTable(null)}
+        title={selectedTable ? tableTitle(selectedTable) : ''}
+        description={selectedTable ? tableSubtitle(selectedTable) : ''}
+        eyebrow="Posiciones"
+        icon={<Table2 className="h-5 w-5" />}
+        size="xl"
+      >
+        {selectedTable && (
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-3">
+              {selectedTable.rows.slice(0, 3).map((row, index) => (
+                <PodiumRow key={row.team_id ?? index} row={row} index={index} />
+              ))}
+            </div>
+
+            <div>
+              <div className="mb-2 flex items-center justify-between px-1">
+                <p className="text-xs font-black uppercase tracking-wide text-zinc-500">Tabla completa</p>
+                <p className="text-xs font-semibold text-zinc-500">{selectedTable.rows.length} equipos</p>
+              </div>
+              <StandingsTable rows={selectedTable.rows} onTeamClick={(teamId) => navigate(`/equipo/${teamId}`)} />
+            </div>
+
+            <ScorersList scorers={scorersByPhase[selectedTable.phase_id] ?? []} />
+          </div>
+        )}
+      </Modal>
+
+      {/*
       {tablas.map((t) => {
         const compInfo = COMP_LABELS[t.competition_type]
         const scorers  = scorersByPhase[t.phase_id] ?? []
@@ -343,6 +487,7 @@ export default function Standings() {
           </section>
         )
       })}
+      */}
     </div>
   )
 }
