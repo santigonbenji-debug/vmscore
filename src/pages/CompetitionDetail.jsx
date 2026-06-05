@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { CalendarDays, ChevronLeft, ChevronRight, GitBranch, Table2, Trophy } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -13,6 +14,7 @@ import Badge from '../components/ui/Badge'
 import Modal from '../components/ui/Modal'
 import Spinner from '../components/ui/Spinner'
 import { matchStatusDetail } from '../lib/helpers'
+import { supabase } from '../lib/supabase'
 
 const TZ = 'America/Argentina/San_Luis'
 const BRACKET_CARD_WIDTH = 236
@@ -41,6 +43,39 @@ const LEG_FILTERS = [
   { value: '2', label: 'Vuelta' },
 ]
 
+function useCompetitionStandings(leagueId) {
+  return useQuery({
+    queryKey: ['competition-standings', leagueId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('v_standings')
+        .select('*')
+        .eq('league_id', leagueId)
+        .order('position', { ascending: true })
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!leagueId,
+  })
+}
+
+function useCompetitionScorers(leagueId) {
+  return useQuery({
+    queryKey: ['competition-scorers', leagueId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('v_top_scorers')
+        .select('*')
+        .eq('league_id', leagueId)
+        .order('goals', { ascending: false })
+        .limit(12)
+      if (error) throw error
+      return (data ?? []).filter((scorer) => Number(scorer.goals) > 0)
+    },
+    enabled: !!leagueId,
+  })
+}
+
 function teamDisplayName(shortName, name) {
   return shortName?.trim() || name?.trim() || 'Equipo'
 }
@@ -61,6 +96,82 @@ function seriesDateLabel(match) {
     day: format(date, 'd MMM', { locale: es }),
     time: format(date, 'HH:mm', { locale: es }),
   }
+}
+
+function CompetitionStandingsTable({ title, rows, onTeamClick }) {
+  return (
+    <section className="overflow-hidden rounded-xl border border-surface-800 bg-surface-900">
+      <div className="flex items-center justify-between border-b border-surface-800 px-3 py-3">
+        <div className="min-w-0">
+          <h2 className="truncate text-sm font-black text-zinc-100">{title}</h2>
+          <p className="text-[10px] font-bold uppercase text-zinc-600">{rows.length} equipos</p>
+        </div>
+        <Table2 className="h-4 w-4 text-primary" />
+      </div>
+      <div className="overflow-x-auto" dir="ltr">
+        <table className="w-full min-w-[25rem] text-sm">
+          <thead className="text-[10px] uppercase tracking-wide text-zinc-500">
+            <tr>
+              <th className="px-3 py-2 text-left">#</th>
+              <th className="px-2 py-2 text-left">Equipo</th>
+              <th className="px-2 py-2 text-center text-zinc-300">PTS</th>
+              <th className="px-2 py-2 text-center">PJ</th>
+              <th className="px-2 py-2 text-center">DG</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => {
+              const position = row.position ?? index + 1
+              return (
+                <tr
+                  key={row.team_id ?? index}
+                  onClick={() => row.team_id && onTeamClick(row.team_id)}
+                  className="cursor-pointer border-t border-surface-800 hover:bg-surface-800/50"
+                >
+                  <td className="px-3 py-2 text-xs font-black tabular-nums text-zinc-500">
+                    {position}
+                  </td>
+                  <td className="px-2 py-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <TeamLogo logoUrl={row.team_logo_url} name={row.team_name} color={row.primary_color} size="sm" />
+                      <span className="truncate text-xs font-bold text-zinc-100">{row.team_short_name ?? row.team_name}</span>
+                    </div>
+                  </td>
+                  <td className="px-2 py-2 text-center font-black tabular-nums text-zinc-100">{row.points ?? 0}</td>
+                  <td className="px-2 py-2 text-center text-zinc-500">{row.played ?? 0}</td>
+                  <td className="px-2 py-2 text-center text-zinc-500">{row.goal_diff > 0 ? '+' : ''}{row.goal_diff ?? 0}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
+function CompetitionScorers({ scorers }) {
+  if (scorers.length === 0) return null
+  return (
+    <section className="overflow-hidden rounded-xl border border-surface-800 bg-surface-900">
+      <div className="border-b border-surface-800 px-3 py-3">
+        <h2 className="text-sm font-black text-zinc-100">Goleadores</h2>
+      </div>
+      <div className="divide-y divide-surface-800">
+        {scorers.map((scorer, index) => (
+          <div key={`${scorer.player_name}-${scorer.team_id}-${index}`} className="flex items-center gap-2.5 px-3 py-2.5">
+            <span className="w-5 text-center text-xs font-black text-zinc-500">{index + 1}</span>
+            <TeamLogo logoUrl={scorer.team_logo} name={scorer.team_name} color={scorer.team_color} size="sm" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-bold text-zinc-100">{scorer.player_name}</p>
+              <p className="truncate text-[11px] text-zinc-500">{scorer.team_short_name ?? scorer.team_name}</p>
+            </div>
+            <span className="text-sm font-black tabular-nums text-primary">{scorer.goals}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
 }
 
 function MatchCard({ match, onOpen }) {
@@ -473,13 +584,42 @@ export default function CompetitionDetail() {
   const { data: league, isLoading: loadingLeague } = useLeague(leagueId)
   const { data: phases = [], isLoading: loadingPhases } = usePhases(leagueId)
   const { data: matches = [], isLoading: loadingMatches } = useLeagueMatches(leagueId)
+  const { data: standings = [], isLoading: loadingStandings } = useCompetitionStandings(leagueId)
+  const { data: scorers = [], isLoading: loadingScorers } = useCompetitionScorers(leagueId)
 
   const groupedMatches = useMemo(() => phases.map((phase) => ({
     phase,
     matches: matches.filter((match) => match.phase_id === phase.id),
   })), [matches, phases])
 
-  if (loadingLeague || loadingPhases || loadingMatches) return <Spinner className="py-16" />
+  const standingsTables = useMemo(() => {
+    const tables = {}
+    standings.forEach((row) => {
+      const key = `${row.phase_id}-${row.group_id ?? 'general'}`
+      if (!tables[key]) {
+        tables[key] = {
+          key,
+          phase_id: row.phase_id,
+          phase_name: row.phase_name,
+          group_name: row.group_name,
+          rows: [],
+        }
+      }
+      tables[key].rows.push(row)
+    })
+
+    return Object.values(tables)
+      .map((table) => ({
+        ...table,
+        rows: [...table.rows].sort((a, b) => (a.position ?? 99) - (b.position ?? 99)),
+      }))
+      .sort((a, b) => (
+        (a.phase_name ?? '').localeCompare(b.phase_name ?? '') ||
+        (a.group_name ?? '').localeCompare(b.group_name ?? '')
+      ))
+  }, [standings])
+
+  if (loadingLeague || loadingPhases || loadingMatches || loadingStandings || loadingScorers) return <Spinner className="py-16" />
   if (!league) return <p className="px-4 py-12 text-center text-sm text-zinc-500">Competencia no encontrada.</p>
 
   const knockout = league.format === 'playoffs'
@@ -571,10 +711,27 @@ export default function CompetitionDetail() {
           )}
         </section>
       ) : (
-        <Link to="/posiciones" className="flex items-center justify-between rounded-xl border border-surface-800 bg-surface-900 p-4">
-          <span className="flex items-center gap-2 text-sm font-bold text-zinc-100"><Table2 className="h-5 w-5 text-primary" /> Ver tabla de posiciones</span>
-          <ChevronLeft className="h-4 w-4 rotate-180 text-zinc-500" />
-        </Link>
+        <section className="space-y-3">
+          <div className="flex items-center gap-2 px-1">
+            <Table2 className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-black text-zinc-100">Tabla</h2>
+          </div>
+          {standingsTables.length === 0 ? (
+            <p className="rounded-xl border border-surface-800 bg-surface-900 px-4 py-5 text-center text-xs text-zinc-500">
+              Todavia no hay tabla para esta competencia.
+            </p>
+          ) : (
+            standingsTables.map((table) => (
+              <CompetitionStandingsTable
+                key={table.key}
+                title={[table.phase_name, table.group_name].filter(Boolean).join(' - ') || 'Tabla'}
+                rows={table.rows}
+                onTeamClick={(teamId) => navigate(`/equipo/${teamId}`)}
+              />
+            ))
+          )}
+          <CompetitionScorers scorers={scorers} />
+        </section>
       )}
 
       {!knockout && groupedMatches.map(({ phase, matches: phaseMatches }) => (
