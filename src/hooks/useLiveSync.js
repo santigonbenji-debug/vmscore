@@ -51,11 +51,103 @@ export function useMatchLiveLink(matchId, provider = 'locos_vm') {
       const { data, error } = await query
       if (error) throw error
       if (provider === 'any') {
-        return data?.find((link) => link.provider === 'copafacil') ?? data?.[0] ?? null
+        const statusPriority = {
+          in_progress: 0,
+          paused: 0,
+          finished: 1,
+          scheduled: 2,
+        }
+        return [...(data ?? [])].sort((a, b) => {
+          const statusDiff = (statusPriority[a.last_status] ?? 3) - (statusPriority[b.last_status] ?? 3)
+          if (statusDiff !== 0) return statusDiff
+          const aTime = new Date(a.last_synced_at ?? a.updated_at ?? 0).getTime()
+          const bTime = new Date(b.last_synced_at ?? b.updated_at ?? 0).getTime()
+          if (aTime !== bTime) return bTime - aTime
+          if (a.provider === 'copafacil' && b.provider !== 'copafacil') return -1
+          if (b.provider === 'copafacil' && a.provider !== 'copafacil') return 1
+          return 0
+        })[0] ?? null
       }
       return data?.[0] ?? null
     },
     enabled: !!matchId,
+  })
+}
+
+export function useUpdateLocosClock() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ match, link, action, minute }) => {
+      if (!match || !link) throw new Error('Falta vincular el partido con Locos VM.')
+      const now = new Date().toISOString()
+      const parsedMinute = minute === '' || minute === null || minute === undefined
+        ? null
+        : Number(minute)
+
+      const patch = {
+        enabled: true,
+        last_synced_at: now,
+        updated_at: now,
+      }
+
+      if (action === 'start') {
+        patch.last_status = 'in_progress'
+        patch.last_minute = parsedMinute ?? 0
+        patch.last_second = 0
+        patch.live_started_at = now
+        patch.halftime_at = null
+        patch.second_half_started_at = null
+      }
+
+      if (action === 'halftime') {
+        patch.last_status = 'paused'
+        patch.last_minute = parsedMinute ?? 45
+        patch.last_second = 0
+        patch.halftime_at = now
+      }
+
+      if (action === 'second_half') {
+        patch.last_status = 'in_progress'
+        patch.last_minute = parsedMinute ?? 45
+        patch.last_second = 0
+        patch.second_half_started_at = now
+      }
+
+      if (action === 'stop') {
+        patch.last_status = 'in_progress'
+        patch.last_minute = parsedMinute ?? link.last_minute ?? null
+        patch.last_second = 0
+        patch.live_started_at = null
+        patch.second_half_started_at = null
+      }
+
+      if (action === 'set_minute') {
+        patch.last_status = link.last_status ?? 'in_progress'
+        patch.last_minute = parsedMinute
+        patch.last_second = 0
+        patch.live_started_at = null
+        patch.second_half_started_at = null
+      }
+
+      const { data, error } = await supabase
+        .from('match_live_links')
+        .update(patch)
+        .eq('id', link.id)
+        .eq('provider', 'locos_vm')
+        .select()
+        .single()
+      if (error) throw error
+      return { link: data, matchId: match.id }
+    },
+    onSuccess: ({ matchId }) => {
+      qc.invalidateQueries({ queryKey: ['match-live-link', matchId] })
+      qc.invalidateQueries({ queryKey: ['match-live-link', matchId, 'locos_vm'] })
+      qc.invalidateQueries({ queryKey: ['match-live-link', matchId, 'any'] })
+      qc.invalidateQueries({ queryKey: ['match', matchId] })
+      qc.invalidateQueries({ queryKey: ['matches'] })
+      qc.invalidateQueries({ queryKey: ['matches-home'] })
+      qc.invalidateQueries({ queryKey: ['home-matches'] })
+    },
   })
 }
 

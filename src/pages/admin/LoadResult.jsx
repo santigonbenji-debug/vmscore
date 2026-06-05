@@ -14,6 +14,7 @@ import {
   useSearchCopaFacilMatches,
   useSearchLocosVmMatches,
   useSyncLocosVmLive,
+  useUpdateLocosClock,
 } from '../../hooks/useLiveSync'
 import Button from '../../components/ui/Button'
 import Spinner from '../../components/ui/Spinner'
@@ -97,6 +98,8 @@ export default function LoadResult() {
   const [copaFacilMessage, setCopaFacilMessage] = useState('')
   const [manualLiveEvent, setManualLiveEvent] = useState({ teamId: '', minute: '' })
   const [manualLiveMessage, setManualLiveMessage] = useState('')
+  const [manualClockMinute, setManualClockMinute] = useState('')
+  const [manualClockMessage, setManualClockMessage] = useState('')
   const [lineupMessage, setLineupMessage] = useState('')
 
   const puedeSincronizar = isSuperAdmin
@@ -116,6 +119,7 @@ export default function LoadResult() {
   const searchCopaFacil = useSearchCopaFacilMatches()
   const saveCopaFacilLink = useSaveCopaFacilMatchLink()
   const syncLocosVm = useSyncLocosVmLive()
+  const updateLocosClock = useUpdateLocosClock()
   const createManualLiveEvent = useCreateManualLiveEvent()
   const syncCopaFacilLive = useSyncCopaFacilLive()
 
@@ -271,6 +275,18 @@ export default function LoadResult() {
     if (!match || !liveLink) return
     await syncLocosVm.mutateAsync({ match, link: liveLink })
     setLocosMessage('Datos recibidos de Locos VM aplicados al partido.')
+  }
+
+  async function actualizarRelojLocos(action, label) {
+    if (!match || !liveLink) return
+    await updateLocosClock.mutateAsync({
+      match,
+      link: liveLink,
+      action,
+      minute: manualClockMinute,
+    })
+    setManualClockMessage(label)
+    if (action !== 'set_minute') setManualClockMinute('')
   }
 
   async function buscarPartidosLocosVm() {
@@ -512,6 +528,74 @@ export default function LoadResult() {
                 <span className="rounded-lg border border-emerald-500/30 px-3 py-2 text-xs font-bold text-emerald-300">
                   Automatico
                 </span>
+              </div>
+
+              <div className="mt-4 rounded-xl border border-surface-700/70 bg-surface-950/60 p-3 space-y-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-wide text-zinc-300">Reloj manual</p>
+                  <p className="mt-1 text-[11px] text-zinc-500">
+                    Corrige solo el minuto visible cuando el vivo no coincide. No toca goles ni tabla.
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-[7rem_repeat(5,1fr)]">
+                  <input
+                    type="number"
+                    min="0"
+                    max="150"
+                    value={manualClockMinute}
+                    onChange={(event) => setManualClockMinute(event.target.value)}
+                    placeholder="Min."
+                    inputMode="numeric"
+                    className="min-h-11 rounded-lg border border-surface-700 bg-surface-900 px-3 text-sm font-bold text-zinc-100 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => actualizarRelojLocos('start', 'Reloj iniciado.')}
+                    disabled={updateLocosClock.isPending}
+                    className="min-h-11 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-2 text-xs font-black text-emerald-200 disabled:opacity-50"
+                  >
+                    Inicio
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => actualizarRelojLocos('halftime', 'Marcado final del primer tiempo.')}
+                    disabled={updateLocosClock.isPending}
+                    className="min-h-11 rounded-lg border border-amber-500/25 bg-amber-500/10 px-2 text-xs font-black text-amber-200 disabled:opacity-50"
+                  >
+                    Final 1T
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => actualizarRelojLocos('second_half', 'Segundo tiempo iniciado.')}
+                    disabled={updateLocosClock.isPending}
+                    className="min-h-11 rounded-lg border border-blue-500/25 bg-blue-500/10 px-2 text-xs font-black text-blue-200 disabled:opacity-50"
+                  >
+                    2T
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => actualizarRelojLocos('stop', 'Reloj pausado.')}
+                    disabled={updateLocosClock.isPending}
+                    className="min-h-11 rounded-lg border border-red-500/25 bg-red-500/10 px-2 text-xs font-black text-red-200 disabled:opacity-50"
+                  >
+                    Stop
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => actualizarRelojLocos('set_minute', 'Minuto ajustado.')}
+                    disabled={updateLocosClock.isPending || manualClockMinute === ''}
+                    className="min-h-11 rounded-lg border border-primary/30 bg-primary/10 px-2 text-xs font-black text-primary disabled:opacity-50"
+                  >
+                    Usar min.
+                  </button>
+                </div>
+                {(manualClockMessage || updateLocosClock.isError) && (
+                  <p className={`text-xs ${updateLocosClock.isError ? 'text-red-400' : 'text-emerald-200'}`}>
+                    {updateLocosClock.isError
+                      ? updateLocosClock.error?.message || 'No se pudo actualizar el reloj.'
+                      : manualClockMessage}
+                  </p>
+                )}
               </div>
             </div>
           )}

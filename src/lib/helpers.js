@@ -97,7 +97,10 @@ export function locosMinuteLabel(source, now = Date.now()) {
 
   const secondHalfStartedAt = source?.second_half_started_at ?? source?.live_second_half_started_at
   const activeStart = secondHalfStartedAt ?? source?.live_started_at
-  if (!activeStart) return null
+  if (!activeStart) {
+    const frozenMinute = source?.last_minute ?? source?.live_last_minute
+    return frozenMinute !== null && frozenMinute !== undefined ? `${frozenMinute}'` : null
+  }
 
   const base = secondHalfStartedAt ? 45 : 0
   const elapsed = Math.max(0, Math.floor((now - new Date(activeStart).getTime()) / 60000))
