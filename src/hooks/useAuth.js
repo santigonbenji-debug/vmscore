@@ -13,7 +13,7 @@ export function useAuth() {
   const fetchRole = useCallback(async (userId) => {
     const { data } = await supabase
       .from('admin_roles')
-      .select('role, league_id, team_id, organization_id, status, organizations(id, name, slug, city, province, status)')
+      .select('role, league_id, team_id, organization_id, status, organizations(id, name, slug, city, province, status, archive_reason)')
       .eq('user_id', userId)
       .eq('status', 'active')
       .limit(1)
