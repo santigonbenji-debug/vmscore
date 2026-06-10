@@ -35,8 +35,10 @@ import ModeratorMatches from './pages/admin/ModeratorMatches'
 function OrganizationAccessNotice() {
   const { organization, signOut } = useAuth()
   const isBlocked = organization?.status === 'blocked'
-  const title = isBlocked ? 'Tu organizacion fue bloqueada' : 'Tu organizacion fue archivada'
-  const reason = organization?.archive_reason?.trim() || 'Sin motivo especificado.'
+  const title = organization
+    ? (isBlocked ? 'Tu organizacion fue bloqueada' : 'Tu organizacion fue archivada')
+    : 'Tu organizacion no esta disponible'
+  const reason = organization?.archive_reason?.trim() || 'La organizacion no esta activa o no esta disponible para este usuario.'
 
   return (
     <div className="min-h-screen bg-black px-4 py-8 text-zinc-100">
@@ -77,10 +79,10 @@ function OrganizationAccessNotice() {
 }
 
 function ProtectedRoute({ children }) {
-  const { isAdmin, isSuperAdmin, loading, organization } = useAuth()
+  const { isAdmin, isSuperAdmin, loading, organization, organizationId } = useAuth()
   if (loading) return null
   if (!isAdmin) return <Navigate to="/admin/login" replace />
-  if (!isSuperAdmin && ['archived', 'blocked'].includes(organization?.status)) {
+  if (!isSuperAdmin && organizationId && (!organization || ['archived', 'blocked'].includes(organization.status))) {
     return <OrganizationAccessNotice />
   }
   return children
