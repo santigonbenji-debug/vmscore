@@ -106,6 +106,7 @@ export default function ManageMatches() {
   const [editForm, setEditForm] = useState(EDIT_FORM_VACIO)
   const [buscandoNovedades, setBuscandoNovedades] = useState(false)
   const [novedadesCopa, setNovedadesCopa] = useState([])
+  const [novedadesRound, setNovedadesRound] = useState('')
   const [novedadesRevisadasAt, setNovedadesRevisadasAt] = useState(null)
 
   const scopedOrgId = isSuperAdmin ? undefined : organizationId
@@ -154,8 +155,16 @@ export default function ManageMatches() {
     mappingsFuente.forEach((mapping) => {
       if (mapping.external_team_id && mapping.team_id) map[mapping.external_team_id] = mapping.team_id
     })
+    archivoExterno.forEach((partido) => {
+      if (partido.external_home_team_id && partido.mapped_home_team_id) {
+        map[partido.external_home_team_id] = partido.mapped_home_team_id
+      }
+      if (partido.external_away_team_id && partido.mapped_away_team_id) {
+        map[partido.external_away_team_id] = partido.mapped_away_team_id
+      }
+    })
     return map
-  }, [mappingsFuente])
+  }, [archivoExterno, mappingsFuente])
 
   const partidosOficialesKey = useMemo(() => {
     const keys = new Set()
@@ -269,6 +278,24 @@ export default function ManageMatches() {
       setFaseId(fases[0]?.id ?? '')
     }
   }, [faseid, fases])
+
+  useEffect(() => {
+    setNovedadesCopa([])
+    setNovedadesRevisadasAt(null)
+    setNovedadesRound('')
+  }, [faseid, ligaId])
+
+  useEffect(() => {
+    if (!faseid) return
+    const rounds = fechasDisponibles.map((round) => String(round))
+    if (fechaFiltro !== 'all' && fechaFiltro !== 'none') {
+      if (novedadesRound !== fechaFiltro) setNovedadesRound(fechaFiltro)
+      return
+    }
+    if (!novedadesRound || (rounds.length > 0 && !rounds.includes(novedadesRound))) {
+      setNovedadesRound(rounds[0] ?? '')
+    }
+  }, [faseid, fechaFiltro, fechasDisponibles, novedadesRound])
 
   function handleLigaChange(id) {
     setLigaId(id)
@@ -528,6 +555,11 @@ export default function ManageMatches() {
     }
   }
 
+  function nombreEquipoMapeado(teamId, externalName, externalId) {
+    const equipo = equiposPorId.get(teamId)
+    return equipo?.team_short_name ?? equipo?.team_name ?? externalName ?? externalId ?? 'Equipo'
+  }
+
   function buildCopaNovedades(freshMatches) {
     const officialByRoundAndPair = new Map()
     const officialByPair = new Map()
@@ -560,13 +592,15 @@ export default function ManageMatches() {
           )) ?? null
 
         if (!official) {
+          const homeName = nombreEquipoMapeado(match.mapped_home_team_id, match.external_home_team_name, match.external_home_team_id)
+          const awayName = nombreEquipoMapeado(match.mapped_away_team_id, match.external_away_team_name, match.external_away_team_id)
           return {
             id: `new-${match.external_match_id}`,
             type: 'new',
             match,
             official: null,
-            title: `${match.external_home_team_name ?? match.external_home_team_id} vs ${match.external_away_team_name ?? match.external_away_team_id}`,
-            details: ['Cruce nuevo detectado en Copa Facil.'],
+            title: `${homeName} vs ${awayName}`,
+            details: [`Fecha ${match.round ?? novedadesRound}: cruce nuevo detectado en Copa Facil.`],
           }
         }
 
@@ -615,6 +649,10 @@ export default function ManageMatches() {
 
   async function buscarNovedadesCopaFacil() {
     if (!fuenteSeleccionada || fuenteSeleccionada.provider !== 'copafacil') return
+    if (!novedadesRound) {
+      alert('Selecciona una fecha para buscar novedades.')
+      return
+    }
     setBuscandoNovedades(true)
     try {
       const freshMatches = await fetchCopaFacilMatches({
@@ -622,16 +660,17 @@ export default function ManageMatches() {
         divisionCode: fuenteSeleccionada.division_code,
         fresh: true,
       })
+      const freshMatchesFecha = freshMatches.filter((match) => String(match.round ?? '') === String(novedadesRound))
 
       if (Object.keys(mappingPorEquipoExterno).length > 0) {
         await importarCopaFacil.mutateAsync({
           source: fuenteSeleccionada,
-          matches: freshMatches,
+          matches: freshMatchesFecha,
           mappings: mappingPorEquipoExterno,
         })
       }
 
-      const novedades = buildCopaNovedades(freshMatches)
+      const novedades = buildCopaNovedades(freshMatchesFecha)
       setNovedadesCopa(novedades)
       setNovedadesRevisadasAt(new Date().toISOString())
       notificarNovedadesCopa(novedades)
@@ -764,15 +803,15 @@ export default function ManageMatches() {
 
       {faseid && fuenteSeleccionada?.provider === 'copafacil' && (
         <div className="mb-4 rounded-xl border border-surface-800 bg-surface-900 p-3">
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
-              <p className="text-sm font-black text-zinc-100">Novedades de Copa Facil</p>
+              <p className="text-sm font-black text-zinc-100">Novedades por fecha</p>
               <p className="mt-0.5 text-xs leading-relaxed text-zinc-500">
-                Compara la fuente contra estos partidos. Nada se aplica sin confirmacion.
+                Elegi una fecha y VMScore compara solo esos partidos contra la fuente ya mapeada.
               </p>
               {novedadesRevisadasAt && (
                 <p className="mt-1 text-[11px] text-zinc-600">
-                  Ultima revision: {formatFechaHora(novedadesRevisadasAt)}
+                  Ultima revision de Fecha {novedadesRound || '-'}: {formatFechaHora(novedadesRevisadasAt)}
                 </p>
               )}
             </div>
@@ -780,15 +819,48 @@ export default function ManageMatches() {
               size="sm"
               variant="secondary"
               onClick={buscarNovedadesCopaFacil}
-              disabled={buscandoNovedades || importarCopaFacil.isPending || Object.keys(mappingPorEquipoExterno).length === 0}
+              disabled={buscandoNovedades || importarCopaFacil.isPending || !novedadesRound || Object.keys(mappingPorEquipoExterno).length === 0}
             >
-              {buscandoNovedades || importarCopaFacil.isPending ? 'Buscando...' : 'Buscar novedades'}
+              {buscandoNovedades || importarCopaFacil.isPending ? 'Buscando...' : novedadesRound ? `Buscar novedades Fecha ${novedadesRound}` : 'Elegir fecha'}
             </Button>
+          </div>
+
+          <div className="mt-3">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-[11px] font-black uppercase tracking-wide text-zinc-500">Fecha a revisar</p>
+              {novedadesRound && (
+                <span className="rounded-full bg-primary/10 px-2 py-1 text-[11px] font-black text-primary">
+                  Fecha {novedadesRound}
+                </span>
+              )}
+            </div>
+            {fechasDisponibles.length > 0 ? (
+              <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 scrollbar-none">
+                {fechasDisponibles.map((round) => (
+                  <button
+                    key={round}
+                    type="button"
+                    onClick={() => {
+                      setNovedadesRound(String(round))
+                      setNovedadesCopa([])
+                      setNovedadesRevisadasAt(null)
+                    }}
+                    className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-black transition ${novedadesRound === String(round) ? 'bg-primary text-white' : 'bg-surface-800 text-zinc-300 hover:bg-surface-700'}`}
+                  >
+                    Fecha {round}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-lg border border-surface-800 bg-surface-950 px-3 py-2 text-xs text-zinc-500">
+                Todavia no hay fechas publicadas o importadas para comparar.
+              </p>
+            )}
           </div>
 
           {Object.keys(mappingPorEquipoExterno).length === 0 && (
             <p className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-              Primero mapea los equipos de esta fuente para comparar partidos.
+              No hay mapeos guardados para esta fuente. Volve a Importar, vincula los equipos y guarda el mapeo.
             </p>
           )}
 
@@ -824,7 +896,7 @@ export default function ManageMatches() {
 
           {novedadesRevisadasAt && novedadesCopa.length === 0 && (
             <p className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
-              No hay novedades pendientes para estos partidos.
+              No hay novedades pendientes en la Fecha {novedadesRound || '-'}.
             </p>
           )}
         </div>
