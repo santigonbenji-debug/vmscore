@@ -52,12 +52,6 @@ export default function Layout() {
 
       {!isAdmin && (
         <>
-          <div className="max-w-lg mx-auto w-full px-4 pb-24 pt-2">
-            <a href="https://cafecito.app" target="_blank" rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 text-xs text-zinc-500 hover:text-primary transition-colors">
-              Invitanos un cafecito para mantener VMScore
-            </a>
-          </div>
           <PushNotificationsButton />
           <PwaInstallButton />
           <BottomNav />
