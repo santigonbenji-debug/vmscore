@@ -14,6 +14,8 @@ import {
 import {
   useExternalMatchArchive,
   useExternalSources,
+  useExternalTeamMappings,
+  useImportCopaFacilMatches,
   usePublishExternalArchiveMatch,
 } from '../../hooks/useExternalSources'
 import { useCreateVenue, useVenues } from '../../hooks/useVenues'
@@ -26,6 +28,7 @@ import Spinner from '../../components/ui/Spinner'
 import TeamLogo from '../../components/teams/TeamLogo'
 import { formatFechaHora, matchStatusDetail, utcToInputLocal } from '../../lib/helpers'
 import { LEG_LABELS } from '../../lib/competitionFormats'
+import { fetchCopaFacilMatches } from '../../lib/copaFacil'
 
 const INPUT = 'w-full rounded-lg border border-surface-700 bg-surface-800 px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-primary/30'
 
@@ -72,6 +75,20 @@ const STATUS_VARIANT = {
   cancelled: 'danger',
 }
 
+function pairKeyFromIds(firstId, secondId) {
+  return [firstId, secondId].filter(Boolean).sort().join('|')
+}
+
+function sameInstant(left, right) {
+  if (!left && !right) return true
+  if (!left || !right) return false
+  return new Date(left).getTime() === new Date(right).getTime()
+}
+
+function displayDateValue(value) {
+  return value ? formatFechaHora(value) : 'A definir'
+}
+
 export default function ManageMatches() {
   const { isSuperAdmin, organizationId, organization } = useAuth()
   const [params, setParams] = useSearchParams()
@@ -87,6 +104,9 @@ export default function ManageMatches() {
   const [editVenueForm, setEditVenueForm] = useState(VENUE_FORM_VACIO)
   const [editando, setEditando] = useState(null)
   const [editForm, setEditForm] = useState(EDIT_FORM_VACIO)
+  const [buscandoNovedades, setBuscandoNovedades] = useState(false)
+  const [novedadesCopa, setNovedadesCopa] = useState([])
+  const [novedadesRevisadasAt, setNovedadesRevisadasAt] = useState(null)
 
   const scopedOrgId = isSuperAdmin ? undefined : organizationId
   const { data: ligas = [] } = useLeagues({ organizationId: scopedOrgId, approvalStatus: 'approved' })
@@ -103,6 +123,7 @@ export default function ManageMatches() {
       fuente.provider === 'copafacil'
     )) ?? fuentesExternas.find((fuente) => fuente.league_id === ligaId && fuente.phase_id === faseid) ?? null
   }, [faseid, fuentesExternas, ligaId])
+  const { data: mappingsFuente = [] } = useExternalTeamMappings(fuenteSeleccionada?.id)
   const { data: archivoExterno = [] } = useExternalMatchArchive(fuenteSeleccionada?.id)
   const isKnockout = faseSeleccionada?.type === 'knockout' || ligaSeleccionada?.format === 'playoffs'
   const isTwoLegged = ligaSeleccionada?.leg_mode === 'two_legged'
@@ -118,6 +139,7 @@ export default function ManageMatches() {
   const guardarMarcador = useSaveMatchScore()
   const publicarImportado = usePublishExternalArchiveMatch()
   const crearCancha = useCreateVenue()
+  const importarCopaFacil = useImportCopaFacilMatches()
 
   const equiposPorId = useMemo(() => {
     const map = new Map()
@@ -126,6 +148,14 @@ export default function ManageMatches() {
     })
     return map
   }, [equiposInscritos])
+
+  const mappingPorEquipoExterno = useMemo(() => {
+    const map = {}
+    mappingsFuente.forEach((mapping) => {
+      if (mapping.external_team_id && mapping.team_id) map[mapping.external_team_id] = mapping.team_id
+    })
+    return map
+  }, [mappingsFuente])
 
   const partidosOficialesKey = useMemo(() => {
     const keys = new Set()
@@ -480,6 +510,177 @@ export default function ManageMatches() {
     }
   }
 
+  function notificarNovedadesCopa(novedades) {
+    if (!('Notification' in window) || novedades.length === 0) return
+    const body = novedades.length === 1
+      ? novedades[0].title
+      : `${novedades.length} partidos tienen cambios o cruces nuevos.`
+
+    if (Notification.permission === 'granted') {
+      new Notification('Novedades de Copa Facil', { body })
+      return
+    }
+
+    if (Notification.permission !== 'denied') {
+      Notification.requestPermission().then((permission) => {
+        if (permission === 'granted') new Notification('Novedades de Copa Facil', { body })
+      })
+    }
+  }
+
+  function buildCopaNovedades(freshMatches) {
+    const officialByRoundAndPair = new Map()
+    const officialByPair = new Map()
+
+    partidos.forEach((partido) => {
+      const pair = pairKeyFromIds(partido.home_team_id, partido.away_team_id)
+      if (!pair) return
+      if (!officialByPair.has(pair)) officialByPair.set(pair, [])
+      officialByPair.get(pair).push(partido)
+      if (partido.round !== null && partido.round !== undefined) {
+        officialByRoundAndPair.set(`${pair}|round:${partido.round}`, partido)
+      }
+    })
+
+    return freshMatches
+      .map((match) => ({
+        ...match,
+        mapped_home_team_id: mappingPorEquipoExterno[match.external_home_team_id],
+        mapped_away_team_id: mappingPorEquipoExterno[match.external_away_team_id],
+      }))
+      .filter((match) => match.mapped_home_team_id && match.mapped_away_team_id)
+      .map((match) => {
+        const pair = pairKeyFromIds(match.mapped_home_team_id, match.mapped_away_team_id)
+        const official = (match.round !== null && match.round !== undefined
+          ? officialByRoundAndPair.get(`${pair}|round:${match.round}`)
+          : null) ?? (officialByPair.get(pair) ?? []).find((partido) => (
+            partido.status === 'postponed' ||
+            partido.status === 'cancelled' ||
+            partido.external_match_id === match.external_match_id
+          )) ?? null
+
+        if (!official) {
+          return {
+            id: `new-${match.external_match_id}`,
+            type: 'new',
+            match,
+            official: null,
+            title: `${match.external_home_team_name ?? match.external_home_team_id} vs ${match.external_away_team_name ?? match.external_away_team_id}`,
+            details: ['Cruce nuevo detectado en Copa Facil.'],
+          }
+        }
+
+        const direct = match.mapped_home_team_id === official.home_team_id
+        const candidateHomeScore = direct ? match.home_score : match.away_score
+        const candidateAwayScore = direct ? match.away_score : match.home_score
+        const details = []
+
+        if (official.status === 'postponed' || official.status === 'cancelled') {
+          details.push('Copa Facil volvio a listar este partido.')
+        }
+        if (!sameInstant(match.scheduled_at, official.scheduled_at)) {
+          details.push(`Horario: VMScore ${displayDateValue(official.scheduled_at)} -> Copa Facil ${displayDateValue(match.scheduled_at)}`)
+        }
+        if (match.round !== null && match.round !== undefined && Number(match.round) !== Number(official.round ?? 0)) {
+          details.push(`Fecha: VMScore ${official.round ?? '-'} -> Copa Facil ${match.round}`)
+        }
+        if (match.status && match.status !== official.status) {
+          details.push(`Estado: VMScore ${matchStatusDetail(official)} -> Copa Facil ${matchStatusDetail(match)}`)
+        }
+        if (
+          match.home_score !== null &&
+          match.away_score !== null &&
+          (Number(candidateHomeScore) !== Number(official.home_score ?? 0) || Number(candidateAwayScore) !== Number(official.away_score ?? 0))
+        ) {
+          details.push(`Marcador: VMScore ${official.home_score ?? '-'}-${official.away_score ?? '-'} -> Copa Facil ${candidateHomeScore}-${candidateAwayScore}`)
+        }
+        if (!match.scheduled_at && match.home_score === null && match.away_score === null && details.length === 0) {
+          details.push('Copa Facil muestra el cruce, pero todavia sin horario ni resultado.')
+        }
+
+        if (details.length === 0) return null
+
+        return {
+          id: `update-${official.id}-${match.external_match_id}`,
+          type: 'update',
+          match,
+          official,
+          direct,
+          title: `${official.home_team_short_name ?? official.home_team_name} vs ${official.away_team_short_name ?? official.away_team_name}`,
+          details,
+        }
+      })
+      .filter(Boolean)
+  }
+
+  async function buscarNovedadesCopaFacil() {
+    if (!fuenteSeleccionada || fuenteSeleccionada.provider !== 'copafacil') return
+    setBuscandoNovedades(true)
+    try {
+      const freshMatches = await fetchCopaFacilMatches({
+        eventCode: fuenteSeleccionada.event_code,
+        divisionCode: fuenteSeleccionada.division_code,
+        fresh: true,
+      })
+
+      if (Object.keys(mappingPorEquipoExterno).length > 0) {
+        await importarCopaFacil.mutateAsync({
+          source: fuenteSeleccionada,
+          matches: freshMatches,
+          mappings: mappingPorEquipoExterno,
+        })
+      }
+
+      const novedades = buildCopaNovedades(freshMatches)
+      setNovedadesCopa(novedades)
+      setNovedadesRevisadasAt(new Date().toISOString())
+      notificarNovedadesCopa(novedades)
+    } catch (err) {
+      console.error(err)
+      alert('No se pudieron buscar novedades en Copa Facil.')
+    } finally {
+      setBuscandoNovedades(false)
+    }
+  }
+
+  async function aplicarNovedadCopa(novedad) {
+    if (novedad.type === 'new') {
+      alert('Este cruce quedo guardado como importado. Publicalo desde la lista de cruces importados cuando corresponda.')
+      return
+    }
+
+    const { official, match, direct } = novedad
+    const homeScore = direct ? match.home_score : match.away_score
+    const awayScore = direct ? match.away_score : match.home_score
+    const status = match.status || (match.scheduled_at ? 'scheduled' : official.status)
+
+    await actualizarDetalles.mutateAsync({
+      id: official.id,
+      scheduledAtLocal: match.scheduled_at ? utcToInputLocal(match.scheduled_at) : '',
+      round: match.round ?? official.round ?? null,
+      venue_id: official.venue_id || null,
+      referee_id: official.referee_id || null,
+      status,
+      leg: isTwoLegged ? official.leg ?? null : null,
+      notes: official.notes || null,
+      home_technical_director: official.home_technical_director || null,
+      away_technical_director: official.away_technical_director || null,
+      external_source_id: fuenteSeleccionada?.id ?? official.external_source_id ?? null,
+      external_match_id: match.external_match_id ?? official.external_match_id ?? null,
+    })
+
+    if (match.status === 'finished' && homeScore !== null && awayScore !== null) {
+      await guardarMarcador.mutateAsync({
+        id: official.id,
+        homeScore,
+        awayScore,
+        status: 'finished',
+      })
+    }
+
+    setNovedadesCopa((current) => current.filter((item) => item.id !== novedad.id))
+  }
+
   const guardando = crearPartido.isPending
   const externosFiltrados = partidosFiltrados.filter((partido) => partido.source_kind === 'external')
 
@@ -558,6 +759,74 @@ export default function ManageMatches() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {faseid && fuenteSeleccionada?.provider === 'copafacil' && (
+        <div className="mb-4 rounded-xl border border-surface-800 bg-surface-900 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-black text-zinc-100">Novedades de Copa Facil</p>
+              <p className="mt-0.5 text-xs leading-relaxed text-zinc-500">
+                Compara la fuente contra estos partidos. Nada se aplica sin confirmacion.
+              </p>
+              {novedadesRevisadasAt && (
+                <p className="mt-1 text-[11px] text-zinc-600">
+                  Ultima revision: {formatFechaHora(novedadesRevisadasAt)}
+                </p>
+              )}
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={buscarNovedadesCopaFacil}
+              disabled={buscandoNovedades || importarCopaFacil.isPending || Object.keys(mappingPorEquipoExterno).length === 0}
+            >
+              {buscandoNovedades || importarCopaFacil.isPending ? 'Buscando...' : 'Buscar novedades'}
+            </Button>
+          </div>
+
+          {Object.keys(mappingPorEquipoExterno).length === 0 && (
+            <p className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              Primero mapea los equipos de esta fuente para comparar partidos.
+            </p>
+          )}
+
+          {novedadesCopa.length > 0 && (
+            <div className="mt-3 space-y-2">
+              {novedadesCopa.map((novedad) => (
+                <article key={novedad.id} className="rounded-lg border border-surface-800 bg-surface-950 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-black text-zinc-100">{novedad.title}</p>
+                      <p className="mt-0.5 text-[11px] font-bold uppercase text-primary">
+                        {novedad.type === 'new' ? 'Cruce nuevo' : 'Cambio detectado'}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant={novedad.type === 'new' ? 'secondary' : 'primary'}
+                      onClick={() => aplicarNovedadCopa(novedad)}
+                      disabled={actualizarDetalles.isPending || guardarMarcador.isPending}
+                    >
+                      {novedad.type === 'new' ? 'Ver pendiente' : 'Aplicar'}
+                    </Button>
+                  </div>
+                  <ul className="mt-2 space-y-1">
+                    {novedad.details.map((detail) => (
+                      <li key={detail} className="text-xs leading-relaxed text-zinc-400">{detail}</li>
+                    ))}
+                  </ul>
+                </article>
+              ))}
+            </div>
+          )}
+
+          {novedadesRevisadasAt && novedadesCopa.length === 0 && (
+            <p className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+              No hay novedades pendientes para estos partidos.
+            </p>
+          )}
         </div>
       )}
 

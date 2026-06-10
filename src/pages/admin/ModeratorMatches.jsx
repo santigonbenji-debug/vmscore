@@ -4,7 +4,7 @@ import { CalendarClock, MapPin, SlidersHorizontal } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useLeague, usePhases } from '../../hooks/useLeagues'
 import { useLeagueMatches, usePostponeMatch, useSaveMatchScore, useUpdateMatchDetails } from '../../hooks/useMatches'
-import { useVenues } from '../../hooks/useVenues'
+import { useCreateVenue, useVenues } from '../../hooks/useVenues'
 import { useReferees } from '../../hooks/useReferees'
 import { formatFechaHora, labelStatus, utcToInputLocal } from '../../lib/helpers'
 import Badge from '../../components/ui/Badge'
@@ -36,11 +36,20 @@ const EMPTY_FORM = {
   away_score: '',
 }
 
+const EMPTY_VENUE_FORM = {
+  name: '',
+  address: '',
+  city: '',
+  capacity: '',
+}
+
 export default function ModeratorMatches() {
   const { leagueId } = useAuth()
   const [phaseFilter, setPhaseFilter] = useState('all')
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
+  const [creatingVenue, setCreatingVenue] = useState(false)
+  const [venueForm, setVenueForm] = useState(EMPTY_VENUE_FORM)
   const { data: league, isLoading: loadingLeague } = useLeague(leagueId)
   const { data: phases = [] } = usePhases(leagueId)
   const { data: matches = [], isLoading: loadingMatches } = useLeagueMatches(leagueId)
@@ -49,6 +58,7 @@ export default function ModeratorMatches() {
   const updateDetails = useUpdateMatchDetails()
   const saveScore = useSaveMatchScore()
   const postponeMatch = usePostponeMatch()
+  const createVenue = useCreateVenue()
 
   const visibleMatches = useMemo(() => (
     matches
@@ -74,6 +84,36 @@ export default function ModeratorMatches() {
       home_score: match.home_score ?? '',
       away_score: match.away_score ?? '',
     })
+    setVenueForm({
+      ...EMPTY_VENUE_FORM,
+      city: league?.organizations?.city ?? '',
+    })
+    setCreatingVenue(false)
+  }
+
+  async function createVenueFromEdit() {
+    const name = venueForm.name.trim()
+    if (!name) return alert('Escribe el nombre de la cancha.')
+    if (!league?.organization_id) return alert('Esta liga no tiene una organizacion asignada para guardar la cancha.')
+
+    try {
+      const venue = await createVenue.mutateAsync({
+        organization_id: league.organization_id,
+        name,
+        address: venueForm.address.trim() || null,
+        city: venueForm.city.trim() || league.organizations?.city || null,
+        capacity: venueForm.capacity ? parseInt(venueForm.capacity) : null,
+      })
+      setForm((current) => ({ ...current, venue_id: venue.id }))
+      setVenueForm({
+        ...EMPTY_VENUE_FORM,
+        city: league?.organizations?.city ?? '',
+      })
+      setCreatingVenue(false)
+    } catch (err) {
+      console.error(err)
+      alert('No se pudo crear la cancha. Revisa los datos e intenta de nuevo.')
+    }
   }
 
   async function save() {
@@ -214,7 +254,16 @@ export default function ModeratorMatches() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-xs font-semibold text-zinc-400">Cancha</label>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <label className="block text-xs font-semibold text-zinc-400">Cancha</label>
+                <button
+                  type="button"
+                  onClick={() => setCreatingVenue((value) => !value)}
+                  className="text-xs font-bold text-primary hover:text-orange-300"
+                >
+                  {creatingVenue ? 'Cancelar nueva' : '+ Crear cancha'}
+                </button>
+              </div>
               <select value={form.venue_id} onChange={(event) => setForm({ ...form, venue_id: event.target.value })} className={INPUT}>
                 <option value="">Sin asignar</option>
                 {venues.map((venue) => <option key={venue.id} value={venue.id}>{venue.name}</option>)}
@@ -228,6 +277,66 @@ export default function ModeratorMatches() {
               </select>
             </div>
           </div>
+          {creatingVenue && (
+            <div className="rounded-xl border border-primary/25 bg-primary/10 p-3">
+              <div className="mb-3">
+                <p className="text-sm font-black text-zinc-100">Nueva cancha</p>
+                <p className="mt-0.5 text-xs text-zinc-500">Se guarda en la organizacion de esta liga y queda seleccionada para el partido.</p>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-zinc-400">Nombre *</label>
+                  <input
+                    type="text"
+                    value={venueForm.name}
+                    placeholder="Polideportivo Municipal"
+                    onChange={(event) => setVenueForm({ ...venueForm, name: event.target.value })}
+                    className={INPUT}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-zinc-400">Direccion</label>
+                  <input
+                    type="text"
+                    value={venueForm.address}
+                    placeholder="Av. Principal 1200"
+                    onChange={(event) => setVenueForm({ ...venueForm, address: event.target.value })}
+                    className={INPUT}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-zinc-400">Ciudad</label>
+                    <input
+                      type="text"
+                      value={venueForm.city}
+                      onChange={(event) => setVenueForm({ ...venueForm, city: event.target.value })}
+                      className={INPUT}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-zinc-400">Capacidad</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={venueForm.capacity}
+                      onChange={(event) => setVenueForm({ ...venueForm, capacity: event.target.value })}
+                      className={INPUT}
+                    />
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={createVenueFromEdit}
+                  disabled={createVenue.isPending || !venueForm.name.trim()}
+                  className="w-full"
+                >
+                  {createVenue.isPending ? 'Creando cancha...' : 'Guardar cancha y usarla'}
+                </Button>
+              </div>
+            </div>
+          )}
           <div>
             <label className="mb-1 block text-xs font-semibold text-zinc-400">Estado</label>
             <select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })} className={INPUT}>
