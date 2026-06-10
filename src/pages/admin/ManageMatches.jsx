@@ -16,7 +16,7 @@ import {
   useExternalSources,
   usePublishExternalArchiveMatch,
 } from '../../hooks/useExternalSources'
-import { useVenues } from '../../hooks/useVenues'
+import { useCreateVenue, useVenues } from '../../hooks/useVenues'
 import { useReferees } from '../../hooks/useReferees'
 import { useAuth } from '../../hooks/useAuth'
 import Modal from '../../components/ui/Modal'
@@ -57,6 +57,13 @@ const EDIT_FORM_VACIO = {
   leg: '1',
 }
 
+const VENUE_FORM_VACIO = {
+  name: '',
+  address: '',
+  city: '',
+  capacity: '',
+}
+
 const STATUS_VARIANT = {
   scheduled: 'default',
   in_progress: 'live',
@@ -66,7 +73,7 @@ const STATUS_VARIANT = {
 }
 
 export default function ManageMatches() {
-  const { isSuperAdmin, organizationId } = useAuth()
+  const { isSuperAdmin, organizationId, organization } = useAuth()
   const [params, setParams] = useSearchParams()
   const [ligaId, setLigaId] = useState(() => params.get('liga') ?? '')
   const [faseid, setFaseId] = useState(() => params.get('fase') ?? '')
@@ -74,6 +81,8 @@ export default function ManageMatches() {
   const [modal, setModal] = useState(false)
   const [modalEditar, setModalEditar] = useState(false)
   const [form, setForm] = useState(FORM_VACIO)
+  const [crearCanchaInline, setCrearCanchaInline] = useState(false)
+  const [venueForm, setVenueForm] = useState(VENUE_FORM_VACIO)
   const [editando, setEditando] = useState(null)
   const [editForm, setEditForm] = useState(EDIT_FORM_VACIO)
 
@@ -106,6 +115,7 @@ export default function ManageMatches() {
   const actualizarDetalles = useUpdateMatchDetails()
   const guardarMarcador = useSaveMatchScore()
   const publicarImportado = usePublishExternalArchiveMatch()
+  const crearCancha = useCreateVenue()
 
   const equiposPorId = useMemo(() => {
     const map = new Map()
@@ -241,7 +251,39 @@ export default function ManageMatches() {
 
   function abrirCrear() {
     setForm({ ...FORM_VACIO, phase_id: faseid })
+    setVenueForm({
+      ...VENUE_FORM_VACIO,
+      city: ligaSeleccionada?.organizations?.city ?? organization?.city ?? '',
+    })
+    setCrearCanchaInline(false)
     setModal(true)
+  }
+
+  async function crearCanchaDesdeNuevoPartido() {
+    const nombre = venueForm.name.trim()
+    if (!nombre) return alert('Escribe el nombre de la cancha.')
+    if (!activeOrganizationId) {
+      return alert('Para crear una cancha desde el partido, primero selecciona una competencia con organizacion.')
+    }
+
+    try {
+      const nuevaCancha = await crearCancha.mutateAsync({
+        organization_id: activeOrganizationId,
+        name: nombre,
+        address: venueForm.address.trim() || null,
+        city: venueForm.city.trim() || ligaSeleccionada?.organizations?.city || organization?.city || null,
+        capacity: venueForm.capacity ? parseInt(venueForm.capacity) : null,
+      })
+      setForm((current) => ({ ...current, venue_id: nuevaCancha.id }))
+      setVenueForm({
+        ...VENUE_FORM_VACIO,
+        city: ligaSeleccionada?.organizations?.city ?? organization?.city ?? '',
+      })
+      setCrearCanchaInline(false)
+    } catch (err) {
+      console.error(err)
+      alert('No se pudo crear la cancha. Revisa los datos e intenta de nuevo.')
+    }
   }
 
   function abrirEditar(partido) {
@@ -762,12 +804,94 @@ export default function ManageMatches() {
           )}
 
           <div>
-            <label className="mb-1 block text-xs font-semibold text-zinc-400">Cancha</label>
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <label className="block text-xs font-semibold text-zinc-400">Cancha</label>
+              <button
+                type="button"
+                onClick={() => setCrearCanchaInline((value) => !value)}
+                className="text-xs font-bold text-primary hover:text-orange-300"
+              >
+                {crearCanchaInline ? 'Cancelar nueva' : '+ Crear cancha'}
+              </button>
+            </div>
             <select value={form.venue_id} onChange={(event) => setForm({ ...form, venue_id: event.target.value })} className={INPUT}>
               <option value="">Sin asignar</option>
               {canchas.map((cancha) => <option key={cancha.id} value={cancha.id}>{cancha.name}</option>)}
             </select>
           </div>
+
+          {crearCanchaInline && (
+            <div className="rounded-xl border border-primary/25 bg-primary/10 p-3">
+              <div className="mb-3">
+                <p className="text-sm font-black text-zinc-100">Nueva cancha</p>
+                <p className="mt-0.5 text-xs text-zinc-500">
+                  Se guarda en la organizacion de esta competencia y queda disponible para futuros partidos.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-zinc-400">Nombre *</label>
+                  <input
+                    type="text"
+                    value={venueForm.name}
+                    placeholder="Polideportivo Municipal"
+                    onChange={(event) => setVenueForm({ ...venueForm, name: event.target.value })}
+                    className={INPUT}
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-zinc-400">Direccion</label>
+                  <input
+                    type="text"
+                    value={venueForm.address}
+                    placeholder="Av. Principal 1200"
+                    onChange={(event) => setVenueForm({ ...venueForm, address: event.target.value })}
+                    className={INPUT}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-zinc-400">Ciudad</label>
+                    <input
+                      type="text"
+                      value={venueForm.city}
+                      onChange={(event) => setVenueForm({ ...venueForm, city: event.target.value })}
+                      className={INPUT}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-zinc-400">Capacidad</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={venueForm.capacity}
+                      onChange={(event) => setVenueForm({ ...venueForm, capacity: event.target.value })}
+                      className={INPUT}
+                    />
+                  </div>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={crearCanchaDesdeNuevoPartido}
+                  disabled={crearCancha.isPending || !venueForm.name.trim() || !activeOrganizationId}
+                  className="w-full"
+                >
+                  {crearCancha.isPending ? 'Creando cancha...' : 'Guardar cancha y usarla'}
+                </Button>
+
+                {!activeOrganizationId && (
+                  <p className="text-center text-xs text-amber-300">
+                    Selecciona una competencia con organizacion para poder guardar la cancha.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="mb-1 block text-xs font-semibold text-zinc-400">Arbitro</label>
