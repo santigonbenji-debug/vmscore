@@ -16,10 +16,17 @@ export function useCreateMatchModerator() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async ({ leagueIds, email, password, displayName }) => {
+      const normalizedLeagueIds = Array.isArray(leagueIds) ? leagueIds.filter(Boolean) : []
       const { data: sessionData } = await supabase.auth.getSession()
       const token = sessionData?.session?.access_token
       const { data, error } = await supabase.functions.invoke('create-match-moderator', {
-        body: { leagueIds, email, password, displayName },
+        body: {
+          leagueId: normalizedLeagueIds[0],
+          leagueIds: normalizedLeagueIds,
+          email,
+          password,
+          displayName,
+        },
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       })
       if (error) {
