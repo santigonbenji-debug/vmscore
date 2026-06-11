@@ -48,6 +48,7 @@ export default function ModeratorMatches() {
   const { leagueId, moderatorLeagueIds } = useAuth()
   const [selectedLeagueId, setSelectedLeagueId] = useState('')
   const [phaseFilter, setPhaseFilter] = useState('all')
+  const [roundFilter, setRoundFilter] = useState('all')
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
   const [creatingVenue, setCreatingVenue] = useState(false)
@@ -79,33 +80,55 @@ export default function ModeratorMatches() {
       })
   ), [matches, phaseFilter])
 
-  const matchesByDate = useMemo(() => {
+  const availableRounds = useMemo(() => {
+    const rounds = [...new Set(
+      visibleMatches
+        .map((match) => match.round)
+        .filter((round) => round !== null && round !== undefined && round !== ''),
+    )]
+    return rounds.sort((a, b) => Number(a) - Number(b))
+  }, [visibleMatches])
+
+  const hasUnassignedRound = useMemo(() => (
+    visibleMatches.some((match) => match.round === null || match.round === undefined || match.round === '')
+  ), [visibleMatches])
+
+  const filteredMatches = useMemo(() => {
+    if (roundFilter === 'all') return visibleMatches
+    if (roundFilter === 'none') {
+      return visibleMatches.filter((match) => match.round === null || match.round === undefined || match.round === '')
+    }
+    return visibleMatches.filter((match) => String(match.round) === String(roundFilter))
+  }, [roundFilter, visibleMatches])
+
+  useEffect(() => {
+    const roundValues = availableRounds.map((round) => String(round))
+    if (roundFilter === 'all') return
+    if (roundFilter === 'none' && hasUnassignedRound) return
+    if (roundValues.includes(String(roundFilter))) return
+    setRoundFilter(roundValues[0] ?? (hasUnassignedRound ? 'none' : 'all'))
+  }, [availableRounds, hasUnassignedRound, roundFilter])
+
+  const matchesByRound = useMemo(() => {
     const groups = new Map()
-    visibleMatches.forEach((match) => {
-      const dayKey = match.date_tbd || !match.scheduled_at
-        ? `round-${match.round ?? 'none'}`
-        : new Date(match.scheduled_at).toISOString().slice(0, 10)
-      const label = match.date_tbd || !match.scheduled_at
-        ? match.round ? `Fecha ${match.round} - a definir` : 'Fecha a definir'
-        : new Intl.DateTimeFormat('es-AR', {
-          weekday: 'short',
-          day: 'numeric',
-          month: 'short',
-        }).format(new Date(match.scheduled_at))
-      if (!groups.has(dayKey)) {
-        groups.set(dayKey, {
-          key: dayKey,
-          label,
-          round: match.round,
-          dateValue: match.scheduled_at ? new Date(match.scheduled_at).getTime() : Number.MAX_SAFE_INTEGER,
+    filteredMatches.forEach((match) => {
+      const key = match.round ?? 'none'
+      if (!groups.has(key)) {
+        groups.set(key, {
+          key,
+          label: match.round ? `Fecha ${match.round}` : 'Sin fecha asignada',
           matches: [],
         })
       }
-      groups.get(dayKey).matches.push(match)
+      groups.get(key).matches.push(match)
     })
 
     return [...groups.values()]
-      .sort((a, b) => a.dateValue - b.dateValue || Number(a.round ?? 999) - Number(b.round ?? 999))
+      .sort((a, b) => {
+        if (a.key === 'none') return 1
+        if (b.key === 'none') return -1
+        return Number(a.key) - Number(b.key)
+      })
       .map((group) => ({
         ...group,
         matches: group.matches.sort((a, b) => {
@@ -114,7 +137,7 @@ export default function ModeratorMatches() {
           return aTime - bTime
         }),
       }))
-  }, [visibleMatches])
+  }, [filteredMatches])
 
   function openEdit(match) {
     setEditing(match)
@@ -222,6 +245,7 @@ export default function ModeratorMatches() {
             onChange={(event) => {
               setSelectedLeagueId(event.target.value)
               setPhaseFilter('all')
+              setRoundFilter('all')
             }}
             className="w-full rounded-xl border border-surface-700 bg-surface-900 px-3 py-3 text-sm font-bold text-zinc-100 focus:outline-none focus:ring-2 focus:ring-primary/30"
           >
@@ -236,7 +260,10 @@ export default function ModeratorMatches() {
 
       <div className="-mx-4 mb-5 flex gap-2 overflow-x-auto px-4 pb-1 scrollbar-none">
         <button
-          onClick={() => setPhaseFilter('all')}
+          onClick={() => {
+            setPhaseFilter('all')
+            setRoundFilter('all')
+          }}
           className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${phaseFilter === 'all' ? 'bg-primary text-white' : 'bg-surface-800 text-zinc-300'}`}
         >
           Todas las fases
@@ -244,7 +271,10 @@ export default function ModeratorMatches() {
         {phases.map((phase) => (
           <button
             key={phase.id}
-            onClick={() => setPhaseFilter(phase.id)}
+            onClick={() => {
+              setPhaseFilter(phase.id)
+              setRoundFilter('all')
+            }}
             className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${phaseFilter === phase.id ? 'bg-primary text-white' : 'bg-surface-800 text-zinc-300'}`}
           >
             {phase.name}
@@ -252,11 +282,50 @@ export default function ModeratorMatches() {
         ))}
       </div>
 
+      {visibleMatches.length > 0 && (
+        <div className="mb-5 rounded-xl border border-surface-800 bg-surface-900 p-3">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-wide text-zinc-500">Fechas</p>
+              <p className="mt-0.5 text-xs text-zinc-400">Elegí una fecha para operar sus partidos.</p>
+            </div>
+            <span className="rounded-full bg-surface-800 px-2.5 py-1 text-[11px] font-black text-zinc-300">
+              {filteredMatches.length}
+            </span>
+          </div>
+          <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 scrollbar-none">
+            <button
+              onClick={() => setRoundFilter('all')}
+              className={`shrink-0 rounded-full px-3 py-2 text-xs font-black ${roundFilter === 'all' ? 'bg-primary text-white' : 'bg-surface-800 text-zinc-300'}`}
+            >
+              Todas
+            </button>
+            {availableRounds.map((round) => (
+              <button
+                key={round}
+                onClick={() => setRoundFilter(String(round))}
+                className={`shrink-0 rounded-full px-3 py-2 text-xs font-black ${String(roundFilter) === String(round) ? 'bg-primary text-white' : 'bg-surface-800 text-zinc-300'}`}
+              >
+                Fecha {round}
+              </button>
+            ))}
+            {hasUnassignedRound && (
+              <button
+                onClick={() => setRoundFilter('none')}
+                className={`shrink-0 rounded-full px-3 py-2 text-xs font-black ${roundFilter === 'none' ? 'bg-primary text-white' : 'bg-surface-800 text-zinc-300'}`}
+              >
+                Sin fecha
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {visibleMatches.length === 0 ? (
         <p className="py-16 text-center text-sm text-zinc-500">No hay partidos publicados en esta liga.</p>
       ) : (
         <div className="space-y-5">
-          {matchesByDate.map((group) => (
+          {matchesByRound.map((group) => (
             <section key={group.key} className="space-y-2">
               <div className="flex items-center justify-between px-1">
                 <h2 className="text-sm font-black text-zinc-100">{group.label}</h2>
