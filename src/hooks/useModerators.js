@@ -15,11 +15,11 @@ export function useMatchModerators() {
 export function useCreateMatchModerator() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({ leagueId, email, password, displayName }) => {
+    mutationFn: async ({ leagueIds, email, password, displayName }) => {
       const { data: sessionData } = await supabase.auth.getSession()
       const token = sessionData?.session?.access_token
       const { data, error } = await supabase.functions.invoke('create-match-moderator', {
-        body: { leagueId, email, password, displayName },
+        body: { leagueIds, email, password, displayName },
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       })
       if (error) {
@@ -36,6 +36,31 @@ export function useCreateMatchModerator() {
       return data
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['match-moderators'] }),
+  })
+}
+
+export function useSetMatchModeratorLeagues() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ userId, leagueIds }) => {
+      const { error } = await supabase.rpc('set_match_moderator_leagues', {
+        p_user_id: userId,
+        p_league_ids: leagueIds,
+      })
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['match-moderators'] }),
+  })
+}
+
+export function useMyModeratorLeagues() {
+  return useQuery({
+    queryKey: ['my-moderator-leagues'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('list_my_moderator_leagues')
+      if (error) throw error
+      return data ?? []
+    },
   })
 }
 

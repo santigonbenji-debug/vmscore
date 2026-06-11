@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CalendarClock, MapPin, SlidersHorizontal } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useLeague, usePhases } from '../../hooks/useLeagues'
 import { useLeagueMatches, usePostponeMatch, useSaveMatchScore, useUpdateMatchDetails } from '../../hooks/useMatches'
+import { useMyModeratorLeagues } from '../../hooks/useModerators'
 import { useCreateVenue, useVenues } from '../../hooks/useVenues'
 import { useReferees } from '../../hooks/useReferees'
 import { formatFechaHora, labelStatus, utcToInputLocal } from '../../lib/helpers'
@@ -44,21 +45,29 @@ const EMPTY_VENUE_FORM = {
 }
 
 export default function ModeratorMatches() {
-  const { leagueId } = useAuth()
+  const { leagueId, moderatorLeagueIds } = useAuth()
+  const [selectedLeagueId, setSelectedLeagueId] = useState('')
   const [phaseFilter, setPhaseFilter] = useState('all')
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
   const [creatingVenue, setCreatingVenue] = useState(false)
   const [venueForm, setVenueForm] = useState(EMPTY_VENUE_FORM)
-  const { data: league, isLoading: loadingLeague } = useLeague(leagueId)
-  const { data: phases = [] } = usePhases(leagueId)
-  const { data: matches = [], isLoading: loadingMatches } = useLeagueMatches(leagueId)
+  const { data: moderatorLeagues = [], isLoading: loadingModeratorLeagues } = useMyModeratorLeagues()
+  const activeLeagueId = selectedLeagueId || moderatorLeagues[0]?.id || leagueId || moderatorLeagueIds[0] || ''
+  const { data: league, isLoading: loadingLeague } = useLeague(activeLeagueId)
+  const { data: phases = [] } = usePhases(activeLeagueId)
+  const { data: matches = [], isLoading: loadingMatches } = useLeagueMatches(activeLeagueId)
   const { data: venues = [] } = useVenues({ organizationId: league?.organization_id })
   const { data: referees = [] } = useReferees({ organizationId: league?.organization_id })
   const updateDetails = useUpdateMatchDetails()
   const saveScore = useSaveMatchScore()
   const postponeMatch = usePostponeMatch()
   const createVenue = useCreateVenue()
+
+  useEffect(() => {
+    if (selectedLeagueId) return
+    if (moderatorLeagues[0]?.id) setSelectedLeagueId(moderatorLeagues[0].id)
+  }, [moderatorLeagues, selectedLeagueId])
 
   const visibleMatches = useMemo(() => (
     matches
@@ -69,6 +78,43 @@ export default function ModeratorMatches() {
         return aTime - bTime
       })
   ), [matches, phaseFilter])
+
+  const matchesByDate = useMemo(() => {
+    const groups = new Map()
+    visibleMatches.forEach((match) => {
+      const dayKey = match.date_tbd || !match.scheduled_at
+        ? `round-${match.round ?? 'none'}`
+        : new Date(match.scheduled_at).toISOString().slice(0, 10)
+      const label = match.date_tbd || !match.scheduled_at
+        ? match.round ? `Fecha ${match.round} - a definir` : 'Fecha a definir'
+        : new Intl.DateTimeFormat('es-AR', {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+        }).format(new Date(match.scheduled_at))
+      if (!groups.has(dayKey)) {
+        groups.set(dayKey, {
+          key: dayKey,
+          label,
+          round: match.round,
+          dateValue: match.scheduled_at ? new Date(match.scheduled_at).getTime() : Number.MAX_SAFE_INTEGER,
+          matches: [],
+        })
+      }
+      groups.get(dayKey).matches.push(match)
+    })
+
+    return [...groups.values()]
+      .sort((a, b) => a.dateValue - b.dateValue || Number(a.round ?? 999) - Number(b.round ?? 999))
+      .map((group) => ({
+        ...group,
+        matches: group.matches.sort((a, b) => {
+          const aTime = a.scheduled_at ? new Date(a.scheduled_at).getTime() : Number.MAX_SAFE_INTEGER
+          const bTime = b.scheduled_at ? new Date(b.scheduled_at).getTime() : Number.MAX_SAFE_INTEGER
+          return aTime - bTime
+        }),
+      }))
+  }, [visibleMatches])
 
   function openEdit(match) {
     setEditing(match)
@@ -156,7 +202,7 @@ export default function ModeratorMatches() {
     setEditing(null)
   }
 
-  if (loadingLeague || loadingMatches) return <Spinner className="py-24" />
+  if (loadingModeratorLeagues || loadingLeague || loadingMatches) return <Spinner className="py-24" />
 
   return (
     <div className="px-4 py-6 pb-28">
@@ -167,6 +213,26 @@ export default function ModeratorMatches() {
           Edita horarios, sedes y resultados. Para publicar goles o cargar convocados entra a Eventos y vivo.
         </p>
       </div>
+
+      {moderatorLeagues.length > 1 && (
+        <div className="mb-5">
+          <label className="mb-1 block text-xs font-semibold text-zinc-400">Liga a operar</label>
+          <select
+            value={activeLeagueId}
+            onChange={(event) => {
+              setSelectedLeagueId(event.target.value)
+              setPhaseFilter('all')
+            }}
+            className="w-full rounded-xl border border-surface-700 bg-surface-900 px-3 py-3 text-sm font-bold text-zinc-100 focus:outline-none focus:ring-2 focus:ring-primary/30"
+          >
+            {moderatorLeagues.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name} - {item.organization_city}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="-mx-4 mb-5 flex gap-2 overflow-x-auto px-4 pb-1 scrollbar-none">
         <button
@@ -189,9 +255,16 @@ export default function ModeratorMatches() {
       {visibleMatches.length === 0 ? (
         <p className="py-16 text-center text-sm text-zinc-500">No hay partidos publicados en esta liga.</p>
       ) : (
-        <div className="space-y-3">
-          {visibleMatches.map((match) => (
-            <article key={match.id} className="rounded-xl border border-surface-800 bg-surface-900 p-4">
+        <div className="space-y-5">
+          {matchesByDate.map((group) => (
+            <section key={group.key} className="space-y-2">
+              <div className="flex items-center justify-between px-1">
+                <h2 className="text-sm font-black text-zinc-100">{group.label}</h2>
+                <span className="text-xs text-zinc-500">{group.matches.length} partido{group.matches.length === 1 ? '' : 's'}</span>
+              </div>
+              <div className="space-y-3">
+                {group.matches.map((match) => (
+                  <article key={match.id} className="rounded-xl border border-surface-800 bg-surface-900 p-4">
               <div className="mb-3 flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold text-zinc-400">{match.phase_name}{match.round ? ` - Fecha ${match.round}` : ''}</p>
@@ -227,7 +300,10 @@ export default function ModeratorMatches() {
                   <Button size="sm" className="w-full">Eventos y vivo</Button>
                 </Link>
               </div>
-            </article>
+                  </article>
+                ))}
+              </div>
+            </section>
           ))}
         </div>
       )}

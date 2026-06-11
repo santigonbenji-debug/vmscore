@@ -8,6 +8,8 @@ export function useAuth() {
   const [teamId, setTeamId]     = useState(null)
   const [organizationId, setOrganizationId] = useState(null)
   const [organization, setOrganization] = useState(null)
+  const [roleStatus, setRoleStatus] = useState(null)
+  const [moderatorLeagueIds, setModeratorLeagueIds] = useState([])
   const [loading, setLoading]   = useState(true)
 
   const fetchRole = useCallback(async (userId) => {
@@ -15,15 +17,21 @@ export function useAuth() {
       .from('admin_roles')
       .select('role, league_id, team_id, organization_id, status, organizations(id, name, slug, city, province, status, archive_reason)')
       .eq('user_id', userId)
-      .eq('status', 'active')
-      .limit(1)
 
-    const r = Array.isArray(data) ? data[0] : null
+    const roles = Array.isArray(data) ? data : []
+    const activeRole = roles.find((item) => item.status === 'active')
+    const r = activeRole ?? roles[0] ?? null
+    const activeModeratorLeagues = roles
+      .filter((item) => item.role === 'match_moderator' && item.status === 'active' && item.league_id)
+      .map((item) => item.league_id)
+
     setRole(r?.role ?? null)
     setLeagueId(r?.league_id ?? null)
     setTeamId(r?.team_id ?? null)
     setOrganizationId(r?.organization_id ?? null)
     setOrganization(r?.organizations ?? null)
+    setRoleStatus(r?.status ?? null)
+    setModeratorLeagueIds(activeModeratorLeagues)
     setLoading(false)
   }, [])
 
@@ -40,7 +48,7 @@ export function useAuth() {
         if (session?.user) fetchRole(session.user.id)
         else {
           setRole(null); setLeagueId(null)
-          setTeamId(null); setOrganizationId(null); setOrganization(null); setLoading(false)
+          setTeamId(null); setOrganizationId(null); setOrganization(null); setRoleStatus(null); setModeratorLeagueIds([]); setLoading(false)
         }
       }
     )
@@ -71,6 +79,8 @@ export function useAuth() {
     teamId,
     organizationId,
     organization,
+    roleStatus,
+    moderatorLeagueIds,
     isAdmin:      !!role,
     isSuperAdmin: role === 'superadmin',
     isOrganizationAdmin: role === 'organization_admin',

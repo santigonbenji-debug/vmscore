@@ -32,13 +32,18 @@ import ManageCompetition from './pages/admin/ManageCompetition'
 import ManageModerators from './pages/admin/ManageModerators'
 import ModeratorMatches from './pages/admin/ModeratorMatches'
 
-function OrganizationAccessNotice() {
+function AdminAccessNotice({ type = 'organization' }) {
   const { organization, signOut } = useAuth()
+  const isSuspended = type === 'suspended'
   const isBlocked = organization?.status === 'blocked'
-  const title = organization
+  const title = isSuspended
+    ? 'Te encuentras suspendido'
+    : organization
     ? (isBlocked ? 'Tu organizacion fue bloqueada' : 'Tu organizacion fue archivada')
     : 'Tu organizacion no esta disponible'
-  const reason = organization?.archive_reason?.trim() || 'La organizacion no esta activa o no esta disponible para este usuario.'
+  const reason = isSuspended
+    ? 'Tu acceso fue suspendido por el administrador.'
+    : organization?.archive_reason?.trim() || 'La organizacion no esta activa o no esta disponible para este usuario.'
 
   return (
     <div className="min-h-screen bg-black px-4 py-8 text-zinc-100">
@@ -52,7 +57,9 @@ function OrganizationAccessNotice() {
           </p>
           <h1 className="mt-2 text-2xl font-black text-white">{title}</h1>
           <p className="mt-3 text-sm leading-relaxed text-zinc-400">
-            {organization?.name ? `${organization.name} no esta disponible en este momento.` : 'Esta organizacion no esta disponible en este momento.'}
+            {isSuspended
+              ? 'No podes acceder al panel de moderacion en este momento.'
+              : organization?.name ? `${organization.name} no esta disponible en este momento.` : 'Esta organizacion no esta disponible en este momento.'}
           </p>
 
           <div className="mt-5 rounded-xl border border-surface-700 bg-surface-950 p-4">
@@ -79,11 +86,14 @@ function OrganizationAccessNotice() {
 }
 
 function ProtectedRoute({ children }) {
-  const { isAdmin, isSuperAdmin, loading, organization, organizationId } = useAuth()
+  const { isAdmin, isSuperAdmin, loading, organization, organizationId, roleStatus } = useAuth()
   if (loading) return null
   if (!isAdmin) return <Navigate to="/admin/login" replace />
+  if (!isSuperAdmin && roleStatus === 'blocked') {
+    return <AdminAccessNotice type="suspended" />
+  }
   if (!isSuperAdmin && organizationId && (!organization || ['archived', 'blocked'].includes(organization.status))) {
-    return <OrganizationAccessNotice />
+    return <AdminAccessNotice />
   }
   return children
 }

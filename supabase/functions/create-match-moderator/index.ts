@@ -42,44 +42,50 @@ serve(async (req) => {
 
     if (!roles?.length) return json({ ok: false, error: 'Solo el superadmin puede crear moderadores.' }, 403)
 
-    const { leagueId, email, password, displayName } = await req.json()
+    const { leagueId, leagueIds, email, password, displayName } = await req.json()
     const normalizedEmail = String(email ?? '').trim().toLowerCase()
     const normalizedName = String(displayName ?? '').trim()
-    if (!leagueId || !normalizedEmail || !String(password ?? '') || !normalizedName) {
-      return json({ ok: false, error: 'Nombre, liga, email y contrasena son obligatorios.' }, 400)
+    const selectedLeagueIds = Array.from(new Set(
+      (Array.isArray(leagueIds) ? leagueIds : [leagueId]).filter(Boolean).map((id) => String(id)),
+    ))
+    if (selectedLeagueIds.length === 0 || !normalizedEmail || !String(password ?? '') || !normalizedName) {
+      return json({ ok: false, error: 'Nombre, ligas, email y contrasena son obligatorios.' }, 400)
     }
     if (String(password).length < 12) {
       return json({ ok: false, error: 'La contrasena debe tener al menos 12 caracteres.' }, 400)
     }
 
-    const { data: league } = await supabase
+    const { data: leagues } = await supabase
       .from('leagues')
       .select('id, name, approval_status, is_archived, organizations(status)')
-      .eq('id', leagueId)
-      .maybeSingle()
+      .in('id', selectedLeagueIds)
 
-    if (!league || league.approval_status !== 'approved' || league.is_archived || league.organizations?.status !== 'active') {
-      return json({ ok: false, error: 'La liga debe estar activa y aprobada para crear el acceso.' }, 400)
+    if (!leagues || leagues.length !== selectedLeagueIds.length || leagues.some((league) => (
+      league.approval_status !== 'approved' || league.is_archived || league.organizations?.status !== 'active'
+    ))) {
+      return json({ ok: false, error: 'Todas las ligas deben estar activas y aprobadas para crear el acceso.' }, 400)
     }
 
     const { data: created, error: createError } = await supabase.auth.admin.createUser({
       email: normalizedEmail,
       password: String(password),
       email_confirm: true,
-      user_metadata: { display_name: normalizedName, moderator_league_id: league.id },
+      user_metadata: { display_name: normalizedName, moderator_league_ids: selectedLeagueIds },
     })
     if (createError || !created.user) {
       return json({ ok: false, error: createError?.message ?? 'No se pudo crear el usuario.' }, 400)
     }
 
-    const { error: roleError } = await supabase.from('admin_roles').insert({
-      user_id: created.user.id,
-      role: 'match_moderator',
-      league_id: league.id,
-      email: normalizedEmail,
-      display_name: normalizedName,
-      status: 'active',
-    })
+    const { error: roleError } = await supabase.from('admin_roles').insert(
+      leagues.map((league) => ({
+        user_id: created.user.id,
+        role: 'match_moderator',
+        league_id: league.id,
+        email: normalizedEmail,
+        display_name: normalizedName,
+        status: 'active',
+      })),
+    )
 
     if (roleError) {
       await supabase.auth.admin.deleteUser(created.user.id)
@@ -90,7 +96,7 @@ serve(async (req) => {
       ok: true,
       email: normalizedEmail,
       displayName: normalizedName,
-      league: league.name,
+      leagues: leagues.map((league) => league.name),
       role: 'match_moderator',
     })
   } catch (error) {
