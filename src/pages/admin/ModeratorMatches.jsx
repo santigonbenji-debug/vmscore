@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { CalendarClock, MapPin, SlidersHorizontal } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useLeague, usePhases } from '../../hooks/useLeagues'
-import { useLeagueMatches, usePostponeMatch, useSaveMatchScore, useUpdateMatchDetails } from '../../hooks/useMatches'
+import { useLeagueMatchesWithExternal, usePostponeMatch, useSaveMatchScore, useUpdateMatchDetails } from '../../hooks/useMatches'
 import { useMyModeratorLeagues } from '../../hooks/useModerators'
 import { useCreateVenue, useVenues } from '../../hooks/useVenues'
 import { useReferees } from '../../hooks/useReferees'
@@ -57,7 +57,7 @@ export default function ModeratorMatches() {
   const activeLeagueId = selectedLeagueId || moderatorLeagues[0]?.id || leagueId || moderatorLeagueIds[0] || ''
   const { data: league, isLoading: loadingLeague } = useLeague(activeLeagueId)
   const { data: phases = [] } = usePhases(activeLeagueId)
-  const { data: matches = [], isLoading: loadingMatches } = useLeagueMatches(activeLeagueId)
+  const { data: matches = [], isLoading: loadingMatches } = useLeagueMatchesWithExternal(activeLeagueId)
   const { data: venues = [] } = useVenues({ organizationId: league?.organization_id })
   const { data: referees = [] } = useReferees({ organizationId: league?.organization_id })
   const updateDetails = useUpdateMatchDetails()
@@ -332,8 +332,10 @@ export default function ModeratorMatches() {
                 <span className="text-xs text-zinc-500">{group.matches.length} partido{group.matches.length === 1 ? '' : 's'}</span>
               </div>
               <div className="space-y-3">
-                {group.matches.map((match) => (
-                  <article key={match.id} className="rounded-xl border border-surface-800 bg-surface-900 p-4">
+                {group.matches.map((match) => {
+                  const editable = match.editable !== false
+                  return (
+                  <article key={match.app_id ?? match.id} className="rounded-xl border border-surface-800 bg-surface-900 p-4">
               <div className="mb-3 flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold text-zinc-400">{match.phase_name}{match.round ? ` - Fecha ${match.round}` : ''}</p>
@@ -363,14 +365,21 @@ export default function ModeratorMatches() {
                 {match.venue_name || 'Cancha sin asignar'}
               </p>
 
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <Button size="sm" variant="outline" onClick={() => openEdit(match)}>Editar detalles</Button>
-                <Link to={`/admin/resultado/${match.id}`}>
-                  <Button size="sm" className="w-full">Eventos y vivo</Button>
-                </Link>
-              </div>
+              {editable ? (
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <Button size="sm" variant="outline" onClick={() => openEdit(match)}>Editar detalles</Button>
+                  <Link to={`/admin/resultado/${match.id}`}>
+                    <Button size="sm" className="w-full">Eventos y vivo</Button>
+                  </Link>
+                </div>
+              ) : (
+                <div className="mt-4 rounded-lg border border-surface-700 bg-surface-800/70 px-3 py-2 text-xs font-semibold text-zinc-400">
+                  Registro historico. Para editarlo, primero publicalo como partido oficial.
+                </div>
+              )}
                   </article>
-                ))}
+                  )
+                })}
               </div>
             </section>
           ))}

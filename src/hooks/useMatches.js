@@ -77,6 +77,90 @@ export function useLeagueMatches(leagueId) {
   })
 }
 
+function leaguePairKey(match) {
+  return [match.home_team_id, match.away_team_id].filter(Boolean).sort().join('|')
+}
+
+function leagueDuplicateKey(match) {
+  const teams = leaguePairKey(match)
+  if (!teams) return null
+  if (match.round != null) {
+    return `${match.league_id ?? 'sin-liga'}|${teams}|round-${match.round}|leg-${match.leg ?? 1}`
+  }
+  if (match.scheduled_at) {
+    return `${match.league_id ?? 'sin-liga'}|${new Date(match.scheduled_at).toISOString().slice(0, 10)}|${teams}`
+  }
+  return null
+}
+
+function mergeOfficialAndExternalMatches(official = [], external = []) {
+  const rows = [
+    ...official.map((match) => ({
+      ...match,
+      app_id: `official-${match.id}`,
+      source_kind: 'official',
+      editable: true,
+    })),
+    ...external.map((match) => ({
+      ...match,
+      id: `external-${match.archive_id}`,
+      app_id: `external-${match.archive_id}`,
+      source_kind: 'external',
+      editable: false,
+    })),
+  ]
+  const byKey = new Map()
+
+  for (const match of rows) {
+    const key = leagueDuplicateKey(match) ?? match.app_id
+    const current = byKey.get(key)
+    if (!current) {
+      byKey.set(key, match)
+      continue
+    }
+    if (current.source_kind !== 'official' && match.source_kind === 'official') {
+      byKey.set(key, match)
+    }
+  }
+
+  return [...byKey.values()]
+}
+
+export function useLeagueMatchesWithExternal(leagueId) {
+  return useQuery({
+    queryKey: ['league-matches', leagueId, 'with-external'],
+    queryFn: async () => {
+      const [{ data: official, error: officialError }, { data: external, error: externalError }] = await Promise.all([
+        supabase
+          .from('v_matches')
+          .select('*')
+          .eq('league_id', leagueId)
+          .order('scheduled_at', { ascending: true, nullsFirst: false }),
+        supabase
+          .from('v_external_matches_public')
+          .select('*')
+          .eq('league_id', leagueId)
+          .order('round', { ascending: true, nullsFirst: false }),
+      ])
+
+      if (officialError) throw officialError
+      if (externalError) throw externalError
+
+      return mergeOfficialAndExternalMatches(official ?? [], external ?? [])
+        .sort((a, b) => {
+          const aRound = Number(a.round ?? 999)
+          const bRound = Number(b.round ?? 999)
+          if (aRound !== bRound) return aRound - bRound
+
+          const aTime = a.scheduled_at ? new Date(a.scheduled_at).getTime() : Number.MAX_SAFE_INTEGER
+          const bTime = b.scheduled_at ? new Date(b.scheduled_at).getTime() : Number.MAX_SAFE_INTEGER
+          return aTime - bTime
+        })
+    },
+    enabled: !!leagueId,
+  })
+}
+
 function pairKey(match) {
   return [match.home_team_id, match.away_team_id].filter(Boolean).sort().join('|')
 }
@@ -301,6 +385,7 @@ export function useCreateMatch() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['matches'] })
+      qc.invalidateQueries({ queryKey: ['league-matches'] })
       qc.invalidateQueries({ queryKey: ['matches-home'] })
     },
   })
@@ -336,6 +421,7 @@ export function useUpdateMatch() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['matches'] })
+      qc.invalidateQueries({ queryKey: ['league-matches'] })
       qc.invalidateQueries({ queryKey: ['match'] })
       qc.invalidateQueries({ queryKey: ['standings'] })
       qc.invalidateQueries({ queryKey: ['matches-home'] })
@@ -379,6 +465,7 @@ export function useSaveMatchScore() {
     onSuccess: (_, { id }) => {
       qc.invalidateQueries({ queryKey: ['match', id] })
       qc.invalidateQueries({ queryKey: ['matches'] })
+      qc.invalidateQueries({ queryKey: ['league-matches'] })
       qc.invalidateQueries({ queryKey: ['standings'] })
       qc.invalidateQueries({ queryKey: ['matches-home'] })
       qc.invalidateQueries({ queryKey: ['home-matches'] })
@@ -410,6 +497,7 @@ export function useUpdateMatchDetails() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['matches'] })
+      qc.invalidateQueries({ queryKey: ['league-matches'] })
       qc.invalidateQueries({ queryKey: ['match'] })
       qc.invalidateQueries({ queryKey: ['matches-home'] })
       qc.invalidateQueries({ queryKey: ['home-matches'] })
@@ -425,7 +513,10 @@ export function useDeleteMatch() {
       const { error } = await supabase.from('matches').delete().eq('id', id)
       if (error) throw error
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['matches'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['matches'] })
+      qc.invalidateQueries({ queryKey: ['league-matches'] })
+    },
   })
 }
 
@@ -552,6 +643,7 @@ export function useSaveLiveMatchData() {
     onSuccess: (_, { matchId }) => {
       qc.invalidateQueries({ queryKey: ['match', matchId] })
       qc.invalidateQueries({ queryKey: ['matches'] })
+      qc.invalidateQueries({ queryKey: ['league-matches'] })
       qc.invalidateQueries({ queryKey: ['matches-home'] })
       qc.invalidateQueries({ queryKey: ['home-matches'] })
       qc.invalidateQueries({ queryKey: ['matches-all-with-external'] })
@@ -598,6 +690,7 @@ export function useSaveResult() {
     onSuccess: (_, { matchId }) => {
       qc.invalidateQueries({ queryKey: ['match', matchId] })
       qc.invalidateQueries({ queryKey: ['matches'] })
+      qc.invalidateQueries({ queryKey: ['league-matches'] })
       qc.invalidateQueries({ queryKey: ['standings'] })
     },
   })
@@ -615,6 +708,7 @@ export function useUpdateMatchStatus() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['matches'] })
+      qc.invalidateQueries({ queryKey: ['league-matches'] })
       qc.invalidateQueries({ queryKey: ['match'] })
       qc.invalidateQueries({ queryKey: ['matches-home'] })
       qc.invalidateQueries({ queryKey: ['home-matches'] })
@@ -639,6 +733,7 @@ export function usePostponeMatch() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['matches'] })
+      qc.invalidateQueries({ queryKey: ['league-matches'] })
       qc.invalidateQueries({ queryKey: ['match'] })
       qc.invalidateQueries({ queryKey: ['matches-home'] })
       qc.invalidateQueries({ queryKey: ['home-matches'] })
