@@ -139,21 +139,21 @@ function PredictionCard({ match, onNeedAuth }) {
   }
 
   return (
-    <div className="rounded-xl border border-primary/20 bg-surface-900 p-4">
-      <div className="mb-3 flex items-start justify-between gap-3">
+    <div className="rounded-xl border border-surface-800 bg-surface-900 p-4">
+      <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-primary">
-            <Vote className="h-4 w-4" />
+          <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-zinc-200">
+            <Vote className="h-3.5 w-3.5 text-primary" />
             Vota el partido
           </p>
           <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-            {started ? 'La votacion se cierra cuando empieza el partido.' : 'Elegi 1, X o 2. Esto prepara el camino para el Prode.'}
+            {started ? 'La votacion se cierra cuando empieza el partido.' : 'Elegi quien gana o si termina empatado.'}
           </p>
         </div>
-        {total > 0 && <span className="rounded-full bg-surface-800 px-2.5 py-1 text-[11px] font-black text-zinc-300">{total}</span>}
+        {total > 0 && <span className="rounded-full bg-surface-800 px-2.5 py-1 text-[11px] font-black text-zinc-400">{total} votos</span>}
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
+      <div className="space-y-2">
         {PREDICTION_OPTIONS.map((option) => {
           const count = summary[option.value] ?? 0
           const pct = total > 0 ? Math.round((count / total) * 100) : 0
@@ -164,16 +164,23 @@ function PredictionCard({ match, onNeedAuth }) {
               type="button"
               onClick={() => vote(option.value)}
               disabled={started || savePrediction.isPending}
-              className={`relative overflow-hidden rounded-xl border px-3 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                active ? 'border-primary bg-primary/15 text-white' : 'border-surface-700 bg-surface-950 text-zinc-200 hover:border-primary/60'
+              className={`group w-full rounded-lg px-1 py-1 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                active ? 'bg-primary/10' : 'hover:bg-surface-800/60'
               }`}
             >
-              <div className="absolute inset-x-0 bottom-0 h-1 bg-surface-800">
-                <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
+              <div className="mb-1 flex items-center justify-between gap-3">
+                <div className="flex items-baseline gap-2">
+                  <span className={`w-5 text-sm font-black ${active ? 'text-primary' : 'text-zinc-100'}`}>{option.label}</span>
+                  <span className="text-xs font-semibold text-zinc-500">{option.caption}</span>
+                </div>
+                <span className="text-xs font-black text-zinc-300">{isError ? '-' : `${pct}%`}</span>
               </div>
-              <p className="text-lg font-black leading-none">{option.label}</p>
-              <p className="mt-1 text-[11px] font-semibold text-zinc-500">{option.caption}</p>
-              <p className="mt-2 text-xs font-black text-zinc-300">{isError ? '-' : `${pct}%`}</p>
+              <div className="h-1.5 overflow-hidden rounded-full bg-surface-800">
+                <div
+                  className={`h-full rounded-full transition-all ${active ? 'bg-primary' : 'bg-zinc-500 group-hover:bg-primary/80'}`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
             </button>
           )
         })}
@@ -479,7 +486,7 @@ export default function MatchDetail() {
         open={authOpen}
         onClose={() => setAuthOpen(false)}
         title="Crea tu cuenta para votar"
-        description="Tu voto queda guardado en VMScore y mas adelante nos sirve para experiencias como el Prode."
+        description="Inicia sesion o crea una cuenta para guardar tu voto."
       />
     </div>
   )
