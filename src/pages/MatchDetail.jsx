@@ -5,10 +5,13 @@ import { useTeamRecentMatches } from '../hooks/useMatches'
 import { useMatchLineups } from '../hooks/useLineups'
 import { useLiveSyncEvents, useMatchLiveLink } from '../hooks/useLiveSync'
 import { useNow } from '../hooks/useNow'
-import { ArrowLeft, CalendarDays, Clock3, MapPin, Trophy, UserRound } from 'lucide-react'
+import { ArrowLeft, CalendarDays, Clock3, MapPin, Trophy, UserRound, Vote } from 'lucide-react'
+import { useAuth } from '../hooks/useAuth'
+import { useMatchPredictionSummary, useMyMatchPrediction, useSaveMatchPrediction } from '../hooks/useMatchPredictions'
 import FavoriteButton from '../components/teams/FavoriteButton'
 import TeamLogo from '../components/teams/TeamLogo'
 import RecentForm from '../components/matches/RecentForm'
+import AuthModal from '../components/auth/AuthModal'
 import Spinner from '../components/ui/Spinner'
 import Badge from '../components/ui/Badge'
 import { formatFechaLarga, formatHora, isLocosHalftime, locosMinuteLabel, matchStartedByClock, matchStatusDetail } from '../lib/helpers'
@@ -30,6 +33,11 @@ const EVENT_LABEL = {
 }
 
 const GOAL_EVENT_TYPES = new Set(['goal', 'own_goal', 'penalty_goal'])
+const PREDICTION_OPTIONS = [
+  { value: 'home', label: '1', caption: 'Local' },
+  { value: 'draw', label: 'X', caption: 'Empate' },
+  { value: 'away', label: '2', caption: 'Visitante' },
+]
 
 function teamDisplayName(shortName, name) {
   return shortName?.trim() || name?.trim() || 'Equipo'
@@ -112,10 +120,82 @@ function EventsTimeline({ events, match }) {
   )
 }
 
+function PredictionCard({ match, onNeedAuth }) {
+  const { user } = useAuth()
+  const now = useNow()
+  const { data: myPrediction } = useMyMatchPrediction(match.id, user?.id)
+  const { data: summary = { home: 0, draw: 0, away: 0 }, isError } = useMatchPredictionSummary(match.id)
+  const savePrediction = useSaveMatchPrediction()
+  const started = match.status !== 'scheduled' || matchStartedByClock(match, now)
+  const total = summary.home + summary.draw + summary.away
+
+  async function vote(prediction) {
+    if (started) return
+    if (!user) {
+      onNeedAuth()
+      return
+    }
+    await savePrediction.mutateAsync({ matchId: match.id, userId: user.id, prediction })
+  }
+
+  return (
+    <div className="rounded-xl border border-primary/20 bg-surface-900 p-4">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-primary">
+            <Vote className="h-4 w-4" />
+            Vota el partido
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+            {started ? 'La votacion se cierra cuando empieza el partido.' : 'Elegi 1, X o 2. Esto prepara el camino para el Prode.'}
+          </p>
+        </div>
+        {total > 0 && <span className="rounded-full bg-surface-800 px-2.5 py-1 text-[11px] font-black text-zinc-300">{total}</span>}
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        {PREDICTION_OPTIONS.map((option) => {
+          const count = summary[option.value] ?? 0
+          const pct = total > 0 ? Math.round((count / total) * 100) : 0
+          const active = myPrediction?.prediction === option.value
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => vote(option.value)}
+              disabled={started || savePrediction.isPending}
+              className={`relative overflow-hidden rounded-xl border px-3 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                active ? 'border-primary bg-primary/15 text-white' : 'border-surface-700 bg-surface-950 text-zinc-200 hover:border-primary/60'
+              }`}
+            >
+              <div className="absolute inset-x-0 bottom-0 h-1 bg-surface-800">
+                <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
+              </div>
+              <p className="text-lg font-black leading-none">{option.label}</p>
+              <p className="mt-1 text-[11px] font-semibold text-zinc-500">{option.caption}</p>
+              <p className="mt-2 text-xs font-black text-zinc-300">{isError ? '-' : `${pct}%`}</p>
+            </button>
+          )
+        })}
+      </div>
+
+      {myPrediction && (
+        <p className="mt-3 text-xs font-semibold text-primary">Tu voto quedo guardado.</p>
+      )}
+      {savePrediction.isError && (
+        <p className="mt-3 rounded-lg border border-red-500/20 bg-red-500/10 p-2 text-xs text-red-300">
+          {savePrediction.error?.message || 'No se pudo guardar el voto.'}
+        </p>
+      )}
+    </div>
+  )
+}
+
 export default function MatchDetail() {
   const { matchId } = useParams()
   const navigate = useNavigate()
   const [tab, setTab] = useState('info')
+  const [authOpen, setAuthOpen] = useState(false)
   const now = useNow()
 
   const { data, isLoading } = useMatch(matchId)
@@ -262,6 +342,10 @@ export default function MatchDetail() {
         )}
 
         {tab === 'info' && (
+          <PredictionCard match={match} onNeedAuth={() => setAuthOpen(true)} />
+        )}
+
+        {tab === 'info' && (
           <div className="bg-surface-900 rounded-xl border border-surface-800 p-4">
             <h2 className="mb-3 text-xs font-black uppercase tracking-wide text-zinc-400">Forma reciente</h2>
             <div className="space-y-3">
@@ -390,6 +474,13 @@ export default function MatchDetail() {
           )
         )}
       </div>
+
+      <AuthModal
+        open={authOpen}
+        onClose={() => setAuthOpen(false)}
+        title="Crea tu cuenta para votar"
+        description="Tu voto queda guardado en VMScore y mas adelante nos sirve para experiencias como el Prode."
+      />
     </div>
   )
 }

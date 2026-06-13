@@ -10,6 +10,7 @@ import MatchDetail from './pages/MatchDetail'
 import TeamProfile from './pages/TeamProfile'
 import Favorites   from './pages/Favorites'
 import Contacto    from './pages/Contacto'
+import Account     from './pages/Account'
 import CompetitionDetail from './pages/CompetitionDetail'
 import AdminLogin      from './pages/admin/AdminLogin'
 import AdminResetPassword from './pages/admin/AdminResetPassword'
@@ -131,6 +132,7 @@ export default function App() {
         <Route path="partido/:matchId" element={<MatchDetail />} />
         <Route path="equipo/:teamId"   element={<TeamProfile />} />
         <Route path="favoritos"        element={<Favorites />} />
+        <Route path="cuenta"           element={<Account />} />
         <Route path="contacto"         element={<Contacto />} />
         <Route path="competencia/:leagueId" element={<CompetitionDetail />} />
       </Route>

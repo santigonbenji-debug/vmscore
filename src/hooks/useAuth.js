@@ -59,6 +59,26 @@ export function useAuth() {
     return supabase.auth.signInWithPassword({ email, password })
   }
 
+  async function signUp(email, password, metadata = {}) {
+    return supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: metadata,
+        emailRedirectTo: window.location.origin,
+      },
+    })
+  }
+
+  async function signInWithGoogle() {
+    return supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+      },
+    })
+  }
+
   async function resetPassword(email) {
     const redirectTo = `${window.location.origin}/admin/reset-password`
     return supabase.auth.resetPasswordForEmail(email, { redirectTo })
@@ -89,6 +109,8 @@ export function useAuth() {
     isMatchModerator: role === 'match_moderator',
     loading,
     signIn,
+    signUp,
+    signInWithGoogle,
     resetPassword,
     updatePassword,
     signOut,
