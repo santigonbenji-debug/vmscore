@@ -5,6 +5,7 @@ import Modal from '../ui/Modal'
 import Button from '../ui/Button'
 
 const INPUT = 'w-full rounded-lg border border-surface-700 bg-surface-800 px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-primary/30'
+const GOOGLE_AUTH_ENABLED = import.meta.env.VITE_GOOGLE_AUTH_ENABLED === 'true'
 
 export default function AuthModal({ open, onClose, title = 'Entrar a VMScore', description = 'Crea tu cuenta para votar partidos y guardar tu perfil.' }) {
   const { signIn, signUp, signInWithGoogle } = useAuth()
@@ -45,6 +46,10 @@ export default function AuthModal({ open, onClose, title = 'Entrar a VMScore', d
 
   async function google() {
     setError('')
+    if (!GOOGLE_AUTH_ENABLED) {
+      setError('El acceso con Google todavia no esta habilitado. Usa email y contrasena.')
+      return
+    }
     setLoading(true)
     try {
       const { error: googleError } = await signInWithGoogle()
@@ -82,15 +87,19 @@ export default function AuthModal({ open, onClose, title = 'Entrar a VMScore', d
           </button>
         </div>
 
-        <Button type="button" variant="outline" onClick={google} disabled={loading} className="w-full">
-          Continuar con Google
-        </Button>
+        {GOOGLE_AUTH_ENABLED && (
+          <>
+            <Button type="button" variant="outline" onClick={google} disabled={loading} className="w-full">
+              Continuar con Google
+            </Button>
 
-        <div className="flex items-center gap-3 text-xs font-bold uppercase tracking-wide text-zinc-600">
-          <span className="h-px flex-1 bg-surface-800" />
-          Email
-          <span className="h-px flex-1 bg-surface-800" />
-        </div>
+            <div className="flex items-center gap-3 text-xs font-bold uppercase tracking-wide text-zinc-600">
+              <span className="h-px flex-1 bg-surface-800" />
+              Email
+              <span className="h-px flex-1 bg-surface-800" />
+            </div>
+          </>
+        )}
 
         <form onSubmit={submit} className="space-y-3">
           {mode === 'register' && (
